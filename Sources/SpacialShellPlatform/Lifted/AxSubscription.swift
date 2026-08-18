@@ -14,37 +14,42 @@ final class AxSubscription {
         self.ax = ax
     }
 
-    private func subscribe(_ key: String) throws -> Bool {
+    // SpacialShell deviation: the original returned `Bool`. We need the raw `AXError` because
+    // apps routinely answer `kAXErrorCannotComplete` for a beat right after launch, and that
+    // case is retried with backoff instead of costing the app its observers for good.
+    private func subscribe(_ key: String) throws -> AXError {
         axThreadToken.checkEquals(axTaskLocalAppThreadToken)
-        if AXObserverAddNotification(obs, ax, key as CFString, nil) == .success {
-            notifKeys.insert(key)
-            return true
-        } else {
-            return false
-        }
+        let err = AXObserverAddNotification(obs, ax, key as CFString, nil)
+        if err == .success { notifKeys.insert(key) }
+        return err
     }
 
+    /// SpacialShell deviation: the original returned `[AxSubscription]` and used an empty array
+    /// to mean "failed". We return the failing `AXError` instead so the caller can tell a
+    /// transient `kAXErrorCannotComplete` from a permanent refusal (see `AXApp`).
+    /// (`AXError` doesn't conform to `Error`, hence the bespoke enum rather than `Result`.)
     static func bulkSubscribe(
         _ nsApp: NSRunningApplication,
         _ ax: AXUIElement,
         _ job: RunLoopJob,
         _ handlerToNotifKeyMapping: HandlerToNotifKeyMapping,
-    ) throws -> [AxSubscription] {
+    ) throws -> AxSubscribeResult {
         var result: [AxSubscription] = []
         var visitedNotifKeys: Set<String> = []
         for (handler, notifKeys) in handlerToNotifKeyMapping {
             try job.checkCancellation()
-            guard let obs = AXObserver.new(nsApp.processIdentifier, handler) else { return [] }
+            guard let obs = AXObserver.new(nsApp.processIdentifier, handler) else { return .failed(.failure) }
             let subscription = AxSubscription(obs: obs, ax: ax)
             for key: String in notifKeys {
                 try job.checkCancellation()
                 assert(visitedNotifKeys.insert(key).inserted)
-                if try !subscription.subscribe(key) { return [] }
+                let err = try subscription.subscribe(key)
+                if err != .success { return .failed(err) }
             }
             CFRunLoopAddSource(CFRunLoopGetCurrent(), AXObserverGetRunLoopSource(obs), .defaultMode)
             result.append(subscription)
         }
-        return result
+        return .subscribed(result)
     }
 
     deinit {
@@ -57,3 +62,9 @@ final class AxSubscription {
 }
 
 typealias HandlerToNotifKeyMapping = [(AXObserverCallback, [String])]
+
+/// SpacialShell addition — see `AxSubscription.bulkSubscribe`.
+enum AxSubscribeResult {
+    case subscribed([AxSubscription])
+    case failed(AXError)
+}
