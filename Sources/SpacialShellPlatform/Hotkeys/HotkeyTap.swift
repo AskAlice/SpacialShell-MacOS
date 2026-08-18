@@ -40,9 +40,7 @@ public final class HotkeyTap: @unchecked Sendable {
     /// Ruling 2: a wake re-enable that lands before the window server has finished restoring the
     /// session is a no-op, so wait for it to settle.
     private static let wakeDelaySeconds: TimeInterval = 3
-    /// Circuit breaker: at most `breakerLimit` re-creations inside `breakerWindow`.
-    private static let breakerLimit = 5
-    private static let breakerWindow = Duration.seconds(2)
+    /// Circuit breaker; see `Breaker`.
 
     /// `kVK_Function` and the Globe key's own keyDown on Apple keyboards (0xB3). Neither is ever
     /// a chord; both pass through so macOS's own Globe behaviour keeps working.
@@ -68,16 +66,61 @@ public final class HotkeyTap: @unchecked Sendable {
     private var tapPort: CFMachPort?
     private var source: CFRunLoopSource?
     private var health: CFRunLoopTimer?
+    /// Keeps the tap thread's run loop non-empty for the thread's whole life, independent of the
+    /// tap. Without it, a re-creation that fails leaves the run loop with nothing to service,
+    /// `CFRunLoopRunInMode` returns `.finished`, the thread exits, `runLoop` goes nil — and every
+    /// re-arm path is guarded on that run loop, so the hotkeys would be dead until relaunch.
+    private var keepAlive: CFRunLoopSource?
     private var runLoop: CFRunLoop?
     private var thread: Thread?
     private var observers: [(center: NotificationCenter, token: any NSObjectProtocol)] = []
-    private var recreations: [ContinuousClock.Instant] = []
-    private var breakerTripped = false
+    private var breaker = Breaker()
     private var created = false
     private var started = false
     private var stopping = false
+    /// Test seam: makes `createTap()` fail without touching CoreGraphics, so the "what happens
+    /// when re-creation fails" path is reachable on a host with no Accessibility grant.
+    private var failCreation = false
+    /// Test seam: counts re-arm blocks that actually ran on the tap thread.
+    private var rearmCount = 0
     /// Signalled by the tap thread on its way out, so `stop()` can be synchronous.
     private let finished = DispatchSemaphore(value: 0)
+
+    /// The re-creation circuit breaker (ruling 2), as a pure state machine so it can be tested
+    /// without a tap.
+    ///
+    /// It counts **consecutive** failures, not failures inside a time window. A window is the
+    /// obvious design and it cannot work here: the only thing that drives re-creation is the 5 s
+    /// health poll, so any window shorter than 5 s has always pruned every entry by the time the
+    /// next attempt arrives and the breaker can never trip.
+    struct Breaker: Equatable {
+        static let limit = 5
+        private(set) var consecutiveFailures = 0
+        private(set) var tripped = false
+
+        /// False once the breaker has tripped: stop trying until a wake/unlock resets it.
+        var allowsAttempt: Bool { !tripped }
+
+        mutating func recordSuccess() {
+            consecutiveFailures = 0
+            tripped = false
+        }
+
+        /// Returns true when *this* failure is the one that trips the breaker.
+        mutating func recordFailure() -> Bool {
+            consecutiveFailures += 1
+            guard consecutiveFailures >= Self.limit, !tripped else { return false }
+            tripped = true
+            return true
+        }
+
+        /// A wake, unlock or session activation forgives everything: whatever made the tap
+        /// unrecreatable (a locked session, a restarting window server) is most likely over.
+        mutating func reset() {
+            consecutiveFailures = 0
+            tripped = false
+        }
+    }
 
     public init(table: [Chord: Command], onCommand: @escaping @Sendable (Command) -> Void) {
         self.table = table
@@ -112,15 +155,8 @@ public final class HotkeyTap: @unchecked Sendable {
         started = true
         lock.unlock()
 
-        let ready = DispatchSemaphore(value: 0)
-        let thread = Thread { [self] in threadMain(ready: ready) }
-        thread.name = "me.askalice.SpacialShell.hotkeys"
-        thread.qualityOfService = .userInteractive
-        lock.lock(); self.thread = thread; lock.unlock()
-        thread.start()
-
         // tapCreate is a synchronous kernel call; a second is three orders of magnitude of slack.
-        let reported = ready.wait(timeout: .now() + 1) == .success
+        let reported = spawnThread(exitIfCreationFails: true)
         lock.lock()
         let ok = reported && created
         if !ok { stopping = true }
@@ -155,7 +191,18 @@ public final class HotkeyTap: @unchecked Sendable {
 
     // MARK: - The tap thread
 
-    private func threadMain(ready: DispatchSemaphore) {
+    /// Returns whether the thread reported back inside the timeout.
+    private func spawnThread(exitIfCreationFails: Bool) -> Bool {
+        let ready = DispatchSemaphore(value: 0)
+        let thread = Thread { [self] in threadMain(ready: ready, exitIfCreationFails: exitIfCreationFails) }
+        thread.name = "me.askalice.SpacialShell.hotkeys"
+        thread.qualityOfService = .userInteractive
+        lock.lock(); self.thread = thread; lock.unlock()
+        thread.start()
+        return ready.wait(timeout: .now() + 1) == .success
+    }
+
+    private func threadMain(ready: DispatchSemaphore, exitIfCreationFails: Bool) {
         let runLoop = CFRunLoopGetCurrent()!
         lock.lock(); self.runLoop = runLoop; lock.unlock()
 
@@ -163,14 +210,22 @@ public final class HotkeyTap: @unchecked Sendable {
         lock.lock(); created = ok; lock.unlock()
         ready.signal()
 
-        if ok {
+        // A creation failure *at start* is reported to the caller, which throws — nothing should
+        // linger. A creation failure *later* is a different thing entirely: the thread has to stay
+        // up so the health poll and the wake/unlock re-arms can keep trying.
+        if ok || !exitIfCreationFails {
+            installKeepAlive(on: runLoop)
             installHealthTimer(on: runLoop)
             while true {
                 lock.lock(); let stopping = self.stopping; lock.unlock()
                 if stopping { break }
-                // A bounded run keeps the thread responsive to `stopping` even if every source is
-                // torn down underneath it; `.finished` means there is nothing left to service.
-                if CFRunLoopRunInMode(.defaultMode, 60, false) == .finished { break }
+                // A bounded run keeps the thread responsive to `stopping`. `.finished` should be
+                // impossible while the keep-alive source is installed; if it ever happens, put the
+                // source back rather than exiting — exiting is what stranded the re-arm paths.
+                if CFRunLoopRunInMode(.defaultMode, 60, false) == .finished {
+                    Self.log.error("hotkey run loop emptied unexpectedly; re-installing the keep-alive source")
+                    installKeepAlive(on: runLoop)
+                }
             }
         }
 
@@ -179,8 +234,28 @@ public final class HotkeyTap: @unchecked Sendable {
         finished.signal()
     }
 
+    /// A version-0 source that is never signalled. Its only job is to be there, so the run loop
+    /// always has something to service and `CFRunLoopRunInMode` blocks instead of returning
+    /// `.finished`. Tap thread only.
+    private func installKeepAlive(on runLoop: CFRunLoop) {
+        var context = CFRunLoopSourceContext()
+        context.perform = { _ in }
+        guard let source = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &context) else {
+            Self.log.error("could not create the hotkey run loop's keep-alive source")
+            return
+        }
+        CFRunLoopAddSource(runLoop, source, .commonModes)
+        lock.lock()
+        let previous = keepAlive
+        keepAlive = source
+        lock.unlock()
+        if let previous { CFRunLoopSourceInvalidate(previous) }
+    }
+
     /// Tap thread only.
     private func createTap() -> Bool {
+        lock.lock(); let failCreation = self.failCreation; lock.unlock()
+        if failCreation { return false }
         let mask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue)
             | (1 << CGEventType.tapDisabledByTimeout.rawValue)
@@ -211,13 +286,14 @@ public final class HotkeyTap: @unchecked Sendable {
         lock.lock(); health = timer; lock.unlock()
     }
 
-    /// Tap thread only; idempotent.
-    private func teardownOnTapThread() {
+    /// Drops the port and its run loop source **and nothing else** — the health timer and the
+    /// keep-alive source must outlive a re-creation, or the first successful re-creation would be
+    /// the last one the poll ever notices. Tap thread only; idempotent.
+    private func teardownTapOnly() {
         lock.lock()
-        let port = tapPort, source = self.source, health = self.health
-        tapPort = nil; self.source = nil; self.health = nil
+        let port = tapPort, source = self.source
+        tapPort = nil; self.source = nil
         lock.unlock()
-        if let health { CFRunLoopTimerInvalidate(health) }
         if let source { CFRunLoopSourceInvalidate(source) }
         if let port {
             CGEvent.tapEnable(tap: port, enable: false)
@@ -225,27 +301,40 @@ public final class HotkeyTap: @unchecked Sendable {
         }
     }
 
+    /// The terminal teardown: the tap, plus the two things that keep the thread's run loop alive.
+    /// Tap thread only; idempotent.
+    private func teardownOnTapThread() {
+        teardownTapOnly()
+        lock.lock()
+        let health = self.health, keepAlive = self.keepAlive
+        self.health = nil; self.keepAlive = nil
+        lock.unlock()
+        if let health { CFRunLoopTimerInvalidate(health) }
+        if let keepAlive { CFRunLoopSourceInvalidate(keepAlive) }
+    }
+
     /// Drops the current port and makes a new one — the only cure when the port itself is dead
     /// (revoked and re-granted trust, a window-server restart). Tap thread only.
     private func recreateTap() {
-        let now = ContinuousClock.now
+        lock.lock(); let allowed = breaker.allowsAttempt; lock.unlock()
+        guard allowed else { return }
+
+        teardownTapOnly()
+        let ok = createTap()
+
         lock.lock()
-        recreations.removeAll { $0.duration(to: now) > Self.breakerWindow }
-        guard recreations.count < Self.breakerLimit else {
-            breakerTripped = true
-            lock.unlock()
-            Self.log.error(
-                "event tap could not be re-created \(Self.breakerLimit)× in 2 s; giving up until the next wake or unlock")
-            return
-        }
-        recreations.append(now)
+        var tripped = false
+        if ok { breaker.recordSuccess() } else { tripped = breaker.recordFailure() }
         lock.unlock()
 
-        teardownOnTapThread()
-        if createTap() {
+        if ok {
             Self.log.info("event tap re-created")
-        } else {
-            Self.log.error("event tap re-creation failed — Accessibility may have been revoked")
+            return
+        }
+        Self.log.error("event tap re-creation failed — Accessibility may have been revoked")
+        if tripped {
+            Self.log.error(
+                "event tap could not be re-created \(Breaker.limit)× in a row; giving up until the next wake or unlock")
         }
     }
 
@@ -253,7 +342,7 @@ public final class HotkeyTap: @unchecked Sendable {
     private func healthCheck() {
         lock.lock()
         let port = tapPort
-        let tripped = breakerTripped
+        let allowed = breaker.allowsAttempt
         let stopping = self.stopping
         lock.unlock()
         guard !stopping else { return }
@@ -264,7 +353,7 @@ public final class HotkeyTap: @unchecked Sendable {
             CGEvent.tapEnable(tap: port, enable: true)
             if CGEvent.tapIsEnabled(tap: port) { return }
         }
-        guard !tripped else { return }
+        guard allowed else { return }
         recreateTap()
     }
 
@@ -301,8 +390,8 @@ public final class HotkeyTap: @unchecked Sendable {
             guard let self else { return }
             lock.lock()
             let stopping = self.stopping
-            breakerTripped = false
-            recreations.removeAll()
+            breaker.reset()
+            rearmCount += 1
             lock.unlock()
             guard !stopping else { return }
             Self.log.info("re-arming hotkey tap after \(reason, privacy: .public)")
@@ -369,6 +458,51 @@ public final class HotkeyTap: @unchecked Sendable {
         default:
             return passThrough
         }
+    }
+
+    // MARK: - Test seams
+
+    /// Starts the tap thread with **no tap**: `createTap()` is forced to fail. That is the only
+    /// way to ask the lifecycle question that matters here — "does the thread survive a creation
+    /// failure?" — on a machine with no Accessibility grant, where a real tap cannot exist.
+    func _testStartWithoutTap() {
+        lock.lock()
+        guard !started, !stopping else { lock.unlock(); return }
+        started = true
+        failCreation = true
+        lock.unlock()
+        _ = spawnThread(exitIfCreationFails: false)
+    }
+
+    /// True while the tap thread's run loop is live and reachable.
+    func _isThreadAlive() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return runLoop != nil
+    }
+
+    /// Runs the re-creation path (with creation failing) *on the tap thread*, and returns once it
+    /// has finished — so a test can assert about the state it left behind.
+    func _simulateRecreationFailure() {
+        let done = DispatchSemaphore(value: 0)
+        perform(after: 0) { [weak self] in
+            self?.recreateTap()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 1)
+    }
+
+    /// A wake-style re-arm. Asynchronous by nature (it hops to the tap thread), so the counter is
+    /// what proves it was not swallowed.
+    func _rearm() { rearm(after: 0, reason: "test") }
+
+    func _rearmCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return rearmCount
+    }
+
+    func _breakerState() -> Breaker {
+        lock.lock(); defer { lock.unlock() }
+        return breaker
     }
 }
 

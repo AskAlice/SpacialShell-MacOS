@@ -60,9 +60,11 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         log.info("world on \(initial.screenOrder.count) screen(s), restored=\(restored != nil)")
 
         log.info("stage 5/8: constructing the store")
+        let gate = termination
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
         ) { [weak self] world in
+            gate.note(world: world)
             Task { @MainActor in self?.scheduleSave(world) }
         }
         self.store = store
@@ -213,6 +215,9 @@ final class TerminationGate: @unchecked Sendable {
     private var backend: AXWindowBackend?
     private var tap: HotkeyTap?
     private var didTerminate = false
+    /// The most recent world `WorldStore.onChange` published. The fallback when the export times
+    /// out — see `fallbackExport`.
+    private var lastWorld: World?
 
     func arm(store: WorldStore, backend: AXWindowBackend) {
         lock.lock(); self.store = store; self.backend = backend; lock.unlock()
@@ -220,6 +225,11 @@ final class TerminationGate: @unchecked Sendable {
 
     func arm(tap: HotkeyTap) {
         lock.lock(); self.tap = tap; lock.unlock()
+    }
+
+    /// Called from `WorldStore`'s `onChange`, off the main actor.
+    func note(world: World) {
+        lock.lock(); lastWorld = world; lock.unlock()
     }
 
     /// Idempotent: SIGTERM followed by `applicationWillTerminate` must not restore twice.
@@ -245,10 +255,20 @@ final class TerminationGate: @unchecked Sendable {
             exported.signal()
         }
         if !wait(exported, Self.exportBudget, onMainThread: onMainThread) {
-            Self.log.error("world export timed out; windows are left where they are")
+            Self.log.error("world export timed out; falling back to the last published world")
         }
 
-        if let e = export.value {
+        // The export may have landed while we were giving up on it; prefer it either way.
+        if let e = export.value ?? fallbackExport(onMainThread: onMainThread) {
+            // The 500 ms save debounce is about to be abandoned by `exit(0)`, so the last few
+            // commands would be lost. This write is synchronous and happens before the restore:
+            // the restore moves every window off its workspace, so a save after it would persist
+            // a layout that no longer matches anything.
+            do {
+                try PersistedState(world: e.world).save(to: Paths.stateFile)
+            } catch {
+                Self.log.error("final state save failed: \(String(describing: error), privacy: .public)")
+            }
             Self.log.info("restoring windows before exit")
             backend.restoreAllForTermination(
                 world: e.world, displays: e.displays, observed: e.observed, stranded: e.stranded,
@@ -264,6 +284,34 @@ final class TerminationGate: @unchecked Sendable {
         }
         run(Self.teardownBudget, onMainThread: onMainThread) { await store.stop() }
         Self.log.info("terminated cleanly")
+    }
+
+    /// A timed-out export must not mean "leave every window in its parking corner" — that is the
+    /// one outcome §7.4 exists to prevent, and it would happen precisely when the store is busiest.
+    /// The last world `onChange` published is at most one command stale and describes the same
+    /// parked windows. `observed` is empty, so the restore uses its own fallback size: a window at
+    /// a sensible size in the middle of the screen beats a 1×32 sliver in a corner.
+    private func fallbackExport(onMainThread: Bool) -> TerminationExport? {
+        lock.lock(); let world = lastWorld; lock.unlock()
+        guard let world, let displays = currentDisplays(onMainThread: onMainThread), !displays.isEmpty else {
+            Self.log.error("no fallback world or no displays; windows are left where they are")
+            return nil
+        }
+        return (world: world, displays: displays, observed: [:], stranded: [:])
+    }
+
+    /// `DisplayTopology.current()` is `@MainActor`. On the main thread we are already there; from
+    /// the signal queue the main actor is free, so the hop is bounded and cheap.
+    private func currentDisplays(onMainThread: Bool) -> [DisplayInfo]? {
+        if onMainThread { return MainActor.assumeIsolated { DisplayTopology.current() } }
+        let displays = Box<[DisplayInfo]>()
+        let done = DispatchSemaphore(value: 0)
+        Task.detached(priority: .userInitiated) {
+            displays.value = await MainActor.run { DisplayTopology.current() }
+            done.signal()
+        }
+        guard done.wait(timeout: .now() + Self.teardownBudget) == .success else { return nil }
+        return displays.value
     }
 
     private func run(
