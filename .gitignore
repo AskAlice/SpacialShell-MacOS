@@ -4,3 +4,5 @@
 xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 DerivedData/
+.superpowers/
+build/
