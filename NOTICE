@@ -29,3 +29,8 @@ Adapted files carry an "Adapted from AeroSpace" header comment. Current list:
   Sources/SpacialShellPlatform/Lifted/NSRunningApplicationEx.swift
   Sources/SpacialShellPlatform/Lifted/NsApplicationEx.swift
   Sources/SpacialShellPlatform/Lifted/Rect.swift
+  Sources/SpacialShellPlatform/Lifted/KnownBundleId.swift
+  Sources/SpacialShellPlatform/Lifted/AxUiElementWindowType.swift
+  Sources/SpacialShellPlatform/Lifted/windowLevelCache.swift
+  Tests/SpacialShellPlatformTests/AxDumpMock.swift
+  axDumps/** (test fixtures)
