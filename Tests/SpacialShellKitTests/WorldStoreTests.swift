@@ -108,6 +108,20 @@ import Foundation
         #expect(!tables.parked.contains(a) && tables.prePark[a] == nil && tables.observed[a] == nil)
         #expect(await !be.calls.contains(.setPosition(a, CGPoint(x: 999, y: 699))))   // stale write never issued
     }
+    @Test func intentEchoDoesNotAbortInFlightPlan() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.reset()
+        await be.armGate(onWriteNumber: 1)                       // plan is [setFrame(b), setPosition(a)]
+        let run = Task { await store.run(.focusWindow(.right)) }
+        while await !be.isGateArmed() { try? await Task.sleep(for: .milliseconds(5)) }
+        let planned = CGRect(x: 8, y: 33, width: 984, height: 658)
+        await store.apply(.windowMoved(b, planned))              // AX echo of the very write in flight
+        await be.releaseGate()
+        await run.value
+        let calls = await be.calls
+        #expect(calls.contains(.setFrame(b, planned)))
+        #expect(calls.contains(.setPosition(a, CGPoint(x: 999, y: 699))))   // plan ran to completion
+    }
     @Test func threeFailedWritesMoveWindowToIgnored() async {
         let (store, be) = await make(snap([win(a)], focused: a))
         await be.fail(a)

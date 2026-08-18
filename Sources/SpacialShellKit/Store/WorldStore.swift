@@ -17,7 +17,9 @@ public actor WorldStore {
     private var failures: [WindowRef: Int] = [:]
     private var lastRaised: WindowRef?
     private var locked = false
-    /// Bumped by every `apply`/`run`; a reconcile pass abandons itself when a newer pass has superseded it.
+    /// Bumped by every `reconcile()`; an in-flight pass abandons itself once a newer pass has started.
+    /// Only a *newer reconcile* invalidates a plan — early-return event paths (intent echoes, locked,
+    /// floating/unknown moves) must not abort a multi-write plan that is already in flight.
     private var generation = 0
     private var eventTask: Task<Void, Never>?
     private var started = false
@@ -39,7 +41,6 @@ public actor WorldStore {
     public func update(config: Config) async { self.config = config; await reconcile() }
 
     public func run(_ command: Command) async {
-        generation += 1
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
         let (next, effects) = CommandRunner.apply(command, to: world)
         world = next
@@ -48,7 +49,6 @@ public actor WorldStore {
     }
 
     public func apply(_ event: BackendEvent) async {
-        generation += 1
         switch event {
         case .snapshot(let s):
             if locked { return }
@@ -137,6 +137,7 @@ public actor WorldStore {
     // MARK: reconcile
 
     private func reconcile() async {
+        generation += 1
         let gen = generation
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
         let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
