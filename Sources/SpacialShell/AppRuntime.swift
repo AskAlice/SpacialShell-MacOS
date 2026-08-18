@@ -1,0 +1,314 @@
+import AppKit
+import CoreGraphics
+import SpacialShellKit
+import struct SpacialShellKit.WindowRef
+import SpacialShellPlatform
+import os
+
+/// Boot, live wiring, and the way out.
+///
+/// Boot order is not negotiable (spec §10, T18 handoff): the Accessibility grant has to land
+/// *before* `AXWindowBackend.start()`, because the global event monitors it installs are silently
+/// `nil` without it and would never be retried; the world has to be built before the store, since
+/// the store's first reconcile lays out against it; and the hotkey tap comes up last so a
+/// keystroke can't reach a store that has not started.
+@MainActor
+final class AppRuntime: NSObject, NSApplicationDelegate {
+    private let log = Logger(subsystem: Paths.bundleID, category: "app")
+
+    /// Spec §7.4: apps whose windows must be parked with a zero-width sliver instead of a 1×32 one.
+    private static let zeroSliverBundleIDs: Set<String> = ["us.zoom.xos"]
+    /// The config file is edited by hand; a save can arrive as several events (write, rename).
+    private static let configDebounce = Duration.milliseconds(300)
+    /// A world change per keystroke would mean a write per keystroke.
+    private static let saveDebounce = Duration.milliseconds(500)
+
+    private var config = Config()
+    private var backend: AXWindowBackend?
+    private var store: WorldStore?
+    private var tap: HotkeyTap?
+    private var saveTask: Task<Void, Never>?
+    private var reloadTask: Task<Void, Never>?
+    private var configWatch: DispatchSourceFileSystemObject?
+    private var signalSources: [any DispatchSourceSignal] = []
+
+    /// Holds the pieces the termination path needs, reachable off the main actor.
+    private nonisolated let termination = TerminationGate()
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+        Task { await boot() }
+    }
+
+    // MARK: - Boot
+
+    private func boot() async {
+        log.info("stage 1/8: waiting for the Accessibility grant")
+        await Permissions.waitForAccessibility(bundleID: Paths.bundleID)
+
+        log.info("stage 2/8: loading config")
+        loadConfig()
+
+        log.info("stage 3/8: constructing the AX backend")
+        let backend = AXWindowBackend(config: config)
+        self.backend = backend
+
+        log.info("stage 4/8: building the world")
+        let restored = (try? PersistedState.load(from: Paths.stateFile)) ?? nil
+        let seeded = World.seeded(screens: DisplayTopology.current().map(\.id), config: config)
+        let initial = restored?.restore(into: seeded) ?? seeded
+        log.info("world on \(initial.screenOrder.count) screen(s), restored=\(restored != nil)")
+
+        log.info("stage 5/8: constructing the store")
+        let store = WorldStore(
+            backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
+        ) { [weak self] world in
+            Task { @MainActor in self?.scheduleSave(world) }
+        }
+        self.store = store
+        termination.arm(store: store, backend: backend)
+
+        log.info("stage 6/8: starting the backend and the store")
+        backend.start()
+        await store.start()
+
+        log.info("stage 7/8: starting the hotkey tap")
+        // Ruling 8: the store is captured directly, never through `self` — the closure runs on the
+        // tap thread inside the event tap's deadline and must not touch the main actor.
+        let tap = HotkeyTap(table: KeyBindings.table(for: config)) { command in
+            Task { await store.run(command) }
+        }
+        self.tap = tap
+        termination.arm(tap: tap)
+        do {
+            try tap.start()
+        } catch {
+            log.error("event tap failed (\(String(describing: error), privacy: .public)); hotkeys are inactive")
+        }
+
+        log.info("stage 8/8: config watch and signal handlers")
+        watchConfig()
+        installSignalHandlers()
+        log.info("SpacialShell running")
+    }
+
+    // MARK: - Config
+
+    /// A malformed config keeps the previous one: an editor mid-save must not disarm the window
+    /// manager. A *missing* config is not an error — it means "all defaults".
+    private func loadConfig() {
+        do {
+            config = try Config.load(from: Paths.configFile)
+            log.info("config loaded from \(Paths.configFile.path, privacy: .public)")
+        } catch CocoaError.fileReadNoSuchFile {
+            config = Config()
+            log.info("no config file; using defaults")
+        } catch {
+            log.error("config invalid, keeping previous: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Watches the *directory*, not the file: editors replace configs by rename, which leaves the
+    /// watched file descriptor pointing at an unlinked inode.
+    private func watchConfig() {
+        try? FileManager.default.createDirectory(at: Paths.configDir, withIntermediateDirectories: true)
+        let fd = open(Paths.configDir.path, O_EVTONLY)
+        guard fd >= 0 else {
+            log.error("cannot watch \(Paths.configDir.path, privacy: .public); config reloads are off")
+            return
+        }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
+        source.setEventHandler { [weak self] in
+            // Ruling 8: the handler runs on the main *queue*, which is not the same thing as being
+            // on the main actor as far as the compiler is concerned.
+            Task { @MainActor in self?.configDidChange() }
+        }
+        source.setCancelHandler { close(fd) }
+        source.resume()
+        configWatch = source
+    }
+
+    private func configDidChange() {
+        reloadTask?.cancel()
+        reloadTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.configDebounce)
+            guard !Task.isCancelled, let self else { return }
+            reloadConfig()
+        }
+    }
+
+    private func reloadConfig() {
+        let previous = config
+        loadConfig()
+        guard config != previous else { return }
+        log.info("config changed; re-binding keys and re-laying out")
+        if config.axTimeoutMs != previous.axTimeoutMs || config.refreshIntervalMs != previous.refreshIntervalMs {
+            // The backend reads both once, at construction; re-creating it live would drop every
+            // AX observer and re-adopt every window mid-session.
+            log.notice("ax-timeout-ms / refresh-interval-ms changed; those take effect at the next launch")
+        }
+        tap?.update(table: KeyBindings.table(for: config))
+        guard let store else { return }
+        let config = config
+        Task { await store.update(config: config) }
+    }
+
+    // MARK: - State
+
+    private func scheduleSave(_ world: World) {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.saveDebounce)
+            guard !Task.isCancelled else { return }
+            do {
+                try PersistedState(world: world).save(to: Paths.stateFile)
+            } catch {
+                self?.log.error("state save failed: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    // MARK: - Termination
+
+    /// Ruling 10: a `DispatchSourceSignal`, never a raw C handler — the restore has to make AX
+    /// calls and wait on them, neither of which is async-signal-safe.
+    ///
+    /// The handlers run on a **private serial queue**, not the main one. `exportForTermination()`
+    /// is actor-isolated and the store's in-flight work hops through the main actor, so blocking
+    /// the main thread on the export's semaphore is exactly how to make it time out.
+    private func installSignalHandlers() {
+        let gate = termination
+        for sig in [SIGINT, SIGTERM] {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: TerminationGate.queue)
+            source.setEventHandler {
+                gate.run(onMainThread: false)
+                exit(0)
+            }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        termination.run(onMainThread: true)
+    }
+}
+
+/// The way out (spec §7.4), reachable from a signal handler on a background queue *and* from
+/// `applicationWillTerminate` on the main thread. Every step is bounded: a hung app must not cost
+/// us the whole termination grace period, and every window we can still reach gets moved.
+final class TerminationGate: @unchecked Sendable {
+    static let queue = DispatchQueue(label: "\(Paths.bundleID).termination")
+    private static let log = Logger(subsystem: Paths.bundleID, category: "termination")
+    /// Ruling 10. The export only has to get four values out of an actor.
+    private static let exportBudget: TimeInterval = 3
+    /// Handed to `restoreAllForTermination`, which spends it across all windows.
+    private static let restoreBudget = Duration.seconds(6)
+    private static let teardownBudget: TimeInterval = 1
+
+    private let lock = NSLock()
+    private var store: WorldStore?
+    private var backend: AXWindowBackend?
+    private var tap: HotkeyTap?
+    private var didTerminate = false
+
+    func arm(store: WorldStore, backend: AXWindowBackend) {
+        lock.lock(); self.store = store; self.backend = backend; lock.unlock()
+    }
+
+    func arm(tap: HotkeyTap) {
+        lock.lock(); self.tap = tap; lock.unlock()
+    }
+
+    /// Idempotent: SIGTERM followed by `applicationWillTerminate` must not restore twice.
+    func run(onMainThread: Bool) {
+        lock.lock()
+        if didTerminate {
+            lock.unlock()
+            return
+        }
+        didTerminate = true
+        let store = self.store, backend = self.backend, tap = self.tap
+        lock.unlock()
+
+        // First, stop taking commands: a keystroke landing between the export and the restore
+        // would move windows the restore has already decided about.
+        tap?.stop()
+        guard let store, let backend else { return }
+
+        let export = Box<TerminationExport>()
+        let exported = DispatchSemaphore(value: 0)
+        Task.detached(priority: .userInitiated) {
+            export.value = await store.exportForTermination()
+            exported.signal()
+        }
+        if !wait(exported, Self.exportBudget, onMainThread: onMainThread) {
+            Self.log.error("world export timed out; windows are left where they are")
+        }
+
+        if let e = export.value {
+            Self.log.info("restoring windows before exit")
+            backend.restoreAllForTermination(
+                world: e.world, displays: e.displays, observed: e.observed, stranded: e.stranded,
+                deadline: Self.restoreBudget)
+        }
+
+        // `AXWindowBackend.stop()` is main-actor isolated. On the main thread we are already there;
+        // from the signal queue we have to hop, and the main actor is free to answer.
+        if onMainThread {
+            MainActor.assumeIsolated { backend.stop() }
+        } else {
+            run(Self.teardownBudget, onMainThread: false) { await MainActor.run { backend.stop() } }
+        }
+        run(Self.teardownBudget, onMainThread: onMainThread) { await store.stop() }
+        Self.log.info("terminated cleanly")
+    }
+
+    private func run(
+        _ budget: TimeInterval, onMainThread: Bool, _ body: @escaping @Sendable () async -> Void,
+    ) {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached(priority: .userInitiated) {
+            await body()
+            done.signal()
+        }
+        _ = wait(done, budget, onMainThread: onMainThread)
+    }
+
+    /// Ruling 10's bridge: a bounded `Task` + `DispatchSemaphore`. With one refinement for the
+    /// main-thread path (`applicationWillTerminate`, which is how a bundled app is told about a
+    /// logout): the store can only answer once its in-flight work finishes, and that work — a
+    /// refresh session — hops through the **main actor**. Blocking the main thread outright is
+    /// therefore the one sure way to *cause* the timeout we are guarding against, and the cost of
+    /// that timeout is every window left in its parking corner. So on the main thread the wait is
+    /// sliced, and the main run loop (which is what drains the main actor) is serviced in between.
+    /// Same total budget either way.
+    private func wait(_ semaphore: DispatchSemaphore, _ budget: TimeInterval, onMainThread: Bool) -> Bool {
+        guard onMainThread else { return semaphore.wait(timeout: .now() + budget) == .success }
+        let deadline = Date(timeIntervalSinceNow: budget)
+        while Date() < deadline {
+            // The 5 ms semaphore wait is also what paces the loop — `RunLoop.run(before:)` returns
+            // immediately when there is nothing to service, and must not be allowed to spin.
+            if semaphore.wait(timeout: .now() + .milliseconds(5)) == .success { return true }
+            RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005))
+        }
+        return semaphore.wait(timeout: .now()) == .success
+    }
+}
+
+/// What `WorldStore.exportForTermination()` hands back.
+private typealias TerminationExport = (
+    world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect]
+)
+
+/// A one-shot handoff out of a `Task` into a semaphore-blocked thread.
+private final class Box<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T?
+    var value: T? {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}

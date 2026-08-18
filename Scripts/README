@@ -1,0 +1,35 @@
+SpacialShell dev scripts
+========================
+
+dev.sh      swift build (debug) + run .build/debug/SpacialShell in the foreground.
+            Ctrl-C is a clean quit: SIGINT restores every managed window to the centre
+            of its screen before exiting (spec §7.4).
+bundle.sh   swift build -c release + assemble build/SpacialShell.app, ad-hoc signed.
+
+TCC identity — read this before wondering why the Accessibility checkbox "doesn't work"
+--------------------------------------------------------------------------------------
+macOS identifies an ad-hoc-signed program to TCC (Accessibility, Input Monitoring) by
+its **path** when it is a loose binary, and by its **bundle id + code signature** when it
+is an .app.
+
+* `Scripts/dev.sh` runs `.build/debug/SpacialShell`. The grant is attached to that exact
+  path. Move the checkout, rename the directory, or switch to a different build
+  configuration and the grant no longer applies — you have to remove the stale entry in
+  System Settings → Privacy & Security → Accessibility (select it, press "−") and grant
+  the new path. `Permissions.waitForAccessibility` runs `tccutil reset Accessibility
+  me.askalice.SpacialShell` once on the first retry, which clears the stale entry for
+  you in the bundled case, but a loose binary at a *new* path is simply a new subject.
+* `Scripts/bundle.sh` produces `build/SpacialShell.app` with a stable bundle id, so its
+  grant survives rebuilds in place. Re-granting is still needed if you move the .app.
+* Rebuilding changes the ad-hoc signature. macOS keeps the old TCC row and silently
+  treats the new binary as untrusted; the symptom is a checkbox that is ticked while
+  `AXIsProcessTrusted()` returns false. Untick and re-tick it, or remove the row.
+
+Debugging keys
+--------------
+`SPACIAL_LOG_KEYS=1 Scripts/dev.sh` logs every keyDown's keycode and flags at .info under
+subsystem `me.askalice.SpacialShell`, category `hotkeys`. Read it live with:
+
+    log stream --predicate 'subsystem == "me.askalice.SpacialShell"' --info
+
+That is the instrument for the checklist in docs/platform-notes.md.
