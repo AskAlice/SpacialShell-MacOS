@@ -79,7 +79,11 @@ public actor WorldStore {
             if locked { return }
             applyNativeFocus(r)
         case .screenLocked:
-            locked = true; return
+            // Spec §7.7 freeze. Setting the flag only stops the *next* pass from starting; a plan
+            // already mid-flight would keep writing frames at a locked screen, and its writes land
+            // against whatever the lock screen reports. Bumping the generation is the same signal
+            // a newer reconcile sends, and every await in `reconcile()` checks it.
+            locked = true; generation += 1; return
         case .screenUnlocked:
             locked = false
             applySnapshot(await backend.currentSnapshot())
@@ -165,7 +169,13 @@ public actor WorldStore {
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
         let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero)
-        for (r, size) in pendingCenter {
+        // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
+        // of them (superseded mid-write) used to leave the queue full, so the next pass centred the
+        // same windows again — dragging an ephemeral window back to the middle of the screen long
+        // after it appeared there.
+        let toCenter = pendingCenter
+        pendingCenter = []
+        for (r, size) in toCenter {
             let d = displays.first { $0.id == world.focus.screen } ?? displays.first
             guard let d else { continue }
             let f = Reconciler.centered(size: size, in: d.visibleFrame)
@@ -175,7 +185,6 @@ public actor WorldStore {
             observed[r] = f
             note(result, for: r)
         }
-        pendingCenter = []
         for w in Reconciler.plan(desired: desired, observed: observed, parkedNow: parked) {
             intents.record(w)
             switch w {

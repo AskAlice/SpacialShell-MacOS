@@ -11,6 +11,13 @@ public enum Write: Sendable, Equatable { case setFrame(WindowRef, CGRect), setPo
 public enum Reconciler {
     static let fallbackSize = CGSize(width: 800, height: 600)
 
+    /// Controller ruling (macOS 26.5): a window parked at `y = maxY − 1` is clamped by macOS so
+    /// its title bar stays on screen, and the frame that comes back sits roughly 32 pt above the
+    /// origin we asked for. Anything that compares a parked window's *y* against what we requested
+    /// has to allow for that; x is unaffected and stays exact. 40 pt is the observed ~32 with room
+    /// for a taller title bar.
+    static let titleBarClampTolerance: CGFloat = 40
+
     /// Spec §5, §7.4, §8. Ignored windows are absent from the result.
     public static func desired(world: World, displays: [DisplayInfo], config: LayoutConfig,
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
@@ -61,10 +68,11 @@ public enum Reconciler {
                 if let o = observed[w], approx(o, f), !parkedNow.contains(w) { continue }
                 frames.append(.setFrame(w, f))
             case .parked(let origin):
-                // Controller ruling (macOS 26.5): parking at (maxX-1, maxY-1) gets clamped by macOS to
-                // roughly (maxX-1, maxY-32) — the window's top ~32pt stays on-screen regardless of our
-                // requested y. Naive origin comparison would re-park every reconcile cycle, so once a
-                // window is already parked we only compare x; y is ignored.
+                // `titleBarClampTolerance`: parking at (maxX-1, maxY-1) gets clamped by macOS to
+                // roughly (maxX-1, maxY-32). Naive origin comparison would re-park every reconcile
+                // cycle, so once a window is already parked we only compare x — y is off by up to
+                // `titleBarClampTolerance` through no fault of ours, and ignoring it entirely is
+                // the same judgement, made once.
                 if parkedNow.contains(w), let o = observed[w], abs(o.origin.x - origin.x) < 1 { continue }
                 parks.append(.setPosition(w, origin))
             }
@@ -78,5 +86,4 @@ public enum Reconciler {
     static func approx(_ a: CGRect, _ b: CGRect, tol: CGFloat = 1) -> Bool {
         abs(a.minX - b.minX) < tol && abs(a.minY - b.minY) < tol && abs(a.width - b.width) < tol && abs(a.height - b.height) < tol
     }
-    static func approx(_ a: CGPoint, _ b: CGPoint, tol: CGFloat = 1) -> Bool { abs(a.x - b.x) < tol && abs(a.y - b.y) < tol }
 }

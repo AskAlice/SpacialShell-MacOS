@@ -8,7 +8,9 @@ Four tiers, matching spec §12.
 swift test
 ```
 
-Runs `SpacialShellKitTests` and `SpacialShellPlatformTests`: the model and its invariants, every
+Runs `SpacialShellKitTests`, `SpacialShellPlatformTests`, and `AXAppLivenessTests` (the one
+member of `PlatformIntegrationTests` that needs no Accessibility grant — it pins that every `AXApp`
+call answers and that `destroy()` is final): the model and its invariants, every
 command on hand-built worlds, layout frame math, the reconciler's write planning, config parsing,
 hotkey parsing/tables, and property tests that throw random world/command/event sequences at the
 model and assert spec §4.2's five invariants still hold plus that `Layout.frames` never returns
@@ -46,7 +48,8 @@ without needing those apps installed or a live Accessibility grant. Also no perm
 
 `Tests/PlatformIntegrationTests/TextEditTests.swift` is the one tier that talks to real windows.
 It is gated behind an environment variable so it never runs by accident (in CI or otherwise) and
-never blocks `swift test`:
+never blocks `swift test`. (Its target-mate `AXAppLivenessTests` is *not* gated — it needs no grant
+and runs in tier 1 above.)
 
 ```sh
 swift test                                    # TextEditTests is skipped, suite stays green

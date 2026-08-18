@@ -183,6 +183,22 @@ import Foundation
         #expect(await store.world.focus.window == b)
         #expect(await !be.calls.isEmpty)
     }
+    /// Spec §7.7 freeze. Setting `locked` only stops the *next* pass from starting — a plan
+    /// already mid-flight kept writing frames at a locked screen, where AX reports the lock
+    /// screen's geometry rather than the user's. The lock now bumps `generation`, which is the
+    /// signal every await in `reconcile()` already checks.
+    @Test func lockMidPlanStopsFurtherWrites() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.reset()
+        await be.armGate(onWriteNumber: 1)                       // plan is [setFrame(b), setPosition(a)]
+        let run = Task { await store.run(.focusWindow(.right)) }
+        while await !be.isGateArmed() { try? await Task.sleep(for: .milliseconds(5)) }
+        await store.apply(.screenLocked)                         // the screen locks mid-plan
+        await be.releaseGate()
+        await run.value
+        // The write that was already in flight lands; nothing after it is issued.
+        #expect(await be.calls == [.setFrame(b, CGRect(x: 8, y: 33, width: 984, height: 658))])
+    }
     @Test func onChangeFiresWithWorld() async {
         let be = FakeBackend(snapshot: snap([win(a)], focused: a))
         let box = ChangeBox()
