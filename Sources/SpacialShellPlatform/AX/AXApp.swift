@@ -29,9 +29,11 @@ enum AXAppEvent: Sendable {
 /// Threading contract:
 /// - `axApp`, `windows`, `appSubscriptions` are `ThreadGuardedValue`s — only the app thread
 ///   may read or write them, enforced at runtime by `AxAppThreadToken`.
-/// - `thread` and `pendingFrameJobs` are reachable from any thread and are guarded by
-///   `stateLock`. Jobs are always submitted while holding it, so a submission either lands in
-///   the run loop before `destroy()`'s stop job or is refused outright.
+/// - `thread`, `pendingFrameJobs`, `pendingResumes` and `lastSnapshots` are reachable from any
+///   thread and are guarded by `stateLock`. Every job is *submitted while holding `stateLock`*
+///   together with the registration of its continuation, so a caller either gets its job queued
+///   on a live run loop or is answered immediately — and `tearDown()` answers whatever is still
+///   outstanding when the loop exits. No caller can be left awaiting a dropped perform.
 /// - The static pid registry is guarded by `registryLock`.
 final class AXApp: @unchecked Sendable {
     let pid: pid_t
@@ -46,10 +48,15 @@ final class AXApp: @unchecked Sendable {
     private let appSubscriptions: ThreadGuardedValue<[AxSubscription]> = .init([])
     private let windows: ThreadGuardedValue<[WindowID: AxWindow]> = .init([:])
 
-    // Cross-thread state.
+    // Cross-thread state, guarded by `stateLock`.
     private let stateLock = NSLock()
     private var thread: Thread?
     private var pendingFrameJobs: [WindowID: RunLoopJob] = [:]
+    private var pendingResumes: [UInt64: @Sendable () -> Void] = [:]
+    private var nextResumeToken: UInt64 = 0
+    /// Last conclusive observation. Returned whenever a refresh can't conclude anything, so that
+    /// "the app didn't answer" never masquerades as "the app has no windows" (see `snapshotWindows`).
+    private var lastSnapshots: [WindowSnapshot] = []
 
     private static let registryLock = NSLock()
     nonisolated(unsafe) private static var registry: [pid_t: AXApp] = [:]
@@ -110,10 +117,18 @@ final class AXApp: @unchecked Sendable {
                 _ = AXUIElementSetMessagingTimeout(axApp, Float(timeoutMs) / 1000)
                 let instance = AXApp(app, axApp, timeoutMs: timeoutMs, thread: Thread.current, onEvent: onEvent)
                 future.complete(instance)
+                // AeroSpace runs the loop only `if isGood`, i.e. only when the observers attached
+                // (MacApp.swift:73, 85-92) — their observer source is what keeps the loop alive.
+                // We must serve reads and writes for observer-less apps too, so we own a source of
+                // our own: without it `CFRunLoopRun()` returns immediately (kCFRunLoopRunFinished)
+                // and every later `perform(onThread:)` would be silently dropped.
+                let keepAlive = addRunLoopKeepAliveSource()
                 instance.bootstrapAppObservers(attempt: 0)
                 CFRunLoopRun()
-                // Destroy AX objects in reverse order of their creation (MacApp.swift:87-91).
-                instance.destroyThreadGuardedValues()
+                if let keepAlive { CFRunLoopRemoveSource(CFRunLoopGetCurrent(), keepAlive, .commonModes) }
+                // Answers every outstanding caller and destroys the AX objects in reverse order of
+                // their creation (MacApp.swift:87-91).
+                instance.tearDown()
             }
         }
         thread.name = "AxAppThread \(app.idForDebug)"
@@ -123,13 +138,14 @@ final class AXApp: @unchecked Sendable {
         return instance
     }
 
-    /// MacApp.swift:343-359. Stops the run loop; the thread body then destroys the guarded
-    /// values. No job may be submitted afterwards.
+    /// MacApp.swift:343-359. Stops the run loop; `tearDown()` on the app thread finishes the job.
+    /// No job may be submitted afterwards.
     func destroy() {
-        Self.registryLock.withLock { _ = Self.registry.removeValue(forKey: pid) }
+        Self.registryLock.withLock { if Self.registry[pid] === self { Self.registry[pid] = nil } }
         stateLock.withLock {
             for (_, job) in pendingFrameJobs { job.cancel() }
             pendingFrameJobs = [:]
+            lastSnapshots = [] // Deliberately dropped: this app is no longer ours to vouch for.
             let t = thread
             thread = nil // Disallow all future job submissions
             // Queued through the same run loop, so every job submitted before this point still runs.
@@ -137,7 +153,21 @@ final class AXApp: @unchecked Sendable {
         }
     }
 
-    private func destroyThreadGuardedValues() {
+    /// Runs on the app thread once `CFRunLoopRun()` has returned — whether that was `destroy()`'s
+    /// stop job or an unexpected exit. Anything still awaiting an answer gets its fallback rather
+    /// than waiting forever on a run loop that will never run again.
+    private func tearDown() {
+        Self.registryLock.withLock { if Self.registry[pid] === self { Self.registry[pid] = nil } }
+        let resumes = stateLock.withLock { () -> [@Sendable () -> Void] in
+            thread = nil
+            for (_, job) in pendingFrameJobs { job.cancel() }
+            pendingFrameJobs = [:]
+            lastSnapshots = [] // The app is unmanageable now; don't keep vouching for its windows.
+            let outstanding = Array(pendingResumes.values)
+            pendingResumes = [:]
+            return outstanding
+        }
+        for resume in resumes { resume() }
         appSubscriptions.destroy()
         windows.destroy()
         axApp.destroy()
@@ -222,46 +252,92 @@ final class AXApp: @unchecked Sendable {
     // MARK: - Reads
 
     /// Spec §7.2. Enumerate → classify → frame/title/parent/native state.
-    /// Ruling 5: three phases — app thread, one `MainActor` hop for the `CGWindowList` level
-    /// cache, app thread again.
+    /// Ruling 5: app thread, one batched `MainActor` hop for the `CGWindowList` level cache (only
+    /// for ids whose level isn't cached yet), app thread again.
+    ///
+    /// An empty result means "this app really has no windows". Whenever the app didn't answer, or
+    /// the refresh was cancelled, or the thread is gone, the last conclusive observation is
+    /// returned instead — `WorldStore.apply` removes every window missing from a snapshot, so an
+    /// inconclusive read must never look like a mass close.
     func snapshotWindows() async -> [WindowSnapshot] {
-        guard let thread = currentThread() else { return [] }
-        guard let refreshed = try? await thread.runInLoop(.cancellable, { [self] job in try refreshWindows(job) })
-        else { return [] }
+        let refresh = await runOnAppThread(fallback: { RefreshResult.inconclusive }) { [self] job in
+            refreshWindows(job)
+        }
         // MacApp.swift:297-299: a dead window's queued frame write is pointless.
-        stateLock.withLock {
-            for id in refreshed.dead { pendingFrameJobs.removeValue(forKey: id)?.cancel() }
-        }
-        let ids = refreshed.alive
-        let levels: [WindowID: MacOsWindowLevel] = await MainActor.run {
-            var levels: [WindowID: MacOsWindowLevel] = [:]
-            for id in ids {
-                if let level = getWindowLevel(for: id) { levels[id] = level }
+        if !refresh.dead.isEmpty {
+            stateLock.withLock {
+                for id in refresh.dead { pendingFrameJobs.removeValue(forKey: id)?.cancel() }
             }
-            return levels
         }
-        return (try? await thread.runInLoop(.cancellable, { [self] job in try buildSnapshots(ids, levels, job) })) ?? []
+        guard refresh.conclusive else { return cachedSnapshots() }
+        var levels: [WindowID: MacOsWindowLevel] = [:]
+        if !refresh.needLevels.isEmpty {
+            let ids = refresh.needLevels
+            levels = await MainActor.run {
+                var levels: [WindowID: MacOsWindowLevel] = [:]
+                for id in ids {
+                    if let level = getWindowLevel(for: id) { levels[id] = level }
+                }
+                return levels
+            }
+        }
+        let ids = refresh.ids
+        let fresh = levels
+        let built = await runOnAppThread(fallback: { nil as [WindowSnapshot]? }) { [self] job in
+            buildSnapshots(ids, fresh, job)
+        }
+        guard let built else { return cachedSnapshots() }
+        stateLock.withLock { lastSnapshots = built }
+        return built
+    }
+
+    private struct RefreshResult: Sendable {
+        var ids: [WindowID]
+        var dead: [WindowID]
+        /// False when the app didn't answer (timeout, `kAXErrorAPIDisabled`) or we were cancelled.
+        var conclusive: Bool
+        var needLevels: [WindowID]
+
+        static let inconclusive = RefreshResult(ids: [], dead: [], conclusive: false, needLevels: [])
     }
 
     /// MacApp.swift:259-298 (`refreshAndGetAliveWindowIds`), minus the lock-screen gate — the
     /// backend owns "is loginwindow frontmost?" (spec §7.7) — and minus the mouse-down gate,
     /// which needs the backend's global mouse monitor (spec §7.6).
-    private func refreshWindows(_ job: RunLoopJob) throws -> (alive: [WindowID], dead: [WindowID]) {
-        var alive = windows.threadGuarded
+    ///
+    /// AeroSpace can partition alive/dead unconditionally because it sets no messaging timeout,
+    /// so a read only fails when the window is really gone. With a timeout (ruling 3) a
+    /// beachballing app fails *every* read, so the enumeration is the gate: it must succeed
+    /// before any window may be declared dead.
+    private func refreshWindows(_ job: RunLoopJob) -> RefreshResult {
+        let previous = windows.threadGuarded
+        if job.isCancelled { return .inconclusive }
+        // `get` returns nil only when the AX request itself failed; an app with no windows
+        // answers with an empty array.
+        guard let enumerated = axApp.threadGuarded.get(Ax.windowsAttr) else { return .inconclusive }
+        let enumeratedIds = Set(enumerated.map(\.windowId))
+        var alive = previous
         var dead: [WindowID] = []
-        for (id, window) in alive {
-            try job.checkCancellation()
+        // Only probe windows the app did *not* enumerate: `kAXWindowsAttribute` omits windows on
+        // other native macOS Spaces (spec §7.2), which are alive and must keep their ids.
+        for (id, window) in previous where !enumeratedIds.contains(id) {
+            if job.isCancelled { return .inconclusive }
             if window.ax.containingWindowId() == nil {
                 dead.append(id)
                 alive.removeValue(forKey: id)
             }
         }
-        for (id, ax) in axApp.threadGuarded.get(Ax.windowsAttr) ?? [] {
-            try job.checkCancellation()
+        for (id, ax) in enumerated {
+            if job.isCancelled { return .inconclusive }
             registerWindow(id: id, ax: ax, in: &alive, job)
         }
         windows.threadGuarded = alive
-        return (Array(alive.keys), dead)
+        return RefreshResult(
+            ids: Array(alive.keys),
+            dead: dead,
+            conclusive: true,
+            needLevels: alive.compactMap { $0.value.windowLevel == nil ? $0.key : nil },
+        )
     }
 
     /// MacApp.swift:399-414 (`getOrRegisterAxWindow`). Deviation: AeroSpace drops a window
@@ -275,23 +351,27 @@ final class AXApp: @unchecked Sendable {
         map[id] = AxWindow(id: id, ax: ax, subscriptions: subscribeWindow(ax, job))
     }
 
+    /// Returns nil if cancelled part-way, so a half-built list can't be mistaken for the truth.
     private func buildSnapshots(
         _ ids: [WindowID],
-        _ levels: [WindowID: MacOsWindowLevel],
+        _ freshLevels: [WindowID: MacOsWindowLevel],
         _ job: RunLoopJob,
-    ) throws -> [WindowSnapshot] {
+    ) -> [WindowSnapshot]? {
         let axApp = self.axApp.threadGuarded
         let policy = nsApp.activationPolicy
         var result: [WindowSnapshot] = []
         for id in ids {
-            try job.checkCancellation()
+            if job.isCancelled { return nil }
             guard let window = windows.threadGuarded[id] else { continue }
             let ax = window.ax
-            // An unreadable rect doesn't hide the window (AeroSpace keeps it in the tree too);
-            // the reconciler will simply see a mismatch and write the desired frame.
-            let origin = ax.get(Ax.topLeftCornerAttr) ?? .zero
-            let size = ax.get(Ax.sizeAttr) ?? .zero
-            result.append(WindowSnapshot(
+            if let level = freshLevels[id] { window.windowLevel = level }
+            // A window that stopped answering must not be re-classified from nil reads — every
+            // heuristic in §7.3 degrades to "dialog" — so keep the last good observation.
+            guard let origin = ax.get(Ax.topLeftCornerAttr), let size = ax.get(Ax.sizeAttr) else {
+                if let last = window.lastSnapshot { result.append(last) }
+                continue
+            }
+            let snapshot = WindowSnapshot(
                 ref: WindowRef(id: id, pid: pid),
                 frame: CGRect(origin: origin, size: size),
                 title: ax.get(Ax.titleAttr) ?? "",
@@ -301,12 +381,14 @@ final class AXApp: @unchecked Sendable {
                     axApp: axApp,
                     bundleID: bundleID,
                     activationPolicy: policy,
-                    windowLevel: levels[id],
+                    windowLevel: window.windowLevel,
                 ),
                 parent: parentRef(of: ax, ownId: id),
                 isMinimized: ax.get(Ax.minimizedAttr) ?? false,
                 isFullscreen: ax.get(Ax.isFullscreenAttr) ?? false,
-            ))
+            )
+            window.lastSnapshot = snapshot
+            result.append(snapshot)
         }
         return result
     }
@@ -324,34 +406,32 @@ final class AXApp: @unchecked Sendable {
     /// MacApp.swift:114-124. Registers the focused window on the way, so a write can address it
     /// before the first `snapshotWindows()`.
     func focusedWindowRef() async -> WindowRef? {
-        guard let thread = currentThread() else { return nil }
-        let id = try? await thread.runInLoop(.cancellable) { [self] job -> WindowID? in
+        let id = await runOnAppThread(fallback: { nil as WindowID? }) { [self] job -> WindowID? in
+            if job.isCancelled { return nil }
             guard let focused = axApp.threadGuarded.get(Ax.focusedWindowAttr) else { return nil }
             var map = windows.threadGuarded
             registerWindow(id: focused.windowId, ax: focused.ax.cast, in: &map, job)
             windows.threadGuarded = map
             return focused.windowId
         }
-        return (id ?? nil).map { WindowRef(id: $0, pid: pid) }
+        return id.map { WindowRef(id: $0, pid: pid) }
     }
+
+    private func cachedSnapshots() -> [WindowSnapshot] { stateLock.withLock { lastSnapshots } }
 
     // MARK: - Writes (spec §7.4; MacApp.swift:411-436)
 
     /// size → position → size, wrapped in `AXEnhancedUserInterface = false`.
     func setFrame(_ id: WindowID, _ frame: CGRect) async -> Result<Void, BackendError> {
         await frameWrite(id) { window, axApp, job in
-            try disableAnimations(app: axApp, job) {
-                try writeFrame(window, frame.origin, frame.size, job)
-            }
+            disableAnimations(app: axApp) { writeFrame(window, frame.origin, frame.size, job) }
         }
     }
 
     /// Position only — parking and unparking preserve the size (spec §7.4).
     func setPosition(_ id: WindowID, _ origin: CGPoint) async -> Result<Void, BackendError> {
         await frameWrite(id) { window, axApp, job in
-            try disableAnimations(app: axApp, job) {
-                try writeFrame(window, origin, nil, job)
-            }
+            disableAnimations(app: axApp) { writeFrame(window, origin, nil, job) }
         }
     }
 
@@ -365,8 +445,8 @@ final class AXApp: @unchecked Sendable {
             guard let thread else { return false }
             thread.runInLoopAsync(job: job, autoCheckCancelled: false) { [self] job in
                 if let window = windows.threadGuarded[id] {
-                    _ = try? disableAnimations(app: axApp.threadGuarded, job) {
-                        try writeFrame(window.ax, frame.origin, frame.size, job)
+                    _ = disableAnimations(app: axApp.threadGuarded) {
+                        writeFrame(window.ax, frame.origin, frame.size, job)
                     }
                 }
                 semaphore.signal()
@@ -383,34 +463,17 @@ final class AXApp: @unchecked Sendable {
     /// (AeroSpace's `setFrameJobs`, MacApp.swift:150-156).
     private func frameWrite(
         _ id: WindowID,
-        _ body: @escaping @Sendable (AXUIElement, AXUIElement, RunLoopJob) throws -> Result<Void, BackendError>,
+        _ body: @escaping @Sendable (AXUIElement, AXUIElement, RunLoopJob) -> Result<Void, BackendError>,
     ) async -> Result<Void, BackendError> {
-        let job = RunLoopJob(.cancellable)
-        return await withTaskCancellationHandler {
-            await withCheckedContinuation { (cont: CheckedContinuation<Result<Void, BackendError>, Never>) in
-                let submitted = stateLock.withLock { () -> Bool in
-                    pendingFrameJobs.removeValue(forKey: id)?.cancel()
-                    guard let thread else { return false }
-                    pendingFrameJobs[id] = job
-                    // Submitted under the lock: either this lands in the run loop before
-                    // `destroy()`'s stop job, or `thread` is already nil and we refuse.
-                    thread.runInLoopAsync(job: job, autoCheckCancelled: false) { [self] job in
-                        // Superseded (or the awaiting task was cancelled). Reported as success
-                        // on purpose: a newer write for the same window is already queued, and
-                        // WorldStore retires a window after three *failed* writes (spec §11).
-                        if job.isCancelled { cont.resume(returning: .success(())); return }
-                        guard let window = windows.threadGuarded[id] else {
-                            cont.resume(returning: .failure(.notFound))
-                            return
-                        }
-                        cont.resume(returning: (try? body(window.ax, axApp.threadGuarded, job)) ?? .success(()))
-                    }
-                    return true
-                }
-                if !submitted { cont.resume(returning: .failure(.notFound)) }
-            }
-        } onCancel: {
-            job.cancel()
+        await runOnAppThread(dedupKey: id, fallback: { Result<Void, BackendError>.failure(.notFound) }) { [self] job in
+            // Superseded (or the awaiting task was cancelled) *before the first AX call*. Reported
+            // as success on purpose: nothing was written, a newer write for the same window is
+            // already queued, and WorldStore retires a window after three failed writes (§11).
+            // A write cancelled after it started still reports what AX actually said, so a wedged
+            // app does accumulate real failures.
+            if job.isCancelled { return .success(()) }
+            guard let window = windows.threadGuarded[id] else { return .failure(.notFound) }
+            return body(window.ax, axApp.threadGuarded, job)
         }
     }
 
@@ -419,44 +482,83 @@ final class AXApp: @unchecked Sendable {
     /// MacApp.swift:130-148 (`nativeFocus`). AeroSpace's fast path (skip AX when the app is
     /// already focused) depends on tree state we don't have, so we always do the AX work.
     func raise(_ id: WindowID) async -> Result<Void, BackendError> {
-        guard let thread = currentThread() else { return .failure(.notFound) }
-        let result = try? await thread.runInLoop(.cancellable) { [self] job -> Result<Void, BackendError> in
-            guard let window = windows.threadGuarded[id] else { return .failure(.notFound) }
+        let outcome: (found: Bool, result: Result<Void, BackendError>) = await runOnAppThread(
+            fallback: { (false, .failure(.notFound)) },
+        ) { [self] job in
+            guard let window = windows.threadGuarded[id] else { return (false, .failure(.notFound)) }
+            // A superseded raise must not steal focus.
+            if job.isCancelled { return (false, .failure(.timeout)) }
+            // `AXMain` is best-effort and its result is deliberately ignored, exactly as in
+            // MacApp.swift:143-145: sheets and attached dialogs — our `.float` windows — answer
+            // `kAXErrorAttributeUnsupported`, and that must not read as "the raise failed".
+            _ = window.ax.setChecked(Ax.isMainAttr, true)
             // Raise first so the window is already on top by the time we activate the app.
-            var err = window.ax.setChecked(Ax.isMainAttr, true)
-            try job.checkCancellation()
-            let raiseErr = AXUIElementPerformAction(window.ax, kAXRaiseAction as CFString)
-            if err == .success { err = raiseErr }
-            return err.asBackendResult
+            return (true, AXUIElementPerformAction(window.ax, kAXRaiseAction as CFString).asBackendResult)
         }
-        guard let result else { return .failure(.timeout) }
-        if case .success = result {
-            // `.activateIgnoringOtherApps` is deprecated (and inert) since macOS 14; the
-            // AXRaise above already put the right window on top.
+        if outcome.found {
+            // AeroSpace activates whenever it found the window, whatever the AX calls returned.
+            // `.activateIgnoringOtherApps` is deprecated (and inert) since macOS 14.
             await MainActor.run { _ = nsApp.activate() }
         }
-        return result
+        return outcome.result
     }
 
     /// MacApp.swift:102-110 (`closeAndUnregisterAxWindow`): press the close button and forget
     /// the window so no queued write outlives it.
     func close(_ id: WindowID) async -> Result<Void, BackendError> {
-        guard let thread = currentThread() else { return .failure(.notFound) }
         stateLock.withLock { pendingFrameJobs.removeValue(forKey: id)?.cancel() }
-        let result = try? await thread.runInLoop(.cancellable) { [self] job -> Result<Void, BackendError> in
+        return await runOnAppThread(fallback: { Result<Void, BackendError>.failure(.notFound) }) { [self] job in
+            if job.isCancelled { return .failure(.timeout) }
             guard let window = windows.threadGuarded[id] else { return .failure(.notFound) }
             guard let closeButton = window.ax.get(Ax.closeButtonAttr) else { return .failure(.notFound) }
-            try job.checkCancellation()
             let err = AXUIElementPerformAction(closeButton.cast, kAXPressAction as CFString)
             if err == .success { windows.threadGuarded.removeValue(forKey: id) }
             return err.asBackendResult
         }
-        return result ?? .failure(.timeout)
     }
 
     // MARK: - Plumbing
 
-    private func currentThread() -> Thread? { stateLock.withLock { thread } }
+    /// The single submission path onto the app thread. The continuation is registered *and* the
+    /// job submitted under one `stateLock` acquisition, so exactly one of three things happens:
+    /// the body runs and answers; `tearDown()` answers with `fallback` because the run loop is
+    /// gone; or there is no thread at all and we answer with `fallback` right away.
+    private func runOnAppThread<T: Sendable>(
+        _ cm: CancellationMode = .cancellable,
+        dedupKey: WindowID? = nil,
+        fallback: @escaping @Sendable () -> T,
+        _ body: @escaping @Sendable (RunLoopJob) -> T,
+    ) async -> T {
+        let job = RunLoopJob(cm)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<T, Never>) in
+                stateLock.lock()
+                guard let thread else {
+                    stateLock.unlock()
+                    cont.resume(returning: fallback())
+                    return
+                }
+                let token = nextResumeToken
+                nextResumeToken &+= 1
+                pendingResumes[token] = { cont.resume(returning: fallback()) }
+                if let dedupKey {
+                    pendingFrameJobs.removeValue(forKey: dedupKey)?.cancel()
+                    pendingFrameJobs[dedupKey] = job
+                }
+                thread.runInLoopAsync(job: job, autoCheckCancelled: false) { [self] job in
+                    let claimed = stateLock.withLock { () -> Bool in
+                        if let dedupKey, pendingFrameJobs[dedupKey] === job { pendingFrameJobs[dedupKey] = nil }
+                        return pendingResumes.removeValue(forKey: token) != nil
+                    }
+                    guard claimed else { return } // tearDown() already answered this caller
+                    cont.resume(returning: body(job))
+                }
+                stateLock.unlock()
+            }
+        } onCancel: {
+            job.cancel()
+        }
+    }
 
     private func submitAsync(_ body: @escaping @Sendable (RunLoopJob) -> ()) {
         stateLock.withLock {
@@ -465,17 +567,32 @@ final class AXApp: @unchecked Sendable {
     }
 }
 
-/// MacApp.swift:361-383. Element plus its observers; the observers live exactly as long as it does.
+/// MacApp.swift:361-383. Element plus its observers; the observers live exactly as long as it
+/// does. `windowLevel` and `lastSnapshot` are per-window caches that die with the window.
 private final class AxWindow {
     let id: WindowID
     let ax: AXUIElement
     var subscriptions: [AxSubscription] // keep subscriptions in memory
+    /// `CGWindowList` level, resolved once (the lookup is a `@MainActor` hop over the whole
+    /// window list). A window's level does not change while the window lives.
+    var windowLevel: MacOsWindowLevel?
+    /// Last snapshot built from readable attributes, reused when the app stops answering.
+    var lastSnapshot: WindowSnapshot?
 
     init(id: WindowID, ax: AXUIElement, subscriptions: [AxSubscription]) {
         self.id = id
         self.ax = ax
         self.subscriptions = subscriptions
     }
+}
+
+/// A version-0 source that is never signalled: it exists only so `CFRunLoopRun()` has something to
+/// wait on and blocks instead of returning `kCFRunLoopRunFinished` on an observer-less app.
+private func addRunLoopKeepAliveSource() -> CFRunLoopSource? {
+    var context = CFRunLoopSourceContext()
+    guard let source = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &context) else { return nil }
+    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+    return source
 }
 
 /// One C callback for every notification: `AXObserverAddNotification` takes no context, so the
@@ -511,27 +628,27 @@ extension AXError {
 }
 
 /// MacApp.swift:421-429. Set size, then position, then size again — the order matters
-/// (AeroSpace #143, #335). The first error is reported; the remaining writes are still attempted.
+/// (AeroSpace #143, #335). Cancellation stops further writes but never rewrites the outcome: the
+/// first `AXError` is reported so a wedged app's partial writes count as the failures they are.
 private func writeFrame(
     _ window: AXUIElement,
     _ topLeft: CGPoint?,
     _ size: CGSize?,
     _ job: RunLoopJob,
-) throws -> Result<Void, BackendError> {
+) -> Result<Void, BackendError> {
     var err = AXError.success
     func record(_ e: AXError) { if err == .success { err = e } }
     if let size { record(window.setChecked(Ax.sizeAttr, size)) }
-    try job.checkCancellation()
-    guard let topLeft else { return err.asBackendResult }
+    guard !job.isCancelled, let topLeft else { return err.asBackendResult }
     record(window.setChecked(Ax.topLeftCornerAttr, topLeft))
-    try job.checkCancellation()
+    guard !job.isCancelled else { return err.asBackendResult }
     if let size { record(window.setChecked(Ax.sizeAttr, size)) }
     return err.asBackendResult
 }
 
 /// MacApp.swift:431-445. Some undocumented magic, restored afterwards.
 /// References: yabai 3fe4c77, Rectangle #285.
-private func disableAnimations<T>(app: AXUIElement, _ job: RunLoopJob, _ body: () throws -> T) throws -> T {
+private func disableAnimations<T>(app: AXUIElement, _ body: () -> T) -> T {
     let wasEnabled = app.get(Ax.enhancedUserInterfaceAttr) == true
     if wasEnabled {
         app.set(Ax.enhancedUserInterfaceAttr, false)
@@ -541,6 +658,5 @@ private func disableAnimations<T>(app: AXUIElement, _ job: RunLoopJob, _ body: (
             app.set(Ax.enhancedUserInterfaceAttr, true)
         }
     }
-    try job.checkCancellation()
-    return try body()
+    return body()
 }
