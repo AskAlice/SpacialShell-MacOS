@@ -48,6 +48,7 @@ import SpacialShellKit
             displays: [display],
             observed: [:],
             stranded: [WindowRef(id: 2, pid: -1): CGRect(x: 0, y: 0, width: 640, height: 480)],
+            parked: [WindowRef(id: 1, pid: -1)],
         )
 
         // Nothing was emitted by either call: the next event is the marker we put in ourselves.

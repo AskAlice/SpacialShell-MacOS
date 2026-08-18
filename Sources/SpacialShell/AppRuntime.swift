@@ -272,7 +272,7 @@ final class TerminationGate: @unchecked Sendable {
             Self.log.info("restoring windows before exit")
             backend.restoreAllForTermination(
                 world: e.world, displays: e.displays, observed: e.observed, stranded: e.stranded,
-                deadline: Self.restoreBudget)
+                parked: e.parked, deadline: Self.restoreBudget)
         }
 
         // `AXWindowBackend.stop()` is main-actor isolated. On the main thread we are already there;
@@ -291,13 +291,20 @@ final class TerminationGate: @unchecked Sendable {
     /// The last world `onChange` published is at most one command stale and describes the same
     /// parked windows. `observed` is empty, so the restore uses its own fallback size: a window at
     /// a sensible size in the middle of the screen beats a 1×32 sliver in a corner.
+    ///
+    /// `parked` is every placed window, i.e. this path keeps centring *everything*. Which windows
+    /// are parked lives only in the store's side tables, and the published world does not carry
+    /// it — so the choice is between scrambling a tiled layout and leaving a parked window in its
+    /// corner, and §7.4 is unambiguous about which of those is worse. The real export, which knows,
+    /// moves only the parked ones; this is the degraded path when the store could not answer.
     private func fallbackExport(onMainThread: Bool) -> TerminationExport? {
         lock.lock(); let world = lastWorld; lock.unlock()
         guard let world, let displays = currentDisplays(onMainThread: onMainThread), !displays.isEmpty else {
             Self.log.error("no fallback world or no displays; windows are left where they are")
             return nil
         }
-        return (world: world, displays: displays, observed: [:], stranded: [:])
+        let placed = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) })
+        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed)
     }
 
     /// `DisplayTopology.current()` is `@MainActor`. On the main thread we are already there; from
@@ -348,7 +355,8 @@ final class TerminationGate: @unchecked Sendable {
 
 /// What `WorldStore.exportForTermination()` hands back.
 private typealias TerminationExport = (
-    world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect]
+    world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect],
+    parked: Set<WindowRef>
 )
 
 /// A one-shot handoff out of a `Task` into a semaphore-blocked thread.

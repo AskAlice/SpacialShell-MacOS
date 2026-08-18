@@ -48,8 +48,12 @@ public actor WorldStore {
     /// reach them: the model, the topology it was laid out against, and the last frames the
     /// backend actually observed (parked windows included — `observed` keeps their real size),
     /// plus the windows that were retired while parked and can no longer be reached any other way.
-    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect]) {
-        (world, displays, observed, stranded)
+    ///
+    /// `parked` is what the restore actually acts on. §7.4 is about not stranding windows in a
+    /// parking corner, and only parked windows are in one — a tiled window is already somewhere
+    /// the user can reach, and centring it on the way out just scrambles their screen.
+    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>) {
+        (world, displays, observed, stranded, parked)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
