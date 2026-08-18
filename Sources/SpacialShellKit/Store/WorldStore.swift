@@ -14,8 +14,11 @@ public actor WorldStore {
     private var bundleIDs: [WindowRef: String] = [:]
     private var fullscreen: Set<WindowRef> = []
     private var intents = IntentSet()
+    private var failures: [WindowRef: Int] = [:]
     private var lastRaised: WindowRef?
     private var locked = false
+    /// Bumped by every `apply`/`run`; a reconcile pass abandons itself when a newer pass has superseded it.
+    private var generation = 0
     private var eventTask: Task<Void, Never>?
     private var started = false
 
@@ -36,6 +39,8 @@ public actor WorldStore {
     public func update(config: Config) async { self.config = config; await reconcile() }
 
     public func run(_ command: Command) async {
+        generation += 1
+        guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
         let (next, effects) = CommandRunner.apply(command, to: world)
         world = next
         for e in effects { if case .close(let r) = e { _ = await backend.close(r) } }
@@ -43,6 +48,7 @@ public actor WorldStore {
     }
 
     public func apply(_ event: BackendEvent) async {
+        generation += 1
         switch event {
         case .snapshot(let s):
             if locked { return }
@@ -100,6 +106,7 @@ public actor WorldStore {
             let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }).union(world.ephemeral).union(world.ignored)
             for gone in all.subtracting(present) {
                 world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; fullscreen.remove(gone); intents.forget(gone)
+                failures[gone] = nil; if lastRaised == gone { lastRaised = nil }
             }
         }
         applyNativeFocus(s.focused)
@@ -130,6 +137,7 @@ public actor WorldStore {
     // MARK: reconcile
 
     private func reconcile() async {
+        let gen = generation
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
         let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero)
@@ -137,22 +145,57 @@ public actor WorldStore {
             let d = displays.first { $0.id == world.focus.screen } ?? displays.first
             guard let d else { continue }
             let f = Reconciler.centered(size: size, in: d.visibleFrame)
-            intents.record(.setFrame(r, f)); _ = await backend.setFrame(r, f); observed[r] = f
+            intents.record(.setFrame(r, f))
+            let result = await backend.setFrame(r, f)
+            if gen != generation { return }          // superseded mid-write: side tables belong to the newer pass
+            observed[r] = f
+            note(result, for: r)
         }
         pendingCenter = []
         for w in Reconciler.plan(desired: desired, observed: observed, parkedNow: parked) {
             intents.record(w)
             switch w {
             case .setFrame(let r, let f):
-                _ = await backend.setFrame(r, f); observed[r] = f; parked.remove(r); prePark[r] = nil
+                let result = await backend.setFrame(r, f)
+                if gen != generation { return }
+                observed[r] = f; parked.remove(r); prePark[r] = nil
+                note(result, for: r)
             case .setPosition(let r, let o):
-                if !parked.contains(r), let cur = observed[r] { prePark[r] = cur }
-                _ = await backend.setPosition(r, o)
+                let pre = parked.contains(r) ? nil : observed[r]
+                let result = await backend.setPosition(r, o)
+                if gen != generation { return }
+                if let pre { prePark[r] = pre }
                 if let cur = observed[r] { observed[r] = CGRect(origin: o, size: cur.size) }
                 parked.insert(r)
+                note(result, for: r)
             }
         }
-        if let f = world.focus.window, f != lastRaised { lastRaised = f; _ = await backend.raise(f) }
+        if let f = world.focus.window, f != lastRaised {
+            lastRaised = f
+            let result = await backend.raise(f)
+            if gen != generation { return }
+            note(result, for: f)
+        }
         onChange(world)
+    }
+
+    /// Spec §11: three failed writes in a row retire the window to `ignored` so we stop fighting it.
+    private func note(_ result: Result<Void, BackendError>, for r: WindowRef) {
+        switch result {
+        case .success:
+            failures[r] = nil
+        case .failure:
+            failures[r, default: 0] += 1
+            guard failures[r, default: 0] >= 3 else { return }
+            failures[r] = nil
+            world.remove(r); world.ignored.insert(r)
+            observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r)
+            if lastRaised == r { lastRaised = nil }
+        }
+    }
+
+    /// Test-only window onto the side tables that must never outlive their window.
+    func debugSideTables() -> (parked: Set<WindowRef>, prePark: [WindowRef: CGRect], observed: [WindowRef: CGRect]) {
+        (parked, prePark, observed)
     }
 }

@@ -93,6 +93,47 @@ import Foundation
         await store.run(.closeFocusedWindow)
         #expect(await be.calls.contains(.close(a)))
     }
+    @Test func interleavedSnapshotDuringPlanDoesNotResurrectSideTables() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.reset()
+        await be.armGate(onWriteNumber: 1)                       // plan is [setFrame(b), setPosition(a)]
+        let run = Task { await store.run(.focusWindow(.right)) }
+        while await !be.isGateArmed() { try? await Task.sleep(for: .milliseconds(5)) }
+        await store.apply(.snapshot(snap([win(b)], focused: b)))  // a vanished while our plan is mid-flight
+        await be.releaseGate()
+        await run.value
+        let w = await store.world
+        #expect(w.location(of: a) == nil && !w.ignored.contains(a))
+        let tables = await store.debugSideTables()
+        #expect(!tables.parked.contains(a) && tables.prePark[a] == nil && tables.observed[a] == nil)
+        #expect(await !be.calls.contains(.setPosition(a, CGPoint(x: 999, y: 699))))   // stale write never issued
+    }
+    @Test func threeFailedWritesMoveWindowToIgnored() async {
+        let (store, be) = await make(snap([win(a)], focused: a))
+        await be.fail(a)
+        for y in [100.0, 200.0, 300.0] {
+            await store.apply(.windowMoved(a, CGRect(x: y, y: y, width: 984, height: 658)))
+        }
+        #expect(await store.world.ignored.contains(a))
+        #expect(await store.world.location(of: a) == nil)
+        await be.reset()
+        await store.apply(.snapshot(snap([win(a)], focused: nil)))       // stays ignored, never placed again
+        let calls = await be.calls
+        #expect(!calls.contains { touches($0, a) })
+    }
+    @Test func commandsAreIgnoredWhileLocked() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await store.apply(.screenLocked)
+        await be.reset()
+        await store.run(.focusWindow(.right))
+        #expect(await be.calls.isEmpty)
+        #expect(await store.world.focus.window == a)
+        await store.apply(.screenUnlocked)
+        await be.reset()
+        await store.run(.focusWindow(.right))
+        #expect(await store.world.focus.window == b)
+        #expect(await !be.calls.isEmpty)
+    }
     @Test func onChangeFiresWithWorld() async {
         let be = FakeBackend(snapshot: snap([win(a)], focused: a))
         let box = ChangeBox()
@@ -100,6 +141,11 @@ import Foundation
         await store.start()
         try? await Task.sleep(for: .milliseconds(50))
         #expect(await box.value?.screens["D1"]?.active.windows == [a])
+    }
+}
+func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
+    switch c {
+    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x): return x == r
     }
 }
 actor ChangeBox { var value: World?; func set(_ w: World) { value = w } }
