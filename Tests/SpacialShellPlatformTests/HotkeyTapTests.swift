@@ -39,4 +39,57 @@ import CoreGraphics
         }
         #expect(start.duration(to: clock.now) < .seconds(2))
     }
+
+    /// The regression that matters most: a *later* creation failure must not kill the tap thread.
+    /// If it does, the run loop goes away, every re-arm path (didWake / screenIsUnlocked /
+    /// sessionDidBecomeActive) is guarded on it, and the hotkeys are dead until relaunch — with
+    /// nothing in the log to say so.
+    @Test(.timeLimit(.minutes(1))) func tapThreadSurvivesFailedRecreation() async {
+        let tap = HotkeyTap(table: [:]) { _ in }
+        defer { tap.stop() }
+        tap._testStartWithoutTap()
+        #expect(tap._isThreadAlive())
+
+        tap._simulateRecreationFailure()
+        #expect(tap._isThreadAlive())                      // the thread outlives the failure
+        #expect(tap._breakerState().consecutiveFailures == 1)
+
+        // …and it is still listening: a re-arm posted from "outside" reaches the tap thread.
+        let before = tap._rearmCount()
+        tap._rearm()
+        var reached = false
+        for _ in 0..<100 where !reached {
+            if tap._rearmCount() > before { reached = true; break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(reached)
+        #expect(tap._isThreadAlive())
+    }
+
+    /// The old breaker counted re-creations inside a 2 s window while the only caller was a 5 s
+    /// poll, so every entry was always pruned and it could never trip.
+    @Test func breakerTripsOnConsecutiveFailuresAndForgivesOnReset() {
+        var breaker = HotkeyTap.Breaker()
+        #expect(breaker.allowsAttempt)
+        for _ in 1..<HotkeyTap.Breaker.limit { #expect(breaker.recordFailure() == false) }
+        #expect(breaker.consecutiveFailures == HotkeyTap.Breaker.limit - 1)
+        #expect(breaker.allowsAttempt)
+
+        #expect(breaker.recordFailure() == true)           // the limit-th failure trips it
+        #expect(breaker.tripped)
+        #expect(!breaker.allowsAttempt)
+        #expect(breaker.recordFailure() == false)          // and only trips once
+
+        breaker.reset()                                    // wake / unlock / session activation
+        #expect(breaker.allowsAttempt)
+        #expect(breaker.consecutiveFailures == 0)
+
+        // A success anywhere in a run of failures clears the count — the breaker is about
+        // *consecutive* failures, not lifetime ones.
+        _ = breaker.recordFailure()
+        _ = breaker.recordFailure()
+        breaker.recordSuccess()
+        #expect(breaker.consecutiveFailures == 0)
+        #expect(breaker.allowsAttempt)
+    }
 }
