@@ -28,10 +28,14 @@ import Foundation
         #expect(calls.contains(.raise(a)))
     }
     @Test func exportForTerminationCarriesTheCurrentWorld() async {
-        let (store, _) = await make(snap([win(a)], focused: a))
+        let (store, _) = await make(snap([win(a), win(b)], focused: a))
         let world = await store.world
         let export = await store.exportForTermination()
         #expect(export.world == world && export.displays == [d1] && export.observed[a] != nil)
+        // Maximize layout: `a` is the anchor and tiled, `b` is parked in the corner. Only `b` is
+        // stranded anywhere the user cannot reach, so only `b` is the restore's business —
+        // centring `a` as well would scramble a layout that is perfectly fine (I4).
+        #expect(export.parked == [b])
     }
     /// A window retired after three failed writes *while parked* leaves the model entirely, so
     /// nothing would ever unpark it — spec §7.4 says quitting must not strand it in the corner.

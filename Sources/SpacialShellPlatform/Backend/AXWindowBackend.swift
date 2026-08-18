@@ -334,10 +334,14 @@ public final class AXWindowBackend: WindowBackend {
 
     // MARK: - Termination (spec §7.4)
 
-    /// Never strand a window in a parking corner. Every window the model placed is centred on its
+    /// Never strand a window in a parking corner. Every window in `parked` is centred on its
     /// screen's `visibleFrame` at the size we last observed (fallback 800×600), with blocking,
     /// bounded AX writes — plus every window in `stranded`, which was retired to `ignored` while
     /// parked and can no longer be reached any other way (best-effort, on the main display).
+    ///
+    /// Only *parked* windows move. A tiled window is already where the user put it, and centring
+    /// it on the way out would pile every window on every workspace into the middle of one screen
+    /// — a mess of the quitting window manager's own making, and nothing §7.4 asked for.
     ///
     /// `nonisolated` and synchronous on purpose: this is called from a `DispatchSource` signal
     /// handler or `applicationWillTerminate` (never from a raw C signal handler), which must not
@@ -352,6 +356,7 @@ public final class AXWindowBackend: WindowBackend {
         displays: [DisplayInfo],
         observed: [WindowRef: CGRect],
         stranded: [WindowRef: CGRect] = [:],
+        parked: Set<WindowRef> = [],
         deadline: Duration = .seconds(8),
     ) {
         let clock = ContinuousClock()
@@ -381,7 +386,7 @@ public final class AXWindowBackend: WindowBackend {
         for (displayID, screen) in world.screens {
             guard let display = displays.first(where: { $0.id == displayID }) ?? fallback else { continue }
             for workspace in screen.workspaces {
-                for ref in workspace.windows {
+                for ref in workspace.windows where parked.contains(ref) {
                     place(ref, size: observed[ref]?.size ?? CGSize(width: 800, height: 600), on: display)
                 }
             }
