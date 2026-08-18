@@ -41,9 +41,9 @@ title-regex = "^Picture in Picture$"
 | `keybinding-preset` | `"fn"` \| `"ctrl-alt"` | `"fn"` | Which modifier the built-in bindings (`KeyBindings.core`) are prefixed with. `fn` uses the Globe key; `ctrl-alt` (`⌃⌥`) is for keyboards without one. The arrow-key bindings are always on `⌃⌥` regardless of this setting. |
 | `gap` | number (pt) | `8` | Space left between tiled windows and between a window and the screen edge, in every layout. |
 | `default-layout` | layout name | `"maximize"` | The layout a newly created workspace starts with (see below for the five names). |
-| `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. |
-| `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. |
-| `start-at-login` | boolean | `false` | Register/unregister SpacialShell as a login item. |
+| `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
+| `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
+| `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
 
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
 two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the
@@ -92,10 +92,10 @@ checked in this order: `ephemeral`, then `float`, then `ignore`.
 
 ## `[keybindings]` — overrides and additions
 
-A table of `"chord" = "command-name"`. Entries here are added on top of the preset's built-in
-bindings (`KeyBindings.core` + the arrow aliases); a chord you rebind here simply gets a second
-entry pointing at whatever command you name — put a different command name on an existing chord's
-notation to change what it does.
+A table of `"chord" = "command-name"`. Entries here are layered on top of the preset's built-in
+bindings (`KeyBindings.core` + the arrow aliases): a chord you name here **replaces** the built-in
+binding for that chord rather than adding a second one, and a chord the preset does not use is
+added. There is no way to *unbind* a built-in chord in M1 — only to point it somewhere else.
 
 **Chord notation**: zero or more modifiers, `-`-joined, then a key name — `"fn-shift-g"`,
 `"ctrl-alt-shift-leftSquareBracket"`. Recognised modifier tokens: `fn`, `ctrl`/`control`,
@@ -110,8 +110,8 @@ Generated from `KeyBindings.commandNames`:
 |---|---|
 | `focus-workspace-up` | Focus the workspace above the active one |
 | `focus-workspace-down` | Focus the workspace below the active one |
-| `focus-window-left` | Focus the tiled window to the left (wraps) |
-| `focus-window-right` | Focus the tiled window to the right (wraps) |
+| `focus-window-left` | Focus the previous window in the active workspace (wraps) — every visible window, floating ones included; minimized and hidden ones are skipped (spec §4.3) |
+| `focus-window-right` | Focus the next window in the active workspace (wraps) — every visible window, floating ones included; minimized and hidden ones are skipped (spec §4.3) |
 | `close-window` | Close the focused window (app keeps running) |
 | `move-window-left` | Swap the focused window with its left neighbour |
 | `move-window-right` | Swap the focused window with its right neighbour |

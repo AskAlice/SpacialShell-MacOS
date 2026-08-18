@@ -12,15 +12,17 @@ public struct IntentSet: Sendable {
         }
     }
     /// True if `frame` is what we asked for (±1 pt); the intent is consumed.
-    /// Controller ruling (macOS 26.5): parking at y = maxY − 1 gets clamped so the window's top ~32pt
-    /// stays on-screen — observed y lands ~32pt off from what we asked for. Origin intents therefore use
-    /// a loose y tolerance (< 40pt) while keeping x tight (< 1pt); frame intents keep the uniform tolerance.
+    /// Origin intents use `Reconciler.titleBarClampTolerance` on y — macOS clamps a parked window
+    /// so its title bar stays on screen, so the frame that echoes back is ~32 pt off what we asked
+    /// for — while keeping x tight; frame intents keep the uniform tolerance.
     public mutating func matches(_ ref: WindowRef, frame: CGRect, tolerance: CGFloat = 1) -> Bool {
         guard let i = intents[ref] else { return false }
         let hit: Bool
         switch i {
         case .frame(let f): hit = Reconciler.approx(frame, f, tol: tolerance)
-        case .origin(let o): hit = abs(frame.origin.x - o.x) < tolerance && abs(frame.origin.y - o.y) < 40
+        case .origin(let o):
+            hit = abs(frame.origin.x - o.x) < tolerance
+                && abs(frame.origin.y - o.y) < Reconciler.titleBarClampTolerance
         }
         if hit { intents[ref] = nil }
         return hit

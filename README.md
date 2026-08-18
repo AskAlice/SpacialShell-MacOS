@@ -58,7 +58,7 @@ keyboards and can never be bound.
 | Command | `fn` preset | `ctrl-alt` preset |
 |---|---|---|
 | Focus workspace up / down | `Fn+W` / `Fn+S` | `⌃⌥W` / `⌃⌥S` |
-| Focus window left / right | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` |
+| Focus window left / right † | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` |
 | Focus workspace 1…10 | `Fn+1` … `Fn+0` | `⌃⌥1` … `⌃⌥0` |
 | Close focused window | `Fn+Q` | `⌃⌥Q` |
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` |
@@ -69,6 +69,10 @@ keyboards and can never be bound.
 | Move window to screen prev / next | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` |
 | Toggle float | `Fn+G` | `⌃⌥G` |
 | Focus window / move window (arrows) | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` |
+
+† Window focus walks every *visible* window in the active workspace, floating ones included —
+a floating window keeps its index in the row even though it takes no tiling slot. Minimized and
+hidden windows are skipped, and ephemeral "visitor" windows are in no row at all (spec §4.3).
 
 `Fn+F` is deliberately **unbound** — Globe+F is Apple's own full-screen shortcut, and SpacialShell
 does not fight macOS for it. All chords are configurable; see `docs/config.md`.
