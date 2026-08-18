@@ -24,9 +24,10 @@ public struct PersistedState: Codable, Equatable, Sendable {
         for (id, ss) in screens {
             guard var screen = w.screens[id] else { continue }
             let restored = ss.workspaces.filter(\.pinned).map { Workspace(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: true) }
+            let names = Set(restored.map(\.name))
             let existing = screen.workspaces.filter { !$0.isEmpty || $0.pinned }
             let ids = Set(restored.map(\.id))
-            screen.workspaces = restored + existing.filter { !ids.contains($0.id) }
+            screen.workspaces = restored + existing.filter { !ids.contains($0.id) && !($0.pinned && names.contains($0.name)) }
             screen.activeIndex = min(max(ss.activeIndex, 0), max(screen.workspaces.count - 1, 0))
             w.screens[id] = screen
         }
