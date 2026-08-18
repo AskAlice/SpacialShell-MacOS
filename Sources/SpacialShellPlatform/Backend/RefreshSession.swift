@@ -24,14 +24,16 @@ struct RefreshSession {
                 && $0.bundleIdentifier != loginwindowBundleId
         }
 
+        // Two passes to decide *which* apps to walk — both pure `NSWorkspace` reading, so both
+        // stay here on the main actor. The AX walk itself comes after, all at once.
         var infos: [AppInfo] = []
-        var windows: [WindowSnapshot] = []
+        var toSnapshot: [AXApp] = []
         var visited: Set<pid_t> = []
         for nsApp in regular {
             guard let app = apps.getOrCreate(nsApp) else { continue }
             visited.insert(app.pid)
             infos.append(AppInfo(pid: app.pid, bundleID: app.bundleID, isHidden: nsApp.isHidden))
-            windows += await app.snapshotWindows()
+            toSnapshot.append(app)
         }
         // An app already in the registry that has since dropped out of `.regular` (Photos' media
         // helpers, apps that flip to `.accessory` while their windows are still open) keeps being
@@ -41,8 +43,29 @@ struct RefreshSession {
             guard let nsApp = aliveByPid[app.pid] else { continue }
             visited.insert(app.pid)
             infos.append(AppInfo(pid: app.pid, bundleID: app.bundleID, isHidden: nsApp.isHidden))
-            windows += await app.snapshotWindows()
+            toSnapshot.append(app)
         }
+
+        // Every `snapshotWindows()` runs on its *own* app's AX thread and spends nearly all of its
+        // time waiting on that app to answer, so walking them one after another made a sweep cost
+        // the sum of every app's latency — and with `axTimeoutMs` per app, a couple of hung apps
+        // could stretch one sweep past the whole refresh interval. Run them together instead: the
+        // sweep now costs roughly the slowest app, not the sum.
+        //
+        // Completion order is arbitrary, so results are re-sorted by pid before they are
+        // concatenated: `Snapshot.windows` has to be a function of the state of the world, not of
+        // which app happened to answer first, or every sweep would look like a change.
+        var byPid: [(pid_t, [WindowSnapshot])] = await withTaskGroup(of: (pid_t, [WindowSnapshot]).self) { group in
+            for app in toSnapshot {
+                group.addTask { (app.pid, await app.snapshotWindows()) }
+            }
+            var out: [(pid_t, [WindowSnapshot])] = []
+            out.reserveCapacity(toSnapshot.count)
+            for await result in group { out.append(result) }
+            return out
+        }
+        byPid.sort { $0.0 < $1.0 }
+        let windows = byPid.flatMap(\.1)
 
         // Ruling 8: only pids that have left the process table are reaped — an app that is merely
         // not `.regular` is still alive and still ours to talk to.
