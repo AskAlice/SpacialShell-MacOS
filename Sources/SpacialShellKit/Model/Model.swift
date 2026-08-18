@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 public typealias DisplayID = String   // CGDisplayCreateUUIDFromDisplayID string
 public typealias WindowID = UInt32    // CGWindowID
@@ -48,49 +49,6 @@ public struct Screen: Codable, Equatable, Sendable {
     public var active: Workspace {
         get { workspaces[activeIndex] }
         set { workspaces[activeIndex] = newValue }
-    }
-
-    enum CodingKeys: String, CodingKey { case display, rect, workspaces, activeIndex }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.display = try container.decode(DisplayID.self, forKey: .display)
-        if let rectDict = try container.decodeIfPresent([String: CGFloat].self, forKey: .rect) {
-            let x = rectDict["x"] ?? 0
-            let y = rectDict["y"] ?? 0
-            let w = rectDict["w"] ?? 0
-            let h = rectDict["h"] ?? 0
-            self.rect = CGRect(origin: CGPoint(x: x, y: y), size: CGSize(width: w, height: h))
-        } else {
-            self.rect = nil
-        }
-        self.workspaces = try container.decode([Workspace].self, forKey: .workspaces)
-        self.activeIndex = try container.decode(Int.self, forKey: .activeIndex)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(display, forKey: .display)
-        if let rect = rect {
-            try container.encode(["x": rect.origin.x, "y": rect.origin.y, "w": rect.size.width, "h": rect.size.height], forKey: .rect)
-        } else {
-            try container.encodeNil(forKey: .rect)
-        }
-        try container.encode(workspaces, forKey: .workspaces)
-        try container.encode(activeIndex, forKey: .activeIndex)
-    }
-
-    public static func == (lhs: Screen, rhs: Screen) -> Bool {
-        guard lhs.display == rhs.display else { return false }
-        guard lhs.workspaces == rhs.workspaces else { return false }
-        guard lhs.activeIndex == rhs.activeIndex else { return false }
-        if let lhsRect = lhs.rect, let rhsRect = rhs.rect {
-            return lhsRect.origin.x == rhsRect.origin.x &&
-                   lhsRect.origin.y == rhsRect.origin.y &&
-                   lhsRect.size.width == rhsRect.size.width &&
-                   lhsRect.size.height == rhsRect.size.height
-        }
-        return lhs.rect == nil && rhs.rect == nil
     }
 }
 
