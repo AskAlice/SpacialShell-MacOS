@@ -37,9 +37,11 @@ reordering, and a Zen-mode toggle for `Fn+Esc` (currently reserved as a no-op).
 3. Launch it. On first launch SpacialShell asks for the **Accessibility** permission and opens
    System Settings → Privacy & Security → Accessibility for you; tick the checkbox next to
    SpacialShell and it continues on its own.
-4. That's it — no menu bar UI in M1. Quit with the usual `⌘Q`/`Fn+Q`-on-nothing-focused route, or
-   `Ctrl-C` if you're running the dev binary in a terminal; every managed window is restored to the
-   centre of its screen on the way out.
+4. That's it — no menu bar UI in M1, and no Dock icon (it runs as an accessory app), so there is no
+   `⌘Q` to quit with, and `Fn+Q` with no window focused is simply a no-op, not a quit shortcut.
+   Quit with `Ctrl-C` if you're running the dev binary in a terminal, or `kill`/SIGTERM otherwise —
+   either one runs the termination gate: state is saved, every managed window is restored to the
+   centre of its screen, then the process exits.
 
 **Development**: `Scripts/dev.sh` builds debug and runs `.build/debug/SpacialShell` in the
 foreground. Its TCC identity is the raw binary **path**, so the Accessibility grant is tied to that
