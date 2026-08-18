@@ -92,6 +92,8 @@ checked in this order: `ephemeral`, then `float`, then `ignore`.
 
 ## `[keybindings]` — overrides and additions
 
+See [`docs/keybindings.md`](keybindings.md) for the cheat-sheet, presets, recipes and conflicts; this section is the reference for the table itself.
+
 A table of `"chord" = "command-name"`. Entries here are layered on top of the preset's built-in
 bindings (`KeyBindings.core` + the arrow aliases): a chord you name here **replaces** the built-in
 binding for that chord rather than adding a second one, and a chord the preset does not use is

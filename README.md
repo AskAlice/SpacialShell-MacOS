@@ -75,7 +75,8 @@ a floating window keeps its index in the row even though it takes no tiling slot
 hidden windows are skipped, and ephemeral "visitor" windows are in no row at all (spec §4.3).
 
 `Fn+F` is deliberately **unbound** — Globe+F is Apple's own full-screen shortcut, and SpacialShell
-does not fight macOS for it. All chords are configurable; see `docs/config.md`.
+does not fight macOS for it. All chords are configurable — see [`docs/keybindings.md`](docs/keybindings.md)
+for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/config.md` for the full reference.
 
 ## The model
 
