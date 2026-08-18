@@ -14,7 +14,7 @@
 
 - Swift tools version `6.0`; `platforms: [.macOS(.v14)]`; strict concurrency (all Kit types `Sendable`).
 - Package/target names exactly: `SpacialShellKit`, `SpacialShellPlatform`, `PrivateApi`, `SpacialShell` (executable), tests `SpacialShellKitTests`, `SpacialShellPlatformTests`, `PlatformIntegrationTests`.
-- `SpacialShellKit` imports only `Foundation` (and `TOMLDecoder` in `Config`). Never `AppKit`, `ApplicationServices`, `CoreGraphics` directly. `CGRect`/`CGPoint`/`CGSize` come through Foundation.
+- `SpacialShellKit` imports only `Foundation` and `CoreGraphics` (geometry types; CGRect needs CoreGraphics for Codable/Equatable/Hashable on this toolchain), plus `TOMLDecoder` in `Config`. Never `AppKit` or `ApplicationServices`.
 - All geometry crossing `WindowBackend` is **top-left origin, y-down, global** (AX convention). The NSScreen flip happens once, in `DisplayTopology`.
 - Every file lifted from AeroSpace keeps the header comment `// Adapted from AeroSpace (MIT) — <original path> @ c548c7f` as its first line, and `legal/third-party/LICENSE-AeroSpace.txt` ships the full MIT text. AeroSpace clone for copying: `/private/tmp/claude-501/-Users-alice-mac-material-shell/aa7fe75f-1297-4120-92ea-463238dbfe97/scratchpad/AeroSpace` (re-clone `https://github.com/nikitabobko/AeroSpace` at `c548c7f` if missing).
 - Paths: config `~/.config/spacial-shell/config.toml`; state `~/Library/Application Support/SpacialShell/state.json`. Bundle id `me.askalice.SpacialShell`.
