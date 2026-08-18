@@ -144,6 +144,19 @@ public final class HotkeyTap: @unchecked Sendable {
             command: flags.contains(.maskCommand))
     }
 
+    /// Pure: what to do with a keyDown, given whether it is an autorepeat and whether its chord is
+    /// bound. `swallow` is "consume the event"; `fire` is "run the command".
+    ///
+    /// The repeats of a *bound* chord are swallowed, not passed through. Holding Fn+S must not
+    /// fire the command 30×/s — but it must not leak a burst of bare `S` into the front app
+    /// either, which is what passing the repeats through did: the first keyDown was consumed and
+    /// every repeat after it landed in the editor. Unbound chords keep repeating normally, and
+    /// the front app still gets the keyUp in both cases.
+    static func decision(isRepeat: Bool, bound: Bool) -> (swallow: Bool, fire: Bool) {
+        guard bound else { return (swallow: false, fire: false) }
+        return (swallow: true, fire: !isRepeat)
+    }
+
     // MARK: - Lifecycle
 
     /// Spawns the tap thread and waits (briefly) for it to report whether `CGEvent.tapCreate`
@@ -443,12 +456,11 @@ public final class HotkeyTap: @unchecked Sendable {
             if code == Self.globeKeyCode || code == Self.functionKeyCode { return passThrough }
             let chord = Self.chord(from: flags, keyCode: code)
             if chord.fn && Self.functionRow.contains(code) { return passThrough }
-            // Autorepeat passes through untouched: holding Fn+S must not fire the command 30×/s,
-            // and swallowing the repeats would make a held key feel broken in the front app.
-            if isRepeat { return passThrough }
 
             lock.lock(); let command = table[chord]; lock.unlock()
-            guard let command else { return passThrough }
+            let decision = Self.decision(isRepeat: isRepeat, bound: command != nil)
+            guard decision.swallow else { return passThrough }
+            guard decision.fire, let command else { return nil }
             if IsSecureEventInputEnabled() {
                 Self.log.warning("secure input is active; hotkeys may be unreliable")
             }
