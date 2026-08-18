@@ -27,6 +27,12 @@ import Foundation
         #expect(calls.contains(.setPosition(b, CGPoint(x: 999, y: 699))))
         #expect(calls.contains(.raise(a)))
     }
+    @Test func exportForTerminationCarriesTheCurrentWorld() async {
+        let (store, _) = await make(snap([win(a)], focused: a))
+        let world = await store.world
+        let export = await store.exportForTermination()
+        #expect(export.world == world && export.displays == [d1] && export.observed[a] != nil)
+    }
     @Test func newWindowInSnapshotIsAdoptedAtEnd() async {
         let (store, be) = await make(snap([win(a)], focused: a))
         await store.apply(.snapshot(snap([win(a), win(b)], focused: b)))

@@ -138,6 +138,23 @@ final class AXApp: @unchecked Sendable {
         return instance
     }
 
+    // MARK: - Registry (spec §7.6)
+
+    /// The pid → `AXApp` map is the one `getOrCreate` dedupes against and `dispatch` routes
+    /// notifications through; `destroy()` and `tearDown()` both remove from it. The backend reads
+    /// it through `AXAppRegistry` rather than keeping a second map, which would go on vouching for
+    /// apps whose run loop has already exited.
+    static func registered(_ pid: pid_t) -> AXApp? { registryLock.withLock { registry[pid] } }
+
+    static func allRegistered() -> [AXApp] { registryLock.withLock { Array(registry.values) } }
+
+    /// Spec §7.6 gc. `destroy()` takes `registryLock` itself, so the dead set is collected first
+    /// and the lock released before anything is destroyed.
+    static func reapTerminated(alive: Set<pid_t>) {
+        let dead = registryLock.withLock { registry.filter { !alive.contains($0.key) }.map(\.value) }
+        for app in dead { app.destroy() }
+    }
+
     /// MacApp.swift:343-359. Stops the run loop; `tearDown()` on the app thread finishes the job.
     /// No job may be submitted afterwards.
     func destroy() {
