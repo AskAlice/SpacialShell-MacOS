@@ -176,6 +176,67 @@ import Foundation
         try? await Task.sleep(for: .milliseconds(50))
         #expect(await box.value?.screens["D1"]?.active.windows == [a])
     }
+
+    /// Deferred from Task 13's review: a store-level counterpart to `PropertyTests`, which drives
+    /// `World` directly. This drives the actor through `FakeBackend`, so it also exercises
+    /// adoption-from-snapshot, vanish-on-refresh, native focus, and the parking side tables —
+    /// everything `PropertyTests` cannot see because it never goes through `WorldStore`.
+    struct LiveWindow { var ref: WindowRef; var kind: WindowKind; var minimized = false; var fullscreen = false; var parent: WindowRef? }
+
+    func randomSnapshot(_ live: [LiveWindow], focused: WindowRef?) -> Snapshot {
+        snap(live.map { win($0.ref, kind: $0.kind, min: $0.minimized, fs: $0.fullscreen, parent: $0.parent) }, focused: focused)
+    }
+
+    @Test(arguments: 0..<50)
+    func randomSnapshotsPreserveInvariants(seed: Int) async {
+        var rng = TestRNG(seed: UInt64(seed) &+ 7_000)
+        let be = FakeBackend(snapshot: snap([]))
+        let store = WorldStore(backend: be, config: Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
+        await store.start()
+
+        let cmds: [Command] = [
+            .focusWorkspace(.up), .focusWorkspace(.down), .focusWorkspaceIndex(Int.random(in: 1...4, using: &rng)),
+            .focusWindow(.left), .focusWindow(.right), .closeFocusedWindow,
+            .moveWindow(.left), .moveWindow(.right), .moveWindowToWorkspace(.up), .moveWindowToWorkspace(.down),
+            .cycleLayout, .toggleShellUI, .focusScreen(.prev), .focusScreen(.next),
+            .moveWindowToScreen(.prev), .moveWindowToScreen(.next), .toggleFloat,
+        ]
+        var live: [LiveWindow] = []
+        var nextID: WindowID = 1
+
+        for step in 0..<30 {
+            switch Int.random(in: 0..<10, using: &rng) {
+            case 0...3:   // snapshot event: mutate the live-window set, then resend it whole
+                switch Int.random(in: 0..<4, using: &rng) {
+                case 0 where live.count < 10:
+                    let kind: WindowKind = [.tile, .tile, .tile, .float, .ephemeral, .ignore].randomElement(using: &rng)!
+                    let parent = Bool.random(using: &rng) ? live.randomElement(using: &rng)?.ref : nil
+                    live.append(LiveWindow(ref: WindowRef(id: nextID, pid: 1), kind: kind, parent: parent))
+                    nextID += 1
+                case 1 where !live.isEmpty:
+                    live.remove(at: Int.random(in: 0..<live.count, using: &rng))
+                case 2 where !live.isEmpty:
+                    live[Int.random(in: 0..<live.count, using: &rng)].minimized.toggle()
+                case 3 where !live.isEmpty:
+                    live[Int.random(in: 0..<live.count, using: &rng)].fullscreen.toggle()
+                default: break   // list too small/large for the picked mutation: resend unchanged
+                }
+                let focused = live.isEmpty ? nil : (Bool.random(using: &rng) ? live.randomElement(using: &rng)?.ref : nil)
+                await store.apply(.snapshot(randomSnapshot(live, focused: focused)))
+            case 4...6:   // run a random command
+                await store.run(cmds.randomElement(using: &rng)!)
+            default:   // external move (AX echo or a real drag)
+                if let l = live.randomElement(using: &rng) {
+                    let f = CGRect(x: Double.random(in: 0...500, using: &rng), y: Double.random(in: 0...500, using: &rng), width: 300, height: 200)
+                    await store.apply(.windowMoved(l.ref, f))
+                }
+            }
+            let w = await store.world   // bind before calling: `#expect((await store.world).invariantViolations()...)` doesn't compile.
+            let v = w.invariantViolations()
+            #expect(v.isEmpty, "seed \(seed) step \(step): \(v)")
+            if !v.isEmpty { return }
+        }
+    }
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
