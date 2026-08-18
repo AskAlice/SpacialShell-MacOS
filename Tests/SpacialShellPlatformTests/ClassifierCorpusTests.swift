@@ -1,3 +1,4 @@
+// Derived from AeroSpace (MIT) — Sources/AppBundleTests/AxUiElementWindowTypeTest.swift @ c548c7f
 import Testing
 import Foundation
 import AppKit
@@ -26,6 +27,17 @@ import AppKit
             #expect(json.getWindowType(axApp: app, bundle, policy, level) == expected, "\(file.lastPathComponent)")
             #expect(
                 json.isDialogHeuristic(bundle, level) == (raw["Aero.AxUiElementWindowType_isDialogHeuristic"] as! Bool),
+                "\(file.lastPathComponent)",
+            )
+            // Pin the public entry point too: it must agree with the raw heuristic + kind mapping.
+            #expect(
+                WindowClassifier.kind(
+                    axWindow: json,
+                    axApp: app,
+                    bundleID: raw["Aero.App.appBundleId"] as? String,
+                    activationPolicy: policy,
+                    windowLevel: level,
+                ) == WindowClassifier.kind(for: expected),
                 "\(file.lastPathComponent)",
             )
             count += 1
