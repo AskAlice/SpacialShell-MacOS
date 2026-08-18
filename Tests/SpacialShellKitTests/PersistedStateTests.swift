@@ -34,4 +34,14 @@ import Foundation
         #expect(w.screens["D1"]!.workspaces.map(\.pinned) == [true, false])
         #expect(w.invariantViolations().isEmpty)
     }
+    @Test func restoreIntoSeededWorldDoesNotDuplicatePinnedByName() throws {
+        var c = Config(); c.workspaces = [WorkspaceSeed(name: "Code", layout: .half), WorkspaceSeed(name: "Web", layout: .split)]
+        let w1 = World.seeded(screens: ["D1"], config: c)
+        let s = PersistedState(world: w1)
+        let w2 = World.seeded(screens: ["D1"], config: c)
+        let r = s.restore(into: w2)
+        #expect(r.screens["D1"]!.workspaces.map(\.name) == ["Code", "Web", "Workspace"])
+        #expect(r.screens["D1"]!.workspaces[0].id == w1.screens["D1"]!.workspaces[0].id)
+        #expect(r.invariantViolations().isEmpty)
+    }
 }
