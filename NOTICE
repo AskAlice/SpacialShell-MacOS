@@ -1,0 +1,5 @@
+SpacialShell includes code adapted from AeroSpace (https://github.com/nikitabobko/AeroSpace),
+Copyright (c) 2023 Nikita Bobko, MIT License — see legal/third-party/LICENSE-AeroSpace.txt.
+Adapted files carry an "Adapted from AeroSpace" header comment. Current list:
+  Sources/PrivateApi/include/private.h
+  Sources/PrivateApi/include/private.m
