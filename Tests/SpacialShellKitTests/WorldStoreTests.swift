@@ -47,6 +47,17 @@ import Foundation
         let export = await store.exportForTermination()
         #expect(export.stranded[b] != nil && export.stranded[a] == nil)
     }
+    /// C1: macOS reports an empty screen list mid-hot-plug, at wake and around the lock screen.
+    /// Acting on one used to reseed the world from nothing — every workspace dropped, and the
+    /// re-adoption that followed force-unwrapped a screen that no longer existed.
+    @Test func emptyDisplaySnapshotIsIgnored() async {
+        let (store, _) = await make(snap([win(a)], focused: a))
+        let before = await store.world
+        await store.apply(.snapshot(Snapshot(displays: [], apps: [], windows: [], focused: nil)))
+        let after = await store.world
+        #expect(after == before)
+        #expect(after.invariantViolations().isEmpty)
+    }
     @Test func newWindowInSnapshotIsAdoptedAtEnd() async {
         let (store, be) = await make(snap([win(a)], focused: a))
         await store.apply(.snapshot(snap([win(a), win(b)], focused: b)))

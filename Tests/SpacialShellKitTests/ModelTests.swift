@@ -92,4 +92,14 @@ import Foundation
         #expect(w.screens["D2"]!.workspaces.count == 1)
         #expect(w.screenOrder == ["D1", "D2"])
     }
+    /// C1: an empty topology is transient, never a real arrangement. Honouring it would delete
+    /// every screen — and every workspace on it — and leave `focus.screen` naming nothing.
+    @Test func setScreensWithEmptyOrderIsNoop() {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1")
+        let before = w
+        w.setScreens([], main: "")
+        #expect(w == before)
+        #expect(w.invariantViolations().isEmpty)
+    }
 }

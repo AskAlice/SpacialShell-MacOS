@@ -92,7 +92,13 @@ extension World {
     }
 
     /// Spec §7.8: unplug merges into main; replug creates an empty stack (state restore may refill it).
+    ///
+    /// An empty `order` is refused outright. macOS reports an empty screen list mid-hot-plug, at
+    /// wake and around the lock screen, and it is always transient — honouring it would delete
+    /// every screen and with it every workspace, and leave `focus.screen` pointing at nothing for
+    /// the next `adopt` to force-unwrap. Callers guard as well; this is the backstop.
     public mutating func setScreens(_ order: [DisplayID], main: DisplayID) {
+        guard !order.isEmpty else { return }
         for id in order where screens[id] == nil {
             screens[id] = Screen(display: id, workspaces: [newWorkspace()], activeIndex: 0)
         }
