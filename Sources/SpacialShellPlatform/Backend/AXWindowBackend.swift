@@ -15,6 +15,12 @@ import os
 /// write methods from `WorldStore`'s actor, and the termination restore runs on whatever thread
 /// the signal source uses. Those paths touch only `let`s of `Sendable` type: the two stream
 /// continuations and the (lock-guarded) registry.
+///
+/// Lifecycle: `init` → `start()` (main actor, once) → … → `stop()`. **`stop()` is terminal**: it
+/// removes every observer, cancels every task and *finishes the event stream*, so a consumer's
+/// `for await … in events` returns instead of hanging. A backend cannot be restarted after it;
+/// `start()` on a stopped backend is a no-op. `restoreAllForTermination` still works afterwards,
+/// since it goes straight to the registry.
 @MainActor
 public final class AXWindowBackend: WindowBackend {
     public nonisolated let events: AsyncStream<BackendEvent>
@@ -33,6 +39,15 @@ public final class AXWindowBackend: WindowBackend {
     private var observerTokens: [(center: NotificationCenter, token: any NSObjectProtocol)] = []
     private var eventMonitors: [Any] = []
     private var refreshTask: Task<Void, Never>?
+    /// A refresh session is running. The periodic backstop *coalesces* against it instead of
+    /// pre-empting it: one sweep is `apps × axTimeoutMs` in the worst case and can outlast
+    /// `refreshIntervalMs`, and a tick that cancels-and-restarts would begin again at app #1 every
+    /// time, so the apps at the tail of the sweep would never be snapshotted at all.
+    private var sessionInFlight = false
+    /// Identifies the newest session, so a cancelled one can't clear its successor's flag.
+    private var sessionGeneration = 0
+    /// When the current run of settle deferrals began — see `Self.maxDeferral`.
+    private var deferringSince: ContinuousClock.Instant?
     private var periodic: Task<Void, Never>?
     private var debounce: Task<Void, Never>?
     private var signals: Task<Void, Never>?
@@ -41,12 +56,16 @@ public final class AXWindowBackend: WindowBackend {
     private var started = false
     private var stopped = false
 
-    private static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "AXWindowBackend")
+    private nonisolated static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "AXWindowBackend")
 
     /// Ruling 4/5. Display topology is transient across wake and hot-plug: `NSScreen.screens` can
     /// report a half-built (or empty) arrangement for a few hundred milliseconds, and laying out
     /// against it strands windows. Wait for it to settle instead.
     private static let settleMs = 500
+
+    /// A display arrangement that never settles (a flapping adapter) must not defer refreshes
+    /// forever: after this long, one refresh is forced through.
+    private static let maxDeferral = Duration.seconds(5)
 
     public init(config: Config) {
         self.config = config
@@ -145,7 +164,7 @@ public final class AXWindowBackend: WindowBackend {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(intervalMs))
                 guard !Task.isCancelled, let self else { return }
-                scheduleRefresh()
+                scheduleRefreshIfIdle()
             }
         }
     }
@@ -191,29 +210,57 @@ public final class AXWindowBackend: WindowBackend {
         // A settle timer is pending (ruling 4/5: the topology is mid-hot-plug, or was empty a
         // moment ago). It will refresh in at most `settleMs`, against an arrangement that has
         // stopped moving — refreshing *now* is exactly the transient layout it exists to avoid,
-        // so every other trigger folds into it.
-        if let debounce, !debounce.isCancelled { return }
+        // so every other trigger folds into it, up to `maxDeferral`.
+        if let debounce, !debounce.isCancelled {
+            let deferredFor = deferringSince?.duration(to: .now) ?? .zero
+            guard deferredFor >= Self.maxDeferral else { return }
+            Self.log.warning("display topology unsettled for \(deferredFor.components.seconds) s; refreshing anyway")
+            debounce.cancel()
+            self.debounce = nil
+        }
+        deferringSince = nil
         refreshTask?.cancel()
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
+        sessionInFlight = true
         refreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer { if generation == sessionGeneration { sessionInFlight = false; refreshTask = nil } }
+            // Ruling 5: an empty topology is always transient — `WorldStore` would reseed the
+            // world and drop every restored workspace. Checked *before* the sweep too, so a
+            // mid-hot-plug tick costs nothing instead of an `apps × axTimeoutMs` walk whose result
+            // is discarded.
+            guard !DisplayTopology.current().isEmpty else {
+                retryAfterEmptyTopology()
+                return
+            }
             let snapshot = await RefreshSession(apps: registry).run()
             guard !Task.isCancelled, !stopped else { return }
-            // Ruling 5: an empty topology is always transient — `WorldStore` would reseed the
-            // world and drop every restored workspace. Skip this one and look again once the
-            // display arrangement has settled.
             guard !snapshot.displays.isEmpty else {
-                Self.log.warning("empty display topology; retrying in \(Self.settleMs) ms")
-                scheduleRefresh(afterMs: Self.settleMs)
+                retryAfterEmptyTopology()
                 return
             }
             continuation.yield(.snapshot(snapshot))
         }
     }
 
+    private func retryAfterEmptyTopology() {
+        Self.log.warning("empty display topology; retrying in \(Self.settleMs) ms")
+        scheduleRefresh(afterMs: Self.settleMs)
+    }
+
+    /// The periodic backstop's entry point: never pre-empts a sweep that is still walking the app
+    /// list, so every app gets its turn even when one of them is hung.
+    private func scheduleRefreshIfIdle() {
+        guard !sessionInFlight else { return }
+        scheduleRefresh()
+    }
+
     /// Cancel-and-reschedule: repeated display-reconfiguration notifications collapse into one
     /// refresh, `settleMs` after the last of them.
     private func scheduleRefresh(afterMs ms: Int) {
         guard !stopped else { return }
+        if deferringSince == nil { deferringSince = .now }
         debounce?.cancel()
         debounce = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(ms))
@@ -248,35 +295,66 @@ public final class AXWindowBackend: WindowBackend {
     // MARK: - Termination (spec §7.4)
 
     /// Never strand a window in a parking corner. Every window the model placed is centred on its
-    /// screen's visible frame at the size we last observed, with blocking, bounded AX writes.
+    /// screen's `visibleFrame` at the size we last observed (fallback 800×600), with blocking,
+    /// bounded AX writes — plus every window in `stranded`, which was retired to `ignored` while
+    /// parked and can no longer be reached any other way (best-effort, on the main display).
     ///
     /// `nonisolated` and synchronous on purpose: this is called from a `DispatchSource` signal
     /// handler or `applicationWillTerminate` (never from a raw C signal handler), which must not
     /// return until the windows are back.
+    ///
+    /// `deadline` is a **total** wall-clock budget. Each `setFrameForTermination` waits up to
+    /// `max(2000, axTimeoutMs × 4)` ms on its own, so a handful of hung apps would otherwise blow
+    /// through macOS's termination grace period and every window after the stall would stay
+    /// parked anyway — with the budget, the ones we can still reach get moved first.
     public nonisolated func restoreAllForTermination(
         world: World,
         displays: [DisplayInfo],
         observed: [WindowRef: CGRect],
+        stranded: [WindowRef: CGRect] = [:],
+        deadline: Duration = .seconds(8),
     ) {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var restored = 0
+        var skipped = 0
+
+        func place(_ ref: WindowRef, size: CGSize, on display: DisplayInfo) {
+            guard start.duration(to: clock.now) < deadline else { skipped += 1; return }
+            let visible = display.visibleFrame
+            let frame = CGRect(
+                x: visible.midX - size.width / 2,
+                y: visible.midY - size.height / 2,
+                width: size.width,
+                height: size.height,
+            )
+            // An app that is no longer registered has no window left to strand.
+            guard let app = registry.get(ref.pid) else { return }
+            app.setFrameForTermination(ref.id, frame)
+            restored += 1
+        }
+
         // Deviation from the brief, which skips a screen whose display is missing: a window whose
         // display was unplugged between the last refresh and the quit would stay in its parking
         // corner, which is the one outcome §7.4 exists to prevent. It goes to the main display.
         let fallback = displays.first(where: \.isMain) ?? displays.first
         for (displayID, screen) in world.screens {
             guard let display = displays.first(where: { $0.id == displayID }) ?? fallback else { continue }
-            let visible = display.visibleFrame
             for workspace in screen.workspaces {
                 for ref in workspace.windows {
-                    let size = observed[ref]?.size ?? CGSize(width: 800, height: 600)
-                    let frame = CGRect(
-                        x: visible.midX - size.width / 2,
-                        y: visible.midY - size.height / 2,
-                        width: size.width,
-                        height: size.height,
-                    )
-                    registry.get(ref.pid)?.setFrameForTermination(ref.id, frame)
+                    place(ref, size: observed[ref]?.size ?? CGSize(width: 800, height: 600), on: display)
                 }
             }
+        }
+        // Retired-while-parked windows are in no workspace any more, so the walk above cannot see
+        // them; their recorded frame is the last one from before they were parked.
+        if let fallback {
+            for (ref, frame) in stranded {
+                place(ref, size: frame.size, on: fallback)
+            }
+        }
+        if skipped > 0 {
+            Self.log.error("termination restore ran out of budget: \(restored) restored, \(skipped) left parked")
         }
     }
 

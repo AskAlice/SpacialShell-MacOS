@@ -10,6 +10,11 @@ public actor WorldStore {
     private var displays: [DisplayInfo] = []
     private var observed: [WindowRef: CGRect] = [:]
     private var prePark: [WindowRef: CGRect] = [:]
+    /// Spec §7.4 + §11. A window retired to `ignored` after three failed writes *while parked* is
+    /// unreachable by the reconciler for good, so nothing would ever unpark it — the one way a
+    /// window can be permanently stranded in a corner. Its last known real frame is kept here
+    /// purely so the termination restore can put it back.
+    private var stranded: [WindowRef: CGRect] = [:]
     private var parked: Set<WindowRef> = []
     private var bundleIDs: [WindowRef: String] = [:]
     private var fullscreen: Set<WindowRef> = []
@@ -41,9 +46,10 @@ public actor WorldStore {
 
     /// Spec §7.4. Everything the termination path needs to put windows back where a human can
     /// reach them: the model, the topology it was laid out against, and the last frames the
-    /// backend actually observed (parked windows included — `observed` keeps their real size).
-    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect]) {
-        (world, displays, observed)
+    /// backend actually observed (parked windows included — `observed` keeps their real size),
+    /// plus the windows that were retired while parked and can no longer be reached any other way.
+    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect]) {
+        (world, displays, observed, stranded)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
@@ -113,6 +119,7 @@ public actor WorldStore {
             let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }).union(world.ephemeral).union(world.ignored)
             for gone in all.subtracting(present) {
                 world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; fullscreen.remove(gone); intents.forget(gone)
+                stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }
             }
         }
@@ -196,6 +203,8 @@ public actor WorldStore {
             failures[r, default: 0] += 1
             guard failures[r, default: 0] >= 3 else { return }
             failures[r] = nil
+            // Remember where it belongs before the side tables that know are cleared.
+            if parked.contains(r), let frame = prePark[r] ?? observed[r] { stranded[r] = frame }
             world.remove(r); world.ignored.insert(r)
             observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r)
             if lastRaised == r { lastRaised = nil }

@@ -33,6 +33,20 @@ import Foundation
         let export = await store.exportForTermination()
         #expect(export.world == world && export.displays == [d1] && export.observed[a] != nil)
     }
+    /// A window retired after three failed writes *while parked* leaves the model entirely, so
+    /// nothing would ever unpark it — spec §7.4 says quitting must not strand it in the corner.
+    @Test func retiredWhileParkedWindowIsExportedAsStranded() async {
+        // Two windows, maximize layout: `a` is the anchor, `b` is parked in the corner.
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        #expect(await store.debugSideTables().parked.contains(b))
+        await be.fail(b)
+        for y in [100.0, 200.0, 300.0] {
+            await store.apply(.windowMoved(b, CGRect(x: y, y: y, width: 300, height: 200)))
+        }
+        #expect(await store.world.ignored.contains(b))          // retired, unreachable by the reconciler
+        let export = await store.exportForTermination()
+        #expect(export.stranded[b] != nil && export.stranded[a] == nil)
+    }
     @Test func newWindowInSnapshotIsAdoptedAtEnd() async {
         let (store, be) = await make(snap([win(a)], focused: a))
         await store.apply(.snapshot(snap([win(a), win(b)], focused: b)))
