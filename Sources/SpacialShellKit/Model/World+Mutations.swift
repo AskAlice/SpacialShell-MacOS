@@ -121,7 +121,7 @@ extension World {
                 if ws.isEmpty && !last && ws.id != activeId && !ws.pinned { continue }
                 kept.append(ws)
             }
-            if kept.isEmpty || !kept.last!.isEmpty { kept.append(newWorkspace()) }
+            if kept.isEmpty || !kept.last!.isEmpty || kept.last!.pinned { kept.append(newWorkspace()) }
             s.workspaces = kept
             s.activeIndex = kept.firstIndex { $0.id == activeId } ?? min(s.activeIndex, kept.count - 1)
             for i in kept.indices {
