@@ -120,6 +120,8 @@ struct Workspace: Codable {
     var layout: Layout          // default from config, initially .maximize
     var windows: [WindowRef]    // ordered left→right; tiled + floating; not persisted in M1 (§9)
     var floating: Set<WindowRef>
+    var anchor: WindowRef?      // last-focused window here; maximize/split anchor when this screen isn't focused
+    var pinned: Bool            // seeded from config or user-named (M2); never reaped when empty
 }
 
 struct Screen: Codable {
@@ -135,7 +137,9 @@ struct World: Codable {
     var screens: [DisplayID: Screen]
     var focus: Focus
     var ephemeral: Set<WindowRef>   // visitors: shown floating over whatever is active, belong to no workspace
-    var ignored: Set<WindowRef>     // popups/PiP/etc. we never touch
+    var ignored: Set<WindowRef>     // popups/PiP/fullscreen/etc. we never touch
+    var hidden: Set<WindowRef>      // minimized or Cmd+H-hidden: keep their slot, skip layout and navigation
+    var parents: [WindowRef: WindowRef]  // dialog → owner window
 }
 ```
 
@@ -146,8 +150,8 @@ Every command and every event handler preserves these. Property tests (§12) gen
 1. **Single address.** Every managed window is in exactly one workspace of exactly one screen. `ephemeral`, `ignored`, and the workspaces' window lists are pairwise disjoint.
 2. **New windows append.** A newly detected tileable window is appended to the end of the *active* workspace of the screen whose rect contains the largest area of the window (fallback: focused screen). A newly detected floating window with a **parent** (dialog/sheet of an existing window) joins its parent's workspace, immediately after the parent.
 3. **New workspaces append.** A new workspace is appended to the bottom of the stack it is created in.
-4. **Trailing empty.** Each screen's stack ends with exactly one empty workspace. When a window enters the trailing empty workspace, a fresh empty one is appended below. When a non-trailing workspace becomes empty and is not the active one, it is reaped. (The active workspace is never reaped out from under the user; it is reaped when focus leaves it.)
-5. **Valid focus.** `focus.screen` names an existing screen; `focus.window`, if non-nil, is in that screen's active workspace, or is ephemeral.
+4. **Trailing empty.** Each screen's stack ends with an empty workspace. When a window enters the trailing empty workspace, a fresh empty one is appended below. When a non-trailing, **unpinned** workspace becomes empty and is not the active one, it is reaped. (The active workspace is never reaped out from under the user; it is reaped when focus leaves it. Pinned workspaces — seeded from config, or user-named in M2 — survive empty; that is what makes named categories possible before window persistence exists.)
+5. **Valid focus.** `focus.screen` names an existing screen; `focus.window`, if non-nil, is in that screen's active workspace and not hidden, or is ephemeral.
 
 Invariant 4 is what makes "down" always meaningful without letting empty workspaces accumulate.
 
@@ -172,7 +176,7 @@ Invariant 4 is what makes "down" always meaningful without letting empty workspa
 | half | all | Slot 0 is the left half; slots 1…n−1 stack vertically in the right half. With 1 window, it fills the rect. |
 | grid | all | `cols = ceil(sqrt(n))`, `rows = ceil(n / cols)`; row-major; last row's cells widen to fill. |
 
-Anchoring maximize/split on focus is what makes `Fn+A/D` under maximize behave like tab switching — the same as material-shell.
+Anchoring maximize/split on the workspace's `anchor` (its last-focused window) is what makes `Fn+A/D` under maximize behave like tab switching — the same as material-shell — and keeps a non-focused screen showing what it showed when you left it.
 
 `rect` is the screen rect (display `visibleFrame` — menu bar and Dock excluded — or the configured sub-rect) minus outer gap, with **height reduced by 1 pt** (macOS can refuse full-height frames on vertically stacked displays; AeroSpace `layoutRecursive.swift:5-12`). M2's panels will add insets here; the Layout layer takes insets as data and does not know what draws them.
 
@@ -308,6 +312,11 @@ ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
 
+[[workspace]]                     # pinned, named workspaces seeded on every screen (material-shell "categories")
+name = "Code"
+symbol = "terminal"               # SF Symbol
+layout = "half"
+
 [[ephemeral]]
 bundle-id = "com.apple.systempreferences"
 
@@ -322,10 +331,10 @@ bundle-id = "com.apple.iphonesimulator"
 
 ```json
 { "version": 1,
-  "screens": { "<display-uuid>": { "workspaces": [ { "id": "…", "name": "Code", "symbol": "terminal", "layout": "half" } ], "activeIndex": 0 } } }
+  "screens": { "<display-uuid>": { "workspaces": [ { "id": "…", "name": "Code", "symbol": "terminal", "layout": "half", "pinned": true } ], "activeIndex": 0 } } }
 ```
 
-Windows are **not** persisted in M1 (window ids don't survive app restart; matching is M3). On launch, workspaces are restored empty and existing windows are adopted per §7.8 into each screen's active workspace.
+Windows are **not** persisted in M1 (window ids don't survive app restart; matching is M3). On launch, pinned workspaces are restored empty (unpinned ones would be reaped immediately, so they are not restored) and existing windows are adopted per §7.8 into each screen's active workspace.
 
 ## 10. Permissions and onboarding
 
