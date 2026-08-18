@@ -61,11 +61,23 @@ public final class AXWindowBackend: WindowBackend {
     /// Ruling 4/5. Display topology is transient across wake and hot-plug: `NSScreen.screens` can
     /// report a half-built (or empty) arrangement for a few hundred milliseconds, and laying out
     /// against it strands windows. Wait for it to settle instead.
-    private static let settleMs = 500
+    private nonisolated static let settleMs = 500
 
     /// A display arrangement that never settles (a flapping adapter) must not defer refreshes
     /// forever: after this long, one refresh is forced through.
     private static let maxDeferral = Duration.seconds(5)
+
+    /// How many `settleMs` waits `currentSnapshot()` gives an empty topology before giving up on
+    /// it — 6 × 500 ms = 3 s, generous enough for a wake or a hot-plug, short enough that a boot
+    /// with a genuinely dark screen still finishes starting up.
+    private nonisolated static let emptyTopologyRetries = 6
+
+    /// The last non-empty topology this backend saw, on either the push or the pull path. C1:
+    /// `WorldStore.start()` and `.screenUnlocked` *pull* a snapshot, and an empty `displays` there
+    /// reseeds the world from nothing — every workspace dropped. A stale-but-real arrangement is
+    /// always the better answer. Lock-guarded rather than main-actor isolated because
+    /// `currentSnapshot()` is `nonisolated`: it is called from `WorldStore`'s actor.
+    private nonisolated let lastGoodDisplays = LastGoodDisplays()
 
     public init(config: Config) {
         self.config = config
@@ -240,6 +252,7 @@ public final class AXWindowBackend: WindowBackend {
                 retryAfterEmptyTopology()
                 return
             }
+            lastGoodDisplays.record(snapshot.displays)
             continuation.yield(.snapshot(snapshot))
         }
     }
@@ -272,8 +285,35 @@ public final class AXWindowBackend: WindowBackend {
 
     // MARK: - WindowBackend
 
+    /// C1. The *pull* counterpart of `scheduleRefresh`'s empty-topology guard, and the more
+    /// dangerous of the two: `WorldStore.start()` (boot) and `.screenUnlocked` call this directly,
+    /// and both are exactly when macOS is most likely to report no screens at all. There is no
+    /// "try again later" here — whatever this returns is what the world is rebuilt from — so it
+    /// waits for the arrangement to settle, and failing that answers with the last real one it
+    /// saw. Only a backend that has never seen a display returns an empty topology, and the store
+    /// drops that snapshot rather than acting on it.
+    ///
+    /// The cheap `DisplayTopology.current()` call is what gets retried, not the sweep: one sweep
+    /// costs `apps × axTimeoutMs` and its result would be thrown away anyway.
     public nonisolated func currentSnapshot() async -> Snapshot {
-        await RefreshSession(apps: registry).run()
+        for _ in 0..<Self.emptyTopologyRetries {
+            guard await MainActor.run(body: { DisplayTopology.current().isEmpty }) else { break }
+            try? await Task.sleep(for: .milliseconds(Self.settleMs))
+        }
+        let snapshot = await RefreshSession(apps: registry).run()
+        guard snapshot.displays.isEmpty else {
+            lastGoodDisplays.record(snapshot.displays)
+            return snapshot
+        }
+        let lastGood = lastGoodDisplays.value
+        guard !lastGood.isEmpty else {
+            Self.log.error("display topology still empty after \(Self.emptyTopologyRetries) retries and none ever seen; returning an empty snapshot")
+            return snapshot
+        }
+        Self.log.warning("display topology still empty after \(Self.emptyTopologyRetries) retries; using the last known arrangement of \(lastGood.count) display(s)")
+        var patched = snapshot
+        patched.displays = lastGood
+        return patched
     }
 
     public nonisolated func setFrame(_ ref: WindowRef, _ frame: CGRect) async -> Result<Void, BackendError> {
@@ -363,4 +403,19 @@ public final class AXWindowBackend: WindowBackend {
     /// Tests have no way to make macOS lock the screen; this is the same door the lock/unlock
     /// observers use.
     nonisolated func _testYield(_ event: BackendEvent) { continuation.yield(event) }
+}
+
+/// The backend's memory of the last real display arrangement (C1). Its own type because
+/// `currentSnapshot()` is `nonisolated` and may run on any thread, so the storage needs a lock
+/// rather than the class's main-actor isolation.
+private final class LastGoodDisplays: @unchecked Sendable {
+    private let lock = NSLock()
+    private var displays: [DisplayInfo] = []
+
+    var value: [DisplayInfo] { lock.lock(); defer { lock.unlock() }; return displays }
+
+    func record(_ new: [DisplayInfo]) {
+        guard !new.isEmpty else { return }
+        lock.lock(); displays = new; lock.unlock()
+    }
 }

@@ -86,6 +86,11 @@ public actor WorldStore {
     // MARK: snapshot → world
 
     private func applySnapshot(_ s: Snapshot) {
+        // An empty display topology is always transient (wake, hot-plug, the lock screen). The
+        // backend guards its own snapshots, but a snapshot reaches the store from more than one
+        // door, and applying one would reseed the world from nothing: every workspace dropped,
+        // every window re-adopted onto a screen that does not exist. Drop it instead.
+        guard !s.displays.isEmpty else { return }
         // displays
         let sorted = s.displays.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
         displays = sorted
