@@ -48,7 +48,7 @@ import Foundation
     @Test func gridFiveIsThreeByTwoWithWideLastRow() {
         let f = LayoutEngine.frames(.grid, count: 5, focused: 0, in: r, gap: 0)
         #expect(f.compactMap { $0 }.count == 5)
-        #expect(eq(f[0], CGRect(x: 0, y: 0, width: 1000/3, height: 300)))
+        #expect(eq(f[0], CGRect(x: 0, y: 0, width: 1000.0/3.0, height: 300)))
         #expect(eq(f[3], CGRect(x: 0, y: 300, width: 500, height: 300)))
         #expect(eq(f[4], CGRect(x: 500, y: 300, width: 500, height: 300)))
     }
