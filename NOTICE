@@ -3,3 +3,4 @@ Copyright (c) 2023 Nikita Bobko, MIT License — see legal/third-party/LICENSE-A
 Adapted files carry an "Adapted from AeroSpace" header comment. Current list:
   Sources/PrivateApi/include/private.h
   Sources/PrivateApi/include/private.m
+  Sources/PrivateApi/include/module.modulemap
