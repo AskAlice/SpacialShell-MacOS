@@ -38,6 +38,13 @@ public actor WorldStore {
         }
     }
     public func stop() { eventTask?.cancel() }
+
+    /// Spec §7.4. Everything the termination path needs to put windows back where a human can
+    /// reach them: the model, the topology it was laid out against, and the last frames the
+    /// backend actually observed (parked windows included — `observed` keeps their real size).
+    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect]) {
+        (world, displays, observed)
+    }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
     public func run(_ command: Command) async {
