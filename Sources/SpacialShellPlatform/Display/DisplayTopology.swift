@@ -6,7 +6,7 @@ import os
 /// Spec §7.8. The one place NSScreen's bottom-left, y-up geometry becomes the top-left, y-down
 /// geometry everything else (AX, `Layout`, `World`) speaks. Rebuilt on every access: NSScreen
 /// caches nothing useful across a hot-plug, and a stale topology places windows off-screen.
-enum DisplayTopology {
+public enum DisplayTopology {
     private static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "DisplayTopology")
 
     /// NSScreen (bottom-left, y-up) → AX (top-left, y-down). `mainHeight` is the height of the
@@ -32,7 +32,7 @@ enum DisplayTopology {
 
     /// Spec §7.8: main = the screen at origin (0,0), never `NSScreen.main` — that one follows the
     /// key window and lies inside activation callbacks (AeroSpace's note).
-    @MainActor static func current() -> [DisplayInfo] {
+    @MainActor public static func current() -> [DisplayInfo] {
         let screens = NSScreen.screens
         var main = screens.first { $0.frame.origin == .zero }
         if main == nil, let first = screens.first {
