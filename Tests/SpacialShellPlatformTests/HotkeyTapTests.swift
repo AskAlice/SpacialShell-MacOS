@@ -21,6 +21,17 @@ import CoreGraphics
         #expect(c == Chord(keyCode: 0, fn: true, control: false, option: false, shift: false, command: false))
     }
 
+    /// A bound chord's autorepeats used to pass straight through: the first keyDown was consumed
+    /// and every repeat after it reached the front app as a bare keystroke, so holding Fn+S typed
+    /// a burst of `s` into the editor. Repeats of a bound chord are now swallowed without
+    /// re-firing; unbound chords still repeat normally.
+    @Test func autorepeatOfABoundChordIsSwallowedWithoutFiring() {
+        #expect(HotkeyTap.decision(isRepeat: false, bound: true) == (swallow: true, fire: true))
+        #expect(HotkeyTap.decision(isRepeat: true, bound: true) == (swallow: true, fire: false))
+        #expect(HotkeyTap.decision(isRepeat: false, bound: false) == (swallow: false, fire: false))
+        #expect(HotkeyTap.decision(isRepeat: true, bound: false) == (swallow: false, fire: false))
+    }
+
     /// The test host is not AX-trusted, so `CGEvent.tapCreate` returns NULL and `start()` must
     /// surface that as `TapError.creationFailed` rather than trapping or hanging on the dedicated
     /// tap thread. On a trusted host (someone granted the test runner) the tap really is created,
