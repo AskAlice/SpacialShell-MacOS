@@ -4,3 +4,28 @@ Adapted files carry an "Adapted from AeroSpace" header comment. Current list:
   Sources/PrivateApi/include/private.h
   Sources/PrivateApi/include/private.m
   Sources/PrivateApi/include/module.modulemap
+  Sources/SpacialShellPlatform/Lifted/Common/commonUtil.swift
+  Sources/SpacialShellPlatform/Lifted/Common/AeroAny.swift
+  Sources/SpacialShellPlatform/Lifted/Common/ConvenienceMutable.swift
+  Sources/SpacialShellPlatform/Lifted/Common/OptionalEx.swift
+  Sources/SpacialShellPlatform/Lifted/Common/TaskEx.swift
+  Sources/SpacialShellPlatform/Lifted/Common/MainActorEx.swift
+  Sources/SpacialShellPlatform/Lifted/Common/ComparableEx.swift
+  Sources/SpacialShellPlatform/Lifted/Common/StringEx.swift
+  Sources/SpacialShellPlatform/Lifted/Common/Nullable.swift
+  Sources/SpacialShellPlatform/Lifted/Json.swift
+  Sources/SpacialShellPlatform/Lifted/accessibility.swift
+  Sources/SpacialShellPlatform/Lifted/AxSubscription.swift
+  Sources/SpacialShellPlatform/Lifted/AxUiElementMock.swift
+  Sources/SpacialShellPlatform/Lifted/ThreadGuardedValue.swift
+  Sources/SpacialShellPlatform/Lifted/UniqueToken.swift
+  Sources/SpacialShellPlatform/Lifted/appBundleUtil.swift
+  Sources/SpacialShellPlatform/Lifted/AxAppThreadToken.swift
+  Sources/SpacialShellPlatform/Lifted/runLoop.swift
+  Sources/SpacialShellPlatform/Lifted/CompletableFuture.swift
+  Sources/SpacialShellPlatform/Lifted/AwaitableOneTimeBroadcastLatch.swift
+  Sources/SpacialShellPlatform/Lifted/dumpAxRecursive.swift
+  Sources/SpacialShellPlatform/Lifted/axTrustedCheckOptionPrompt.swift
+  Sources/SpacialShellPlatform/Lifted/NSRunningApplicationEx.swift
+  Sources/SpacialShellPlatform/Lifted/NsApplicationEx.swift
+  Sources/SpacialShellPlatform/Lifted/Rect.swift
