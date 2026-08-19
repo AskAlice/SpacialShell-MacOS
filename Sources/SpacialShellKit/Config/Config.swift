@@ -1,5 +1,10 @@
 import Foundation
 import TOMLDecoder
+// `Layout` (used below as a default-argument shorthand, e.g. `= .maximize`) is now a
+// `SpacialShellProtocol.Layout` typealias (M2 D4); Swift requires the declaring module to be
+// imported in any file that resolves an implicit-member default argument against it, even though
+// the typealias itself is visible through `SpacialShellKit`.
+import SpacialShellProtocol
 
 public struct AppRule: Codable, Equatable, Sendable {
     public var bundleId: String

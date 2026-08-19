@@ -13,13 +13,15 @@ let package = Package(
     ],
     targets: [
         .target(name: "PrivateApi", path: "Sources/PrivateApi"),
+        .target(name: "SpacialShellProtocol"),
         .target(
             name: "SpacialShellKit",
-            dependencies: [.product(name: "TOMLDecoder", package: "TOMLDecoder")]
+            dependencies: ["SpacialShellProtocol", .product(name: "TOMLDecoder", package: "TOMLDecoder")]
         ),
-        .target(name: "SpacialShellPlatform", dependencies: ["SpacialShellKit", "PrivateApi"]),
-        .executableTarget(name: "SpacialShell", dependencies: ["SpacialShellKit", "SpacialShellPlatform"]),
+        .target(name: "SpacialShellPlatform", dependencies: ["SpacialShellKit", "SpacialShellProtocol", "PrivateApi"]),
+        .executableTarget(name: "SpacialShell", dependencies: ["SpacialShellKit", "SpacialShellPlatform", "SpacialShellProtocol"]),
         .testTarget(name: "SpacialShellKitTests", dependencies: ["SpacialShellKit"]),
+        .testTarget(name: "SpacialShellProtocolTests", dependencies: ["SpacialShellProtocol"]),
         .testTarget(name: "SpacialShellPlatformTests", dependencies: ["SpacialShellPlatform"]),
         .testTarget(name: "PlatformIntegrationTests", dependencies: ["SpacialShellPlatform", "SpacialShellKit"]),
     ]
