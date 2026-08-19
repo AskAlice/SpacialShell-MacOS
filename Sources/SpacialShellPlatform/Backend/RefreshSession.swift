@@ -1,7 +1,7 @@
 import AppKit
 import CoreGraphics
 import SpacialShellKit
-import struct SpacialShellKit.WindowRef
+import struct SpacialShellProtocol.WindowRef
 
 /// Builds one `Snapshot` from every regular app (plus any accessory already in the registry).
 /// Spec §7.6: every event coalesces into a session like this one; the newest session wins.

@@ -8,12 +8,15 @@
 import AppKit
 import CoreGraphics
 import SpacialShellKit
-import struct SpacialShellKit.WindowRef
+import struct SpacialShellProtocol.WindowRef
 import os
 
-// NB: the scoped `import struct SpacialShellKit.WindowRef` is load-bearing — AppKit re-exports
-// ApplicationServices, whose Quickdraw header defines a `WindowRef` typedef of its own, and the
-// scoped import is what keeps the plain name unambiguous here.
+// NB: the scoped `import struct SpacialShellProtocol.WindowRef` is load-bearing — AppKit
+// re-exports ApplicationServices, whose Quickdraw header defines a `WindowRef` typedef of its
+// own, and the scoped import is what keeps the plain name unambiguous here. `WindowRef` now
+// lives in SpacialShellProtocol (M2 D4); SpacialShellKit only carries a `public typealias`,
+// which a scoped `import struct` cannot bind to (the declared kind must match), so this import
+// points at the real declaration.
 
 /// Spec §7.6. Raised on the app's own AX thread; the backend coalesces them into refreshes.
 enum AXAppEvent: Sendable {

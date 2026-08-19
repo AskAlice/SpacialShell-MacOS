@@ -1,7 +1,7 @@
 import AppKit
 import CoreGraphics
 import SpacialShellKit
-import struct SpacialShellKit.WindowRef
+import struct SpacialShellProtocol.WindowRef
 import os
 
 /// The real `WindowBackend` (spec §7.6, §7.7, §7.4 termination): global observers coalesced into
