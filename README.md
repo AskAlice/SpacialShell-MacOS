@@ -19,13 +19,18 @@ drawn shell UI arriving in M2.
 
 ## Status
 
-**M1 — spatial core**, headless (no drawn UI yet). What works: the screen/workspace/window model
-and its invariants, all five tiling layouts, the full hotkey set under two presets, TOML config
-with live reload, JSON state persistence for pinned workspaces, window classification (tiled /
-floating / ephemeral / ignored), and parking (the single mechanism that hides everything not on
-the active workspace). What's next — **M2**: the shell UI (`ScreenPanel` workspace rail,
-`WorkspacePanel` tab bar + layout switcher), the ephemeral-window overview/launcher, `Fn+Drag`
-reordering, and a Zen-mode toggle for `Fn+Esc` (currently reserved as a no-op).
+**M1 — spatial core** is done: the screen/workspace/window model and its invariants, all five
+tiling layouts, the full hotkey set under two presets, TOML config with live reload, JSON state
+persistence for pinned workspaces, window classification (tiled / floating / ephemeral / ignored),
+and parking (the single mechanism that hides everything not on the active workspace).
+
+**M2 — shell UI** is in progress. Landed: the `ScreenPanel` workspace rail (left edge — one button
+per workspace, the trailing empty one drawn as "+"), the `WorkspacePanel` tab bar + layout switcher
+(top edge — one tab per window in the active row, in `Fn+A`/`Fn+D` order), and the Zen-mode toggle
+on `Fn+Esc`, which hides both panels and gives their edges back to the layout. Panels are drawn
+with Apple-native materials, take no key focus, and every click goes through the same command
+pipeline as a hotkey. Still to come in M2: the ephemeral-window overview/launcher, `Fn+Drag`
+reordering, and window titles in tabs (tabs currently show the app name and icon).
 
 ## Install
 
@@ -64,7 +69,7 @@ keyboards and can never be bound.
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` |
 | Move window to workspace up / down | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` |
 | Cycle layout | `Fn+Space` | `⌃⌥Space` |
-| Toggle shell UI *(no-op in M1)* | `Fn+Esc` | `⌃⌥Esc` |
+| Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` |
 | Focus screen prev / next | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` |
 | Move window to screen prev / next | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` |
 | Toggle float | `Fn+G` | `⌃⌥G` |
@@ -108,8 +113,9 @@ for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/c
 - **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
   the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
   keyboard) or the `ctrl-alt` preset instead.
-- **No UI yet.** M1 is headless and entirely keyboard-driven; the workspace rail, tab bar, and
-  overview arrive in M2.
+- **The shell UI is young.** The workspace rail and window tab bar are in; the overview/launcher
+  and `Fn+Drag` reordering are not yet, and tabs show app names, not window titles. `[ui]
+  enabled = false` in config brings back the fully headless M1 behaviour.
 
 ## Licence and attribution
 

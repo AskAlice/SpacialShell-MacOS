@@ -28,6 +28,22 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
 
 public enum KeybindingPreset: String, Codable, Sendable { case fn, ctrlAlt = "ctrl-alt" }
 
+/// `[ui]` table. `enabled = false` removes the shell panels entirely (M1 behaviour); with them
+/// enabled, `Fn+Esc` (Zen mode) hides and shows them at runtime.
+public struct UIConfig: Codable, Equatable, Sendable {
+    public var enabled: Bool = true
+    public var railWidth: Double = 48    // ScreenPanel (left workspace rail), pt
+    public var barHeight: Double = 38    // WorkspacePanel (top tab bar), pt
+    public init() {}
+    enum CodingKeys: String, CodingKey { case enabled, railWidth = "rail-width", barHeight = "bar-height" }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        railWidth = try c.decodeIfPresent(Double.self, forKey: .railWidth) ?? 48
+        barHeight = try c.decodeIfPresent(Double.self, forKey: .barHeight) ?? 38
+    }
+}
+
 public struct Config: Codable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
     public var gap: Double = 8
@@ -40,6 +56,7 @@ public struct Config: Codable, Equatable, Sendable {
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
     public var keybindings: [String: String] = [:]
+    public var ui: UIConfig = UIConfig()
 
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.systempreferences"), AppRule(bundleId: "com.apple.calculator")]
 
@@ -48,7 +65,7 @@ public struct Config: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
-             ephemeral, float, ignore, keybindings
+             ephemeral, float, ignore, keybindings, ui
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -63,6 +80,7 @@ public struct Config: Codable, Equatable, Sendable {
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
         ignore = try c.decodeIfPresent([AppRule].self, forKey: .ignore) ?? []
         keybindings = try c.decodeIfPresent([String: String].self, forKey: .keybindings) ?? [:]
+        ui = try c.decodeIfPresent(UIConfig.self, forKey: .ui) ?? UIConfig()
     }
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }

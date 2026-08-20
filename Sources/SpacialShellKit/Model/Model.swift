@@ -67,11 +67,15 @@ public struct World: Codable, Equatable, Sendable {
     public var hidden: Set<WindowRef>          // minimized or app-hidden; keep slot, skip layout+nav
     public var parents: [WindowRef: WindowRef] // dialog → owner
     public var defaultLayout: Layout
+    /// Zen mode (spec §6, `toggle-shell-ui`): false hides the panels and gives their edges back to
+    /// the layout. Lives in the model because the layout rect depends on it — the reconciler reads
+    /// it to choose the panel insets, so a toggle is an ordinary command → relayout round trip.
+    public var shellUIVisible: Bool
     public init(screens: [DisplayID: Screen], screenOrder: [DisplayID], focus: Focus,
                 ephemeral: Set<WindowRef>, ignored: Set<WindowRef>, hidden: Set<WindowRef>,
-                parents: [WindowRef: WindowRef], defaultLayout: Layout) {
+                parents: [WindowRef: WindowRef], defaultLayout: Layout, shellUIVisible: Bool = true) {
         self.screens = screens; self.screenOrder = screenOrder; self.focus = focus
         self.ephemeral = ephemeral; self.ignored = ignored; self.hidden = hidden
-        self.parents = parents; self.defaultLayout = defaultLayout
+        self.parents = parents; self.defaultLayout = defaultLayout; self.shellUIVisible = shellUIVisible
     }
 }

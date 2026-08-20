@@ -12,10 +12,18 @@ public enum Command: Sendable, Hashable {
     case moveWindow(Horizontal)
     case moveWindowToWorkspace(Vertical)
     case cycleLayout
-    case toggleShellUI                     // reserved; no-op in M1
+    case toggleShellUI                     // Zen mode: hide/show the shell panels
     case focusScreen(Neighbor)
     case moveWindowToScreen(Neighbor)
     case toggleFloat
+
+    // Shell-UI verbs (M2). The keyboard verbs above are relative to the focused screen; a panel
+    // click names its target outright — the rail on a second screen must work without moving
+    // focus there first.
+    case activateWorkspace(DisplayID, Int) // rail click; 0-based index into that screen's stack
+    case selectWindow(WindowRef)           // tab click
+    case setLayout(DisplayID, Layout)      // layout switcher; applies to that screen's active workspace
+    case closeWindow(WindowRef)            // tab close button
 }
 
 public enum Effect: Sendable, Equatable {

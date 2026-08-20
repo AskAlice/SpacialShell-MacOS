@@ -27,6 +27,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     private var tap: HotkeyTap?
+    private var shell: ShellController?
     private var saveTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
     private var configWatch: DispatchSourceFileSystemObject?
@@ -65,10 +66,21 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
         ) { [weak self] world in
             gate.note(world: world)
-            Task { @MainActor in self?.scheduleSave(world) }
+            Task { @MainActor in
+                self?.scheduleSave(world)
+                self?.shell?.update(world: world)
+            }
         }
         self.store = store
         termination.arm(store: store, backend: backend)
+
+        // The shell panels (M2). Wired before the store starts so the first reconcile's onChange
+        // already reaches them; they draw nothing until that first world arrives. Clicks re-enter
+        // through the same command pipeline as hotkeys — the store is captured directly (ruling 8's
+        // spirit: panel callbacks must not depend on `self`).
+        shell = ShellController(ui: config.ui) { command in
+            Task { await store.run(command) }
+        }
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
@@ -151,9 +163,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             log.notice("ax-timeout-ms / refresh-interval-ms changed; those take effect at the next launch")
         }
         tap?.update(table: KeyBindings.table(for: config))
+        shell?.update(ui: config.ui)
         guard let store else { return }
         let config = config
-        Task { await store.update(config: config) }
+        Task { await store.update(config: config) }   // reconcile picks up new insets; onChange re-renders the panels
     }
 
     // MARK: - State

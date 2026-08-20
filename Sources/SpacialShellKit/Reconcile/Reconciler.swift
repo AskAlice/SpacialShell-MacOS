@@ -1,8 +1,19 @@
 import Foundation
 
+/// Screen edges the shell panels occupy (spec §5: the Layout layer takes insets as data and does
+/// not know what draws them). Top-left, y-down coordinates like everything else in this layer:
+/// `top` is the `WorkspacePanel` tab bar, `leading` the `ScreenPanel` workspace rail.
+public struct PanelInsets: Sendable, Equatable {
+    public var top: CGFloat
+    public var leading: CGFloat
+    public init(top: CGFloat = 0, leading: CGFloat = 0) { self.top = top; self.leading = leading }
+    public static let zero = PanelInsets()
+}
+
 public struct LayoutConfig: Sendable, Equatable {
     public var gap: CGFloat
-    public init(gap: CGFloat) { self.gap = gap }
+    public var insets: PanelInsets
+    public init(gap: CGFloat, insets: PanelInsets = .zero) { self.gap = gap; self.insets = insets }
 }
 
 public enum Placement: Sendable, Equatable { case frame(CGRect), parked(CGPoint), untouched }
@@ -32,7 +43,10 @@ public enum Reconciler {
                 let size = observed[w]?.size ?? fallbackSize
                 return .parked(Parking.origin(windowSize: size, visibleFrame: visible, corner: corner, sliver: zeroSliver.contains(w) ? 0 : 1))
             }
-            var rect = (screen.rect ?? visible).insetBy(dx: config.gap, dy: config.gap)
+            var rect = screen.rect ?? visible
+            rect.origin.x += config.insets.leading; rect.size.width -= config.insets.leading
+            rect.origin.y += config.insets.top; rect.size.height -= config.insets.top
+            rect = rect.insetBy(dx: config.gap, dy: config.gap)
             rect.size.height -= 1   // macOS may refuse full-height frames on stacked displays
             for (i, ws) in screen.workspaces.enumerated() {
                 let active = i == screen.activeIndex
