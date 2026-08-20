@@ -167,7 +167,11 @@ public actor WorldStore {
         generation += 1
         let gen = generation
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
-        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
+        // Zen (spec §6) and `[ui] enabled` decide whether the panels' edges belong to the layout.
+        let insets = config.ui.enabled && world.shellUIVisible
+            ? PanelInsets(top: config.ui.barHeight, leading: config.ui.railWidth)
+            : .zero
+        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap, insets: insets),
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero)
         // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
         // of them (superseded mid-write) used to leave the queue full, so the next pass centred the

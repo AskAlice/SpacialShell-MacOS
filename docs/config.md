@@ -15,6 +15,11 @@ ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
 
+[ui]                              # the M2 shell panels
+enabled = true                    # false = fully headless (M1 behaviour); Fn+Esc then does nothing
+rail-width = 48                   # ScreenPanel (left workspace rail), pt
+bar-height = 38                   # WorkspacePanel (top tab bar + layout switcher), pt
+
 [[workspace]]                     # pinned, named workspaces seeded on every screen
 name = "Code"                     # (material-shell "categories")
 symbol = "terminal"               # SF Symbol name
@@ -48,6 +53,18 @@ title-regex = "^Picture in Picture$"
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
 two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the
 rest stack in the right half), `grid` (a roughly-square grid, row-major, last row widened to fill).
+
+## `[ui]` — shell panels
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `true` | Draw the shell panels at all. `false` restores the fully headless M1 behaviour — no rail, no tab bar, no insets, and `toggle-shell-ui` does nothing. |
+| `rail-width` | number (pt) | `48` | Width of the `ScreenPanel` workspace rail on every screen's left edge. |
+| `bar-height` | number (pt) | `38` | Height of the `WorkspacePanel` tab bar + layout switcher along the top. |
+
+While the panels are visible their edges are subtracted from the layout rect (the same mechanism
+`gap` uses); Zen mode (`Fn+Esc`) hides them at runtime and gives the space back without touching
+this config. All three keys reload live.
 
 ## `[[workspace]]` — pinned workspace seeds
 
@@ -120,7 +137,7 @@ Generated from `KeyBindings.commandNames`:
 | `move-window-up` | Move the focused window to the workspace above and follow it |
 | `move-window-down` | Move the focused window to the workspace below (creates one if needed) and follow it |
 | `cycle-layout` | Cycle the active workspace's layout: maximize → split → column → half → grid → maximize |
-| `toggle-shell-ui` | Reserved; no-op in M1 |
+| `toggle-shell-ui` | Zen mode: hide/show the shell panels; their edges go back to the layout while hidden |
 | `focus-screen-prev` | Focus the previous screen |
 | `focus-screen-next` | Focus the next screen |
 | `move-window-to-screen-prev` | Move the focused window to the previous screen and follow it |

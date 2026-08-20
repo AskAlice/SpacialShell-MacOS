@@ -43,7 +43,7 @@ bound.
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` | Super+Shift+A / D |
 | Move window to workspace above / below | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` | Super+Shift+W / S |
 | Cycle layout (maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
-| Toggle shell UI *(reserved, no-op in M1)* | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
+| Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Focus previous / next screen | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` | — |
 | Move window to previous / next screen | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` | — |
 | Toggle float on the focused window | `Fn+G` | `⌃⌥G` | — |

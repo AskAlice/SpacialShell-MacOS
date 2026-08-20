@@ -65,7 +65,38 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .toggleShellUI:
-            break
+            w.shellUIVisible.toggle()
+            effects.append(.relayout)
+
+        case .activateWorkspace(let d, let i):
+            guard let s = w.screens[d], (0..<s.workspaces.count).contains(i) else { return (w, []) }
+            // Focus moves to the clicked screen first so `activate` re-derives the focused window
+            // from that workspace's anchor, exactly as the keyboard path does.
+            if w.focus.screen != d { w.focus = Focus(screen: d, window: nil) }
+            w.activate(index: i, on: d)
+            if let f = w.focus.window { effects.append(.focus(f)) }
+            effects.append(.relayout)
+
+        case .selectWindow(let r):
+            if w.ephemeral.contains(r) { w.focus.window = r; return (w, [.focus(r)]) }
+            // A minimized/hidden window keeps its tab but a click cannot land focus on it: raising
+            // it would not deminiaturize it, and focus must stay somewhere real (invariant 5).
+            guard let loc = w.location(of: r), !w.hidden.contains(r) else { return (w, []) }
+            w.focus.screen = loc.screen
+            w.activate(index: loc.index, on: loc.screen)
+            w.focus.window = r
+            w.screens[loc.screen]!.workspaces[loc.index].anchor = r
+            w.normalize()
+            effects.append(.focus(r)); effects.append(.relayout)
+
+        case .setLayout(let d, let l):
+            guard var s = w.screens[d] else { return (w, []) }
+            s.workspaces[s.activeIndex].layout = l
+            w.screens[d] = s
+            effects.append(.relayout)
+
+        case .closeWindow(let r):
+            effects.append(.close(r))
 
         case .focusScreen(let n):
             guard w.screenOrder.count > 1, let i = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
