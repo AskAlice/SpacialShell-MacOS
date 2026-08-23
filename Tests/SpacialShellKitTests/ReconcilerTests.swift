@@ -62,4 +62,57 @@ import Foundation
         let planUnparked = Reconciler.plan(desired: desired, observed: observed, parkedNow: [])
         #expect(planUnparked == [.setPosition(b, CGPoint(x: 999, y: 699))])
     }
+
+    func desired(_ w: World? = nil, displays: [DisplayInfo]? = nil,
+                 insets: [DisplayID: ShellInsets] = [:],
+                 suspended: Set<WindowRef> = []) -> [WindowRef: Placement] {
+        Reconciler.desired(world: w ?? world(), displays: displays ?? [d1], config: cfg,
+                           observed: obs, prePark: [:], parkedNow: [], zeroSliver: [],
+                           insets: insets, suspended: suspended)
+    }
+
+    @Test func railLeftInsetShiftsEveryLayoutXAndNarrowsBy48() {
+        let left = ShellInsets(top: 0, left: 48, right: 0, bottom: 0)
+        for layout in Layout.allCases {
+            var w = world(); w.screens["D1"]!.workspaces[0].layout = layout
+            guard case .frame(let f) = desired(w, insets: ["D1": left])[a] else {
+                Issue.record("\(layout) should frame a"); continue
+            }
+            #expect(f.origin.x == 58)
+            if layout == .maximize { #expect(f == CGRect(x: 58, y: 35, width: 932, height: 654)) }
+        }
+    }
+    @Test func railRightInsetNarrowsOnly() {
+        let d = desired(insets: ["D1": ShellInsets(top: 0, left: 0, right: 48, bottom: 0)])
+        #expect(d[a] == .frame(CGRect(x: 10, y: 35, width: 932, height: 654)))
+    }
+    @Test func topInsetShiftsYBy34() {
+        let d = desired(insets: ["D1": ShellInsets(top: 34, left: 0, right: 0, bottom: 0)])
+        #expect(d[a] == .frame(CGRect(x: 10, y: 69, width: 980, height: 620)))
+    }
+    @Test func zeroInsetsReproduceM1Frames() {
+        let d = desired(insets: ["D1": .zero])
+        #expect(d[a] == .frame(CGRect(x: 10, y: 35, width: 980, height: 654)))
+        #expect(d[b] == .parked(CGPoint(x: 999, y: 699)))
+    }
+    @Test func insetsApplyPerDisplayNotGlobally() {
+        let d2 = DisplayInfo(id: "D2", frame: CGRect(x: 1000, y: 0, width: 1000, height: 700),
+                             visibleFrame: CGRect(x: 1000, y: 25, width: 1000, height: 675), isMain: false)
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1"); w.adopt(b, kind: .tile, on: "D2")
+        let d = desired(w, displays: [d1, d2], insets: ["D1": ShellInsets(top: 0, left: 48, right: 0, bottom: 0)])
+        #expect(d[a] == .frame(CGRect(x: 58, y: 35, width: 932, height: 654)))
+        #expect(d[b] == .frame(CGRect(x: 1010, y: 35, width: 980, height: 654)))
+    }
+    @Test func insetBeforeGapPinsExactRect() {
+        // visible (0,25,1000,675) → left 48 → (48,25,952,675) → gap 10 → (58,35,932,655) → h−1
+        // Symmetric insetBy(dx:48) after the gap would yield width 884, not 932.
+        let d = desired(insets: ["D1": ShellInsets(top: 0, left: 48, right: 0, bottom: 0)])
+        #expect(d[a] == .frame(CGRect(x: 58, y: 35, width: 932, height: 654)))
+    }
+    @Test func suspendedShortCircuitsToUntouched() {
+        let d = desired(suspended: [a])
+        #expect(d[a] == .untouched)
+        #expect(d[b] == .parked(CGPoint(x: 999, y: 699)))
+    }
 }
