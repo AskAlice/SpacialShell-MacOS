@@ -32,6 +32,7 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
 }
 
 public enum KeybindingPreset: String, Codable, Sendable { case fn, ctrlAlt = "ctrl-alt" }
+public enum RailSide: String, Codable, Sendable { case left, right }
 
 public struct Config: Codable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
@@ -40,6 +41,12 @@ public struct Config: Codable, Equatable, Sendable {
     public var axTimeoutMs: Int = 1000
     public var refreshIntervalMs: Int = 2000
     public var startAtLogin: Bool = false
+    public var panelWidth: Double = 48
+    public var panelHeight: Double = 34
+    public var railSide: RailSide = .left
+    public var highlightMs: Int = 600
+    public var launcherURL: String = "raycast://"
+    public var showPanels: Bool = true
     public var workspaces: [WorkspaceSeed] = []
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
@@ -53,7 +60,9 @@ public struct Config: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
-             ephemeral, float, ignore, keybindings
+             ephemeral, float, ignore, keybindings,
+             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side",
+             highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -63,6 +72,12 @@ public struct Config: Codable, Equatable, Sendable {
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
+        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 48
+        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
+        railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
+        highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
+        launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
+        showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
