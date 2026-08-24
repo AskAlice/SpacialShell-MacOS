@@ -14,6 +14,12 @@ default-layout = "maximize"       # maximize | split | column | half | grid
 ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
+panel-width = 48
+panel-height = 34
+rail-side = "left"                # or "right"
+highlight-ms = 600
+launcher-url = "raycast://"
+show-panels = true
 
 [[workspace]]                     # pinned, named workspaces seeded on every screen
 name = "Code"                     # (material-shell "categories")
@@ -44,6 +50,12 @@ title-regex = "^Picture in Picture$"
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
 | `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
+| `panel-width` | number (pt) | `48` | Width of the workspace rail. Windows are inset by this on the rail side. |
+| `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
+| `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
+| `highlight-ms` | integer | `600` | Duration of the focus-highlight flash, in milliseconds. `0` skips the animation. |
+| `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the click is a no-op. |
+| `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
 two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the

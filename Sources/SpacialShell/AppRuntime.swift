@@ -1,7 +1,7 @@
 import AppKit
 import CoreGraphics
 import SpacialShellKit
-import struct SpacialShellKit.WindowRef
+import struct SpacialShellProtocol.WindowRef
 import SpacialShellPlatform
 import os
 
