@@ -33,6 +33,28 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
 
 public enum KeybindingPreset: String, Codable, Sendable { case fn, ctrlAlt = "ctrl-alt" }
 public enum RailSide: String, Codable, Sendable { case left, right }
+public enum ShellTheme: String, Codable, Sendable { case system, dark, light }
+public enum ShellFont: String, Codable, Sendable { case system, rounded, monospaced }
+public enum IconSet: String, Codable, Sendable { case sfSymbols = "sf-symbols", letters }
+
+public enum HighlightColor {
+    public static func normalize(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.lowercased() == "system" { return "system" }
+        let hex = t.hasPrefix("#") ? String(t.dropFirst()) : t
+        guard hex.count == 6 || hex.count == 8, hex.allSatisfy(\.isHexDigit) else { return nil }
+        return "#" + hex.uppercased()
+    }
+    public static func rgba(_ s: String) -> (Double, Double, Double, Double)? {
+        guard let n = normalize(s), n != "system" else { return nil }
+        let h = String(n.dropFirst())
+        func byte(_ i: Int) -> Double {
+            let a = h.index(h.startIndex, offsetBy: i)
+            return Double(Int(h[a..<h.index(a, offsetBy: 2)], radix: 16)!) / 255
+        }
+        return (byte(0), byte(2), byte(4), h.count == 8 ? byte(6) : 1)
+    }
+}
 
 public struct Config: Codable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
@@ -47,6 +69,10 @@ public struct Config: Codable, Equatable, Sendable {
     public var highlightMs: Int = 600
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
+    public var theme: ShellTheme = .system
+    public var highlightColor: String = "system"
+    public var font: ShellFont = .system
+    public var iconSet: IconSet = .sfSymbols
     public var workspaces: [WorkspaceSeed] = []
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
@@ -62,7 +88,8 @@ public struct Config: Codable, Equatable, Sendable {
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side",
-             highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels"
+             highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
+             theme, highlightColor = "highlight-color", font, iconSet = "icon-set"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -78,6 +105,15 @@ public struct Config: Codable, Equatable, Sendable {
         highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
+        theme = try c.decodeIfPresent(ShellTheme.self, forKey: .theme) ?? .system
+        if let raw = try c.decodeIfPresent(String.self, forKey: .highlightColor) {
+            guard let n = HighlightColor.normalize(raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .highlightColor, in: c, debugDescription: "highlight-color must be \"system\" or #RRGGBB")
+            }
+            highlightColor = n
+        } else { highlightColor = "system" }
+        font = try c.decodeIfPresent(ShellFont.self, forKey: .font) ?? .system
+        iconSet = try c.decodeIfPresent(IconSet.self, forKey: .iconSet) ?? .sfSymbols
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
@@ -87,6 +123,53 @@ public struct Config: Codable, Equatable, Sendable {
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }
     public static func load(from url: URL) throws -> Config { try parse(toml: String(contentsOf: url, encoding: .utf8)) }
+
+    /// ponytail: hand-written TOML (no encoder in deps). Round-trips values; drops comments.
+    public func render() -> String {
+        func q(_ s: String) -> String {
+            "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        }
+        var o = """
+        # written by SpacialShell settings; hand-edited comments are not preserved
+        keybinding-preset = \(q(keybindingPreset.rawValue))
+        gap = \(gap)
+        default-layout = \(q(defaultLayout.rawValue))
+        ax-timeout-ms = \(axTimeoutMs)
+        refresh-interval-ms = \(refreshIntervalMs)
+        start-at-login = \(startAtLogin)
+        panel-width = \(panelWidth)
+        panel-height = \(panelHeight)
+        rail-side = \(q(railSide.rawValue))
+        highlight-ms = \(highlightMs)
+        launcher-url = \(q(launcherURL))
+        show-panels = \(showPanels)
+        theme = \(q(theme.rawValue))
+        highlight-color = \(q(highlightColor))
+        font = \(q(font.rawValue))
+        icon-set = \(q(iconSet.rawValue))
+
+        """
+        func rules(_ name: String, _ items: [AppRule]) {
+            for r in items {
+                o += "\n[[\(name)]]\nbundle-id = \(q(r.bundleId))\n"
+                if let t = r.titleRegex { o += "title-regex = \(q(t))\n" }
+            }
+        }
+        for w in workspaces {
+            o += "\n[[workspace]]\nname = \(q(w.name))\nsymbol = \(q(w.symbol))\nlayout = \(q(w.layout.rawValue))\n"
+        }
+        rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore)
+        if !keybindings.isEmpty {
+            o += "\n[keybindings]\n"
+            for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }
+        }
+        return o
+    }
+
+    public func save(to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try render().write(to: url, atomically: true, encoding: .utf8)
+    }
 
     /// Spec §7.3 rule 0: config wins over heuristics. Order: ephemeral, float, ignore.
     public func kindOverride(bundleID: String?, title: String) -> WindowKind? {

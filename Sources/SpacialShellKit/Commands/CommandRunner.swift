@@ -64,7 +64,7 @@ public enum CommandRunner {
             w.screens[sid]!.workspaces[screen.activeIndex].layout = screen.active.layout.next
             effects.append(.relayout)
 
-        case .toggleShellUI:
+        case .toggleShellUI, .openSettings:
             break
 
         case .focusScreen(let n):

@@ -18,6 +18,7 @@ public enum KeyCodes {
         "tab": 48, "space": 49, "backtick": 50, "backspace": 51, "esc": 53,
         "left": 123, "right": 124, "down": 125, "up": 126,
     ]
+    public static let nameByCode: [UInt16: String] = Dictionary(uniqueKeysWithValues: byName.map { ($0.value, $0.key) })
 }
 
 public enum KeyBindings {
@@ -30,7 +31,7 @@ public enum KeyBindings {
         "cycle-layout": .cycleLayout, "toggle-shell-ui": .toggleShellUI,
         "focus-screen-prev": .focusScreen(.prev), "focus-screen-next": .focusScreen(.next),
         "move-window-to-screen-prev": .moveWindowToScreen(.prev), "move-window-to-screen-next": .moveWindowToScreen(.next),
-        "toggle-float": .toggleFloat,
+        "toggle-float": .toggleFloat, "open-settings": .openSettings,
         "focus-workspace-1": .focusWorkspaceIndex(1), "focus-workspace-2": .focusWorkspaceIndex(2), "focus-workspace-3": .focusWorkspaceIndex(3),
         "focus-workspace-4": .focusWorkspaceIndex(4), "focus-workspace-5": .focusWorkspaceIndex(5), "focus-workspace-6": .focusWorkspaceIndex(6),
         "focus-workspace-7": .focusWorkspaceIndex(7), "focus-workspace-8": .focusWorkspaceIndex(8), "focus-workspace-9": .focusWorkspaceIndex(9),
@@ -63,7 +64,7 @@ public enum KeyBindings {
         ("shift-w", "move-window-up"), ("shift-s", "move-window-down"), ("space", "cycle-layout"), ("esc", "toggle-shell-ui"),
         ("leftSquareBracket", "focus-screen-prev"), ("rightSquareBracket", "focus-screen-next"),
         ("shift-leftSquareBracket", "move-window-to-screen-prev"), ("shift-rightSquareBracket", "move-window-to-screen-next"),
-        ("g", "toggle-float"),
+        ("g", "toggle-float"), ("comma", "open-settings"),
         ("1", "focus-workspace-1"), ("2", "focus-workspace-2"), ("3", "focus-workspace-3"), ("4", "focus-workspace-4"), ("5", "focus-workspace-5"),
         ("6", "focus-workspace-6"), ("7", "focus-workspace-7"), ("8", "focus-workspace-8"), ("9", "focus-workspace-9"), ("0", "focus-workspace-10"),
     ]
@@ -79,5 +80,62 @@ public enum KeyBindings {
         for (k, name) in arrows { if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd } }
         for (k, name) in config.keybindings { if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd } }
         return t
+    }
+
+    public static func name(of command: Command) -> String? {
+        commandNames.first { $0.value == command }?.key
+    }
+
+    public static func serialize(_ c: Chord) -> String {
+        var p: [String] = []
+        if c.fn { p.append("fn") }
+        if c.control { p.append("ctrl") }
+        if c.option { p.append("alt") }
+        if c.shift { p.append("shift") }
+        if c.command { p.append("cmd") }
+        p.append(KeyCodes.nameByCode[c.keyCode] ?? "\(c.keyCode)")
+        return p.joined(separator: "-")
+    }
+
+    public static func display(_ c: Chord) -> String {
+        var p = ""
+        if c.fn { p += "Fn+" }
+        if c.control { p += "⌃" }
+        if c.option { p += "⌥" }
+        if c.shift { p += "⇧" }
+        if c.command { p += "⌘" }
+        return p + displayKey(c.keyCode)
+    }
+
+    public static func displayKey(_ code: UInt16) -> String {
+        switch KeyCodes.nameByCode[code] {
+        case "space": "Space"
+        case "enter": "↩"
+        case "esc": "Esc"
+        case "tab": "⇥"
+        case "backspace": "⌫"
+        case "left": "←"
+        case "right": "→"
+        case "up": "↑"
+        case "down": "↓"
+        case "leftSquareBracket": "["
+        case "rightSquareBracket": "]"
+        case "comma": ","
+        case "period": "."
+        case "slash": "/"
+        case "backslash": "\\"
+        case "minus": "-"
+        case "equal": "="
+        case "semicolon": ";"
+        case "quote": "'"
+        case "backtick": "`"
+        case let n?: n.uppercased()
+        default: "?\(code)"
+        }
+    }
+
+    public static func chords(for command: Command, config: Config) -> [Chord] {
+        table(for: config).compactMap { $0.value == command ? $0.key : nil }
+            .sorted { serialize($0) < serialize($1) }
     }
 }

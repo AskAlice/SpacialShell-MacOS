@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "name": "Debug SpacialShell",
+      "program": "${workspaceFolder}/.build/debug/SpacialShell",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "swift: Build Debug SpacialShell"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "name": "Debug SpacialShell (log keys)",
+      "program": "${workspaceFolder}/.build/debug/SpacialShell",
+      "cwd": "${workspaceFolder}",
+      "env": { "SPACIAL_LOG_KEYS": "1" },
+      "preLaunchTask": "swift: Build Debug SpacialShell"
+    },
+    {
+      "type": "swift",
+      "request": "attach",
+      "name": "Attach to SpacialShell",
+      "pid": "${command:pickProcess}"
+    }
+  ]
+}

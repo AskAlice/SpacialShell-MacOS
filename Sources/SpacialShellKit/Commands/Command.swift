@@ -16,6 +16,7 @@ public enum Command: Sendable, Hashable {
     case focusScreen(Neighbor)
     case moveWindowToScreen(Neighbor)
     case toggleFloat
+    case openSettings
 }
 
 public enum Effect: Sendable, Equatable {
