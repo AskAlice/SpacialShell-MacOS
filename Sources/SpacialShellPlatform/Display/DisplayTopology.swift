@@ -12,7 +12,7 @@ public enum DisplayTopology {
     /// NSScreen (bottom-left, y-up) → AX (top-left, y-down). `mainHeight` is the height of the
     /// screen whose frame origin is (0,0) — the origin both coordinate systems share.
     static func flip(_ r: CGRect, mainHeight: CGFloat) -> CGRect {
-        CGRect(x: r.minX, y: mainHeight - r.maxY, width: r.width, height: r.height)
+        Geometry.flip(r, mainHeight: mainHeight)
     }
 
     /// Spec §7.8: identity is the display's UUID, which survives unplug/replug, not the

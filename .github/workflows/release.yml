@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Unit tests
+        run: swift test -c release --skip SpacialShellPlatformTests --skip PlatformIntegrationTests
+
+      - name: Package DMG
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('0.1.0-{0}', github.run_number) }}
+        run: Scripts/package-dmg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpacialShell.dmg
+          path: build/SpacialShell-*.dmg
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" build/SpacialShell-*.dmg --generate-notes --title "$GITHUB_REF_NAME"

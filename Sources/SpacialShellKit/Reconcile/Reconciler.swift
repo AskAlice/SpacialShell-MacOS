@@ -21,7 +21,9 @@ public enum Reconciler {
     /// Spec §5, §7.4, §8. Ignored windows are absent from the result.
     public static func desired(world: World, displays: [DisplayInfo], config: LayoutConfig,
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
-                               parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>) -> [WindowRef: Placement] {
+                               parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
+                               insets: [DisplayID: ShellInsets] = [:],
+                               suspended: Set<WindowRef> = []) -> [WindowRef: Placement] {
         var out: [WindowRef: Placement] = [:]
         let byId = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
         for (sid, screen) in world.screens {
@@ -32,7 +34,8 @@ public enum Reconciler {
                 let size = observed[w]?.size ?? fallbackSize
                 return .parked(Parking.origin(windowSize: size, visibleFrame: visible, corner: corner, sliver: zeroSliver.contains(w) ? 0 : 1))
             }
-            var rect = (screen.rect ?? visible).insetBy(dx: config.gap, dy: config.gap)
+            var rect = insets[sid, default: .zero].apply(to: screen.rect ?? visible)
+            rect = rect.insetBy(dx: config.gap, dy: config.gap)
             rect.size.height -= 1   // macOS may refuse full-height frames on stacked displays
             for (i, ws) in screen.workspaces.enumerated() {
                 let active = i == screen.activeIndex
@@ -40,6 +43,7 @@ public enum Reconciler {
                 let focusedIndex = ws.anchor.flatMap { tiled.firstIndex(of: $0) } ?? 0
                 let frames = active ? LayoutEngine.frames(ws.layout, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap) : []
                 for w in ws.windows {
+                    if suspended.contains(w) { out[w] = .untouched; continue }
                     if world.hidden.contains(w) { out[w] = .untouched; continue }
                     if !active { out[w] = park(w); continue }
                     if ws.floating.contains(w) {
