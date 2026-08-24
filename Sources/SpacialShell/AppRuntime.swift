@@ -28,6 +28,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var store: WorldStore?
     private var tap: HotkeyTap?
     private var shell: ShellController?
+    private var overview: OverviewController?
     private var saveTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
     private var configWatch: DispatchSourceFileSystemObject?
@@ -69,28 +70,41 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 self?.scheduleSave(world)
                 self?.shell?.update(world: world)
+                self?.overview?.update(world: world)
             }
         }
         self.store = store
         termination.arm(store: store, backend: backend)
 
-        // The shell panels (M2). Wired before the store starts so the first reconcile's onChange
-        // already reaches them; they draw nothing until that first world arrives. Clicks re-enter
-        // through the same command pipeline as hotkeys — the store is captured directly (ruling 8's
-        // spirit: panel callbacks must not depend on `self`).
-        shell = ShellController(ui: config.ui) { command in
+        // The shell panels and the overview (M2). Wired before the store starts so the first
+        // reconcile's onChange already reaches them; they draw nothing until that first world
+        // arrives. Clicks re-enter through the same command pipeline as hotkeys — the store is
+        // captured directly (ruling 8's spirit: panel callbacks must not depend on `self`).
+        let appMeta = AppMetaCache()
+        shell = ShellController(ui: config.ui, appMeta: appMeta) { command in
             Task { await store.run(command) }
         }
+        let overview = OverviewController(appMeta: appMeta) { command in
+            Task { await store.run(command) }
+        }
+        self.overview = overview
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
         await store.start()
 
         log.info("stage 7/8: starting the hotkey tap")
-        // Ruling 8: the store is captured directly, never through `self` — the closure runs on the
-        // tap thread inside the event tap's deadline and must not touch the main actor.
+        // Ruling 8: the store and the overview are captured directly, never through `self` — the
+        // closure runs on the tap thread inside the event tap's deadline and must not touch the
+        // main actor. Spawning a task that hops there later is fine; blocking on it is not.
+        // `toggle-overview` is app-layer surface, not a model mutation, so it routes around the
+        // store entirely.
         let tap = HotkeyTap(table: KeyBindings.table(for: config)) { command in
-            Task { await store.run(command) }
+            if command == .toggleOverview {
+                Task { @MainActor in overview.toggle() }
+            } else {
+                Task { await store.run(command) }
+            }
         }
         self.tap = tap
         termination.arm(tap: tap)

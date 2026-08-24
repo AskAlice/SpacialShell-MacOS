@@ -29,8 +29,11 @@ per workspace, the trailing empty one drawn as "+"), the `WorkspacePanel` tab ba
 (top edge — one tab per window in the active row, in `Fn+A`/`Fn+D` order), and the Zen-mode toggle
 on `Fn+Esc`, which hides both panels and gives their edges back to the layout. Panels are drawn
 with Apple-native materials, take no key focus, and every click goes through the same command
-pipeline as a hotkey. Still to come in M2: the ephemeral-window overview/launcher, `Fn+Drag`
-reordering, and window titles in tabs (tabs currently show the app name and icon).
+pipeline as a hotkey. The **overview/launcher** is in too: `Fn+Tab` opens a Spotlight-shaped
+search over every open window (click = go there) and every installed application (click = launch;
+the new window lands at the end of the active workspace like any other). `Esc` or clicking away
+dismisses it, `Enter` opens the first match. Still to come in M2: `Fn+Drag` reordering and window
+titles in tabs (tabs currently show the app name and icon).
 
 ## Install
 
@@ -70,6 +73,7 @@ keyboards and can never be bound.
 | Move window to workspace up / down | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` |
 | Cycle layout | `Fn+Space` | `⌃⌥Space` |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` |
+| Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` |
 | Focus screen prev / next | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` |
 | Move window to screen prev / next | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` |
 | Toggle float | `Fn+G` | `⌃⌥G` |
@@ -113,9 +117,9 @@ for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/c
 - **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
   the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
   keyboard) or the `ctrl-alt` preset instead.
-- **The shell UI is young.** The workspace rail and window tab bar are in; the overview/launcher
-  and `Fn+Drag` reordering are not yet, and tabs show app names, not window titles. `[ui]
-  enabled = false` in config brings back the fully headless M1 behaviour.
+- **The shell UI is young.** The workspace rail, window tab bar, and overview/launcher are in;
+  `Fn+Drag` reordering is not yet, and tabs show app names, not window titles. `[ui]
+  enabled = false` in config brings back the panel-less M1 behaviour (the overview stays).
 
 ## Licence and attribution
 

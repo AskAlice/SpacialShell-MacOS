@@ -1,12 +1,6 @@
 import SwiftUI
 import SpacialShellKit
 
-/// What a tab needs from the platform that the model cannot know: resolved from the window's pid.
-struct AppMeta {
-    let name: String
-    let icon: NSImage?
-}
-
 /// The window tab bar + layout switcher: material-shell's `WorkspacePanel`. Tabs are the active
 /// workspace's row, left→right in row order — the same order `Fn+A`/`Fn+D` walk, so the bar is a
 /// map of the navigation, not just of the layout. Tabs show the app (name + icon); window titles

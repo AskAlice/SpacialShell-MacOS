@@ -24,10 +24,11 @@ final class ShellController: NSObject {
     private var world: World?
     private var ui: UIConfig
     private let send: @Sendable (Command) -> Void
-    private var appMeta: [Int32: AppMeta] = [:]
+    private let appMeta: AppMetaCache
 
-    init(ui: UIConfig, send: @escaping @Sendable (Command) -> Void) {
+    init(ui: UIConfig, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.ui = ui
+        self.appMeta = appMeta
         self.send = send
         super.init()
         NotificationCenter.default.addObserver(
@@ -73,7 +74,7 @@ final class ShellController: NSObject {
                                   width: vf.width - railWidth, height: barHeight), display: true)
 
             p.railHost.rootView = ScreenPanelView(state: state, send: forward)
-            p.barHost.rootView = WorkspacePanelView(state: state, metaFor: meta(for:), send: forward)
+            p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), send: forward)
 
             if visible {
                 p.rail.orderFrontRegardless()
@@ -94,7 +95,7 @@ final class ShellController: NSObject {
     private func makePanels(for id: DisplayID) -> Panels {
         let placeholder = ScreenShellState(display: id, isFocusedScreen: false, rail: [], tabs: [], layout: .maximize)
         let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, send: forward))
-        let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: meta(for:), send: forward))
+        let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), send: forward))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost
         return Panels(rail: rail, railHost: railHost, bar: bar, barHost: barHost)
@@ -103,16 +104,5 @@ final class ShellController: NSObject {
     /// The views hold this, not `send` itself, so they stay agnostic of the store's threading.
     private func forward(_ command: Command) {
         send(command)
-    }
-
-    /// Name + icon by pid, cached: `NSRunningApplication` lookups are not free and the bar
-    /// re-renders on every world change. Dead pids leave stale entries; they are unreachable once
-    /// their windows leave the world, and the map stays small (one entry per app, not per window).
-    private func meta(for pid: Int32) -> AppMeta {
-        if let m = appMeta[pid] { return m }
-        let app = NSRunningApplication(processIdentifier: pid)
-        let m = AppMeta(name: app?.localizedName ?? "App", icon: app?.icon)
-        appMeta[pid] = m
-        return m
     }
 }

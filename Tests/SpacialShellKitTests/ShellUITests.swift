@@ -108,6 +108,15 @@ import Foundation
         #expect(w == before && e == [.close(c)])
     }
 
+    @Test func toggleOverviewIsANoOpInTheModel() throws {
+        let before = base()
+        let (w, e) = run(before, .toggleOverview)
+        #expect(w == before && e.isEmpty)
+        // …but it is a real, bound command: Fn+Tab in the fn preset.
+        let t = KeyBindings.table(for: try Config.parse(toml: ""))
+        #expect(t[KeyBindings.parse("fn-tab")!] == .toggleOverview)
+    }
+
     @Test func toggleShellUIFlipsAndRelayouts() {
         let (w, e) = run(base(), .toggleShellUI)
         #expect(!w.shellUIVisible && e == [.relayout])

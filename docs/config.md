@@ -138,6 +138,7 @@ Generated from `KeyBindings.commandNames`:
 | `move-window-down` | Move the focused window to the workspace below (creates one if needed) and follow it |
 | `cycle-layout` | Cycle the active workspace's layout: maximize → split → column → half → grid → maximize |
 | `toggle-shell-ui` | Zen mode: hide/show the shell panels; their edges go back to the layout while hidden |
+| `toggle-overview` | Open/close the overview/launcher (search over open windows and installed apps) |
 | `focus-screen-prev` | Focus the previous screen |
 | `focus-screen-next` | Focus the next screen |
 | `move-window-to-screen-prev` | Move the focused window to the previous screen and follow it |
