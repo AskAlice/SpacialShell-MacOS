@@ -1,7 +1,15 @@
 # SpacialShell
 
+<p align="center">
+  <img src="docs/media/screenshot-grid.webp" width="920" alt="SpacialShell M2 — rail, tab bar, grid layout">
+</p>
+
 A spatial window manager for macOS: workspaces stacked vertically, windows arranged horizontally,
 every window has one address.
+
+<p align="center">
+  <img src="docs/media/general-showcase.webp" width="920" alt="M2: focus a window, switch workspace, come back">
+</p>
 
 ## What it is
 
@@ -14,18 +22,73 @@ The idea: every workspace is a row of apps. Open a new app and it lands at the e
 row. Add a workspace and it appears underneath. Up/down moves between workspaces, left/right
 between windows, and windows are always tiled, never overlapping — there is never any doubt where
 a window went. Veshell calls this a **"not-desktop"**: a place you inhabit rather than a desktop
-you tidy. SpacialShell runs headless in M1 — everything above is driven from the keyboard, with a
-drawn shell UI arriving in M2.
+you tidy.
+
+M1 is the headless spatial core. **M2** is the face: a left workspace rail, a top window tab bar,
+five tiling layouts, and a focus glow that lands on the tile.
+
+<p align="center">
+  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split, focus glow">
+</p>
+
+## The model
+
+<p align="center">
+  <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells">
+</p>
+
+A **workspace** is a row. An **application** is a cell. New windows append to the current row;
+new workspaces append underneath. Navigate **up/down** to change workspace, **left/right** to
+change window. The screen is a viewport over a larger, always-sorted grid.
+
+- **Single address.** Every managed window lives in exactly one workspace of exactly one screen —
+  never two places, never none.
+- **New windows append.** A window that appears lands at the end of the active workspace on the
+  screen it mostly overlaps; a dialog joins its owner's workspace right after it.
+- **New workspaces append.** A freshly created workspace always goes to the bottom of its screen's
+  stack.
+- **There's always a way down.** Each screen's stack ends with one empty workspace, so "down" is
+  always meaningful; once it gains a window a fresh empty one appears below it, and empty
+  workspaces in the middle disappear on their own — except pinned ones (seeded from config), which
+  stick around even empty so named categories survive before windows do.
+- **Focus is always somewhere real.** The focused window is always in the active workspace of the
+  focused screen, or is a floating "visitor" window that belongs to no workspace at all.
+
+## Interface
+
+<p align="center">
+  <img src="docs/media/interface-showcase.webp" width="720" alt="Rail tiles and window tabs tracking focus">
+</p>
+
+Two panels, one job: show *where you are*.
+
+- **System panel** (left rail, 48 pt): search, workspace tiles, `+`, stacked clock. Click a tile
+  to go there.
+- **Workspace panel** (top bar, 34 pt): a tab per window on the active row, plus the layout
+  switcher.
+- **Focus glow**: a 3 pt accent stroke at the window's *desired* frame — it arrives before the
+  window does.
+
+## Layouts
+
+<p align="center">
+  <img src="docs/media/tiling-showcase.webp" width="720" alt="Cycle maximize, split, column, half, grid">
+</p>
+
+`Fn+Space` cycles them: **maximize** · **split** · **column** · **half** · **grid**.
 
 ## Status
 
-**M1 — spatial core**, headless (no drawn UI yet). What works: the screen/workspace/window model
-and its invariants, all five tiling layouts, the full hotkey set under two presets, TOML config
-with live reload, JSON state persistence for pinned workspaces, window classification (tiled /
-floating / ephemeral / ignored), and parking (the single mechanism that hides everything not on
-the active workspace). What's next — **M2**: the shell UI (`ScreenPanel` workspace rail,
-`WorkspacePanel` tab bar + layout switcher), the ephemeral-window overview/launcher, `Fn+Drag`
-reordering, and a Zen-mode toggle for `Fn+Esc` (currently reserved as a no-op).
+**M1 — spatial core**, shipped and running (headless). Screen/workspace/window model and its
+invariants, all five tiling layouts, the full hotkey set under two presets, TOML config with live
+reload, JSON state persistence for pinned workspaces, window classification (tiled / floating /
+ephemeral / ignored), and parking.
+
+**M2 — shell UI**, in progress. The loops above are rendered from the M2 chrome (rail, tabs,
+layouts, glow). Runtime still needs the panels wired; `Fn+Esc` (Zen) is reserved.
+
+Loops are served as animated **webp** (and **gif** next to them) from
+[`docs/media/`](docs/media/). Regenerate with `Scripts/render-m2-media.py`.
 
 ## Install
 
@@ -78,21 +141,6 @@ hidden windows are skipped, and ephemeral "visitor" windows are in no row at all
 does not fight macOS for it. All chords are configurable — see [`docs/keybindings.md`](docs/keybindings.md)
 for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/config.md` for the full reference.
 
-## The model
-
-- **Single address.** Every managed window lives in exactly one workspace of exactly one screen —
-  never two places, never none.
-- **New windows append.** A window that appears lands at the end of the active workspace on the
-  screen it mostly overlaps; a dialog joins its owner's workspace right after it.
-- **New workspaces append.** A freshly created workspace always goes to the bottom of its screen's
-  stack.
-- **There's always a way down.** Each screen's stack ends with one empty workspace, so "down" is
-  always meaningful; once it gains a window a fresh empty one appears below it, and empty
-  workspaces in the middle disappear on their own — except pinned ones (seeded from config), which
-  stick around even empty so named categories survive before windows do.
-- **Focus is always somewhere real.** The focused window is always in the active workspace of the
-  focused screen, or is a floating "visitor" window that belongs to no workspace at all.
-
 ## Known limitations
 
 - **One native macOS Space per display.** Workspaces are emulated by parking inactive windows in a
@@ -108,8 +156,6 @@ for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/c
 - **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
   the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
   keyboard) or the `ctrl-alt` preset instead.
-- **No UI yet.** M1 is headless and entirely keyboard-driven; the workspace rail, tab bar, and
-  overview arrive in M2.
 
 ## Licence and attribution
 
