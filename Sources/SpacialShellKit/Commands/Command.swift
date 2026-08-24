@@ -24,6 +24,7 @@ public enum Command: Sendable, Hashable {
     case selectWindow(WindowRef)           // tab click
     case setLayout(DisplayID, Layout)      // layout switcher; applies to that screen's active workspace
     case closeWindow(WindowRef)            // tab close button
+    case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
 }
 
 public enum Effect: Sendable, Equatable {

@@ -8,11 +8,11 @@ workspace panel with app tabs and the layout switcher, launcher overview in the 
 ## 1. Scope
 
 **In this slice**: `ScreenPanel` (workspace rail), `WorkspacePanel` (window tab bar + layout
-switcher), Zen mode on `toggle-shell-ui`, panel insets in the layout, `[ui]` config.
+switcher), Zen mode on `toggle-shell-ui`, panel insets in the layout, `[ui]` config; second
+commit: the overview/launcher on `toggle-overview` (`Fn+Tab`).
 
-**Deferred within M2**: the ephemeral-window overview/launcher, `Fn+Drag` reordering, window
-titles in tabs (needs an AX title feed through the store; tabs show app name + icon until then),
-workspace renaming from the rail.
+**Deferred within M2**: `Fn+Drag` reordering, window titles in tabs and the overview (needs an AX
+title feed through the store; app name + icon until then), workspace renaming from the rail.
 
 ## 2. Shape
 
@@ -88,7 +88,28 @@ appearance, per the M1 spec's theming row. Frames are set in `NSScreen` coordina
 world's `DisplayID` by `DisplayTopology.uuid(for:)`, now public. Hot-plugs re-anchor on
 `didChangeScreenParameters` immediately and reconcile fully when the backend's snapshot lands.
 
-## 7. Testing
+## 7. Overview / launcher
+
+material-shell's launcher (search field + app grid), macOS-shaped and Spotlight-placed. One
+`OverviewPanel` — borderless, `.nonactivatingPanel` like the other shell windows but `canBecomeKey
+== true`, because the search field needs typing; non-activation means taking key still does not
+activate SpacialShell. Two sections under one query: **Windows** (every placed window in the
+world, plus ephemeral visitors; click sends `.selectWindow`) and **Applications** (top-level
+`.app` bundles from `/Applications`, `/System/Applications{,/Utilities}`, `~/Applications`; click
+launches via `NSWorkspace` and the new window is adopted by the ordinary rules — "lands at the end
+of the current workspace" is the launcher's whole contract with the model). `Esc`, `Fn+Tab` again,
+or clicking away dismisses (`resignKey` is a dismissal); `Enter` opens the first match, windows
+before apps. A plain dismissal re-sends `.selectWindow` on the model's focused window to hand back
+the key focus the search field took; a dismissal caused by a selection skips that — the
+selection's own focus command must not race a restore.
+
+`toggle-overview` is a `Command` so it rides the existing tap → table → dispatch path, but
+AppRuntime routes it to the overview controller instead of the store — opening a search box is
+not a model mutation, and `CommandRunner` treats it as a no-op if it ever arrives there. App
+icons are cached by URL across opens; names come from bundle filenames (localized display names
+can follow with the AX title feed).
+
+## 8. Testing
 
 Pure parts under `SpacialShellKitTests` (`ShellUITests.swift`): state derivation (rail order,
 active/pinned/trailing flags, tab flags, focus), the four commands (cross-screen focus moves,

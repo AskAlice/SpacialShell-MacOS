@@ -98,6 +98,11 @@ public enum CommandRunner {
         case .closeWindow(let r):
             effects.append(.close(r))
 
+        case .toggleOverview:
+            // The overview is an app-layer overlay; AppRuntime routes this before the store, and
+            // if it does reach the store anyway (custom wiring, tests) it must change nothing.
+            break
+
         case .focusScreen(let n):
             guard w.screenOrder.count > 1, let i = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
             let j = n == .next ? (i + 1) % w.screenOrder.count : (i - 1 + w.screenOrder.count) % w.screenOrder.count
