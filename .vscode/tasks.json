@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "swift",
+      "label": "swift: Build Debug SpacialShell",
+      "detail": "swift build --product SpacialShell",
+      "args": ["build", "--product", "SpacialShell"],
+      "cwd": "${workspaceFolder}",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$swiftc"]
+    },
+    {
+      "type": "swift",
+      "label": "swift: Build Release SpacialShell",
+      "args": ["build", "-c", "release", "--product", "SpacialShell"],
+      "cwd": "${workspaceFolder}",
+      "group": "build",
+      "problemMatcher": ["$swiftc"]
+    },
+    {
+      "label": "Test (skip platform)",
+      "type": "shell",
+      "command": "swift test --skip SpacialShellPlatformTests --skip PlatformIntegrationTests",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": ["$swiftc"]
+    }
+  ]
+}

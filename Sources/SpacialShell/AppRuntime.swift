@@ -2,6 +2,7 @@ import AppKit
 import CoreGraphics
 import SpacialShellKit
 import struct SpacialShellProtocol.WindowRef
+import enum SpacialShellProtocol.JSONValue
 import SpacialShellPlatform
 import os
 
@@ -27,6 +28,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     private var tap: HotkeyTap?
+    private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
     private var configWatch: DispatchSourceFileSystemObject?
@@ -73,6 +75,32 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
         await store.start()
+
+        log.info("stage 6b/8: starting the control socket")
+        let ipc = IPCServer { request in
+            switch request.cmd {
+            case "version":
+                return .ok(id: request.id, data: .object(["version": .string(SpacialShellKit.version)]))
+            case "run":
+                guard let name = request.args["command"]?.stringValue,
+                      let command = KeyBindings.commandNames[name]
+                else { return .failure(id: request.id, "unknown command") }
+                await store.run(command)
+                return .ok(id: request.id)
+            case "state":
+                let state = WireState(world: await store.world)
+                return .ok(id: request.id, data: (try? JSONValue(encoding: state)) ?? .null)
+            default:
+                return .failure(id: request.id, "unknown cmd \(request.cmd)")
+            }
+        }
+        do {
+            try ipc.start()
+            self.ipc = ipc
+            termination.arm(ipc: ipc)
+        } catch {
+            log.error("control socket failed (\(String(describing: error), privacy: .public)); spacialctl is inactive")
+        }
 
         log.info("stage 7/8: starting the hotkey tap")
         // Ruling 8: the store is captured directly, never through `self` — the closure runs on the
@@ -214,6 +242,7 @@ final class TerminationGate: @unchecked Sendable {
     private var store: WorldStore?
     private var backend: AXWindowBackend?
     private var tap: HotkeyTap?
+    private var ipc: IPCServer?
     private var didTerminate = false
     /// The most recent world `WorldStore.onChange` published. The fallback when the export times
     /// out — see `fallbackExport`.
@@ -225,6 +254,10 @@ final class TerminationGate: @unchecked Sendable {
 
     func arm(tap: HotkeyTap) {
         lock.lock(); self.tap = tap; lock.unlock()
+    }
+
+    func arm(ipc: IPCServer) {
+        lock.lock(); self.ipc = ipc; lock.unlock()
     }
 
     /// Called from `WorldStore`'s `onChange`, off the main actor.
@@ -240,12 +273,13 @@ final class TerminationGate: @unchecked Sendable {
             return
         }
         didTerminate = true
-        let store = self.store, backend = self.backend, tap = self.tap
+        let store = self.store, backend = self.backend, tap = self.tap, ipc = self.ipc
         lock.unlock()
 
-        // First, stop taking commands: a keystroke landing between the export and the restore
-        // would move windows the restore has already decided about.
+        // First, stop taking commands: a keystroke or IPC request landing between the export and
+        // the restore would move windows the restore has already decided about.
         tap?.stop()
+        ipc?.stop()
         guard let store, let backend else { return }
 
         let export = Box<TerminationExport>()

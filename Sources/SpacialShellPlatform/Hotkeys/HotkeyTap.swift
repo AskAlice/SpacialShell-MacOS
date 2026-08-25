@@ -55,6 +55,8 @@ public final class HotkeyTap: @unchecked Sendable {
         ].map { UInt16($0) })
 
     private let onCommand: @Sendable (Command) -> Void
+    /// Never consumes the event. Used for the Command-hold cheatsheet.
+    private let onFlags: (@Sendable (CGEventFlags) -> Void)?
     /// `SPACIAL_LOG_KEYS=1` logs every keyDown's keycode and flags — the instrument for the
     /// empirical checks in `docs/platform-notes.md`.
     private let logKeys: Bool
@@ -122,9 +124,14 @@ public final class HotkeyTap: @unchecked Sendable {
         }
     }
 
-    public init(table: [Chord: Command], onCommand: @escaping @Sendable (Command) -> Void) {
+    public init(
+        table: [Chord: Command],
+        onCommand: @escaping @Sendable (Command) -> Void,
+        onFlags: (@Sendable (CGEventFlags) -> Void)? = nil,
+    ) {
         self.table = table
         self.onCommand = onCommand
+        self.onFlags = onFlags
         self.logKeys = ProcessInfo.processInfo.environment["SPACIAL_LOG_KEYS"] == "1"
     }
 
@@ -271,6 +278,7 @@ public final class HotkeyTap: @unchecked Sendable {
         if failCreation { return false }
         let mask: CGEventMask =
             (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.tapDisabledByTimeout.rawValue)
             | (1 << CGEventType.tapDisabledByUserInput.rawValue)
         guard
@@ -466,6 +474,10 @@ public final class HotkeyTap: @unchecked Sendable {
             }
             onCommand(command)
             return nil                                       // consume: the front app never sees it
+
+        case .flagsChanged:
+            onFlags?(event.flags)
+            return passThrough
 
         default:
             return passThrough
