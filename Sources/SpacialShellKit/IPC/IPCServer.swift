@@ -65,10 +65,11 @@ public final class IPCServer: @unchecked Sendable {
     // MARK: queue only
 
     private func acceptOne() {
-        let fd = accept(listenFD, nil, nil)
-        guard fd >= 0 else { return }
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
-        readers[fd] = (source, LineFramer())
+let fd = accept(listenFD, nil, nil)
+guard fd >= 0 else { return }
+var one: Int32 = 1
+_ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout.size(ofValue: one)))
+let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.readSome(fd) }
         source.setCancelHandler { close(fd) }
         source.resume()
