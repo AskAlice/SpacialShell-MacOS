@@ -41,7 +41,7 @@ struct WorkspacePanelView: View {
             }
             if tab.isFocused {
                 Button {
-                    send(.closeWindow(tab.ref))
+                    send(.closeWindowRef(tab.ref))
                 } label: {
                     Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).opacity(0.6)
                 }
@@ -65,7 +65,7 @@ struct WorkspacePanelView: View {
         .opacity(tab.isHidden ? 0.45 : 1)
         .frame(maxWidth: 220)
         .contentShape(Rectangle())
-        .onTapGesture { send(.selectWindow(tab.ref)) }
+        .onTapGesture { send(.focusWindowRef(tab.ref)) }
         .help(meta.name)
     }
 
@@ -73,7 +73,7 @@ struct WorkspacePanelView: View {
         HStack(spacing: 2) {
             ForEach(Layout.allCases, id: \.self) { l in
                 Button {
-                    send(.setLayout(state.display, l))
+                    if let ws = state.rail.first(where: \.isActive) { send(.setWorkspaceLayout(ws.id, l)) }
                 } label: {
                     Image(systemName: Self.symbol(for: l))
                         .font(.system(size: 12))

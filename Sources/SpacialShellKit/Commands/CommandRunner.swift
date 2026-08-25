@@ -65,19 +65,20 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .toggleShellUI:
-            w.shellUIVisible.toggle()
+            // Zen (M2 design ruling): one bit, one verb; the reconciler reads it for the insets.
+            w.zen.toggle()
             effects.append(.relayout)
 
-        case .activateWorkspace(let d, let i):
-            guard let s = w.screens[d], (0..<s.workspaces.count).contains(i) else { return (w, []) }
+        case .focusWorkspaceID(let id):
+            guard let loc = w.location(ofWorkspace: id) else { return (w, []) }
             // Focus moves to the clicked screen first so `activate` re-derives the focused window
             // from that workspace's anchor, exactly as the keyboard path does.
-            if w.focus.screen != d { w.focus = Focus(screen: d, window: nil) }
-            w.activate(index: i, on: d)
+            if w.focus.screen != loc.screen { w.focus = Focus(screen: loc.screen, window: nil) }
+            w.activate(index: loc.index, on: loc.screen)
             if let f = w.focus.window { effects.append(.focus(f)) }
             effects.append(.relayout)
 
-        case .selectWindow(let r):
+        case .focusWindowRef(let r):
             if w.ephemeral.contains(r) { w.focus.window = r; return (w, [.focus(r)]) }
             // A minimized/hidden window keeps its tab but a click cannot land focus on it: raising
             // it would not deminiaturize it, and focus must stay somewhere real (invariant 5).
@@ -89,18 +90,17 @@ public enum CommandRunner {
             w.normalize()
             effects.append(.focus(r)); effects.append(.relayout)
 
-        case .setLayout(let d, let l):
-            guard var s = w.screens[d] else { return (w, []) }
-            s.workspaces[s.activeIndex].layout = l
-            w.screens[d] = s
+        case .setWorkspaceLayout(let id, let l):
+            guard let loc = w.location(ofWorkspace: id) else { return (w, []) }
+            w.screens[loc.screen]!.workspaces[loc.index].layout = l
             effects.append(.relayout)
 
-        case .closeWindow(let r):
+        case .closeWindowRef(let r):
             effects.append(.close(r))
 
-        case .toggleOverview:
-            // The overview is an app-layer overlay; AppRuntime routes this before the store, and
-            // if it does reach the store anyway (custom wiring, tests) it must change nothing.
+        case .toggleOverview, .openSettings:
+            // App-layer surfaces; AppRuntime routes them before the store, and if one does reach
+            // the store anyway (custom wiring, tests) it must change nothing.
             break
 
         case .focusScreen(let n):

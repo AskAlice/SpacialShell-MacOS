@@ -1,23 +1,14 @@
 import Foundation
 import CoreGraphics
+import SpacialShellProtocol
 
-public typealias DisplayID = String   // CGDisplayCreateUUIDFromDisplayID string
-public typealias WindowID = UInt32    // CGWindowID
-
-public struct WindowRef: Hashable, Codable, Sendable, CustomStringConvertible {
-    public let id: WindowID
-    public let pid: Int32
-    public init(id: WindowID, pid: Int32) { self.id = id; self.pid = pid }
-    public var description: String { "w\(id)@\(pid)" }
-}
-
-public enum Layout: String, Codable, CaseIterable, Sendable {
-    case maximize, split, column, half, grid
-    public var next: Layout {
-        let all = Layout.allCases
-        return all[(all.firstIndex(of: self)! + 1) % all.count]
-    }
-}
+// Moved to SpacialShellProtocol (M2 D4) so `spacialctl` and the IPC server can share these types
+// without linking the model. Typealiases keep every M1 call site (`WindowRef(id:pid:)`,
+// `Layout.allCases`, …) compiling unchanged.
+public typealias DisplayID = SpacialShellProtocol.DisplayID
+public typealias WindowID = SpacialShellProtocol.WindowID
+public typealias WindowRef = SpacialShellProtocol.WindowRef
+public typealias Layout = SpacialShellProtocol.Layout
 
 public enum WindowKind: String, Codable, Sendable { case tile, float, ephemeral, ignore }
 
@@ -67,15 +58,16 @@ public struct World: Codable, Equatable, Sendable {
     public var hidden: Set<WindowRef>          // minimized or app-hidden; keep slot, skip layout+nav
     public var parents: [WindowRef: WindowRef] // dialog → owner
     public var defaultLayout: Layout
-    /// Zen mode (spec §6, `toggle-shell-ui`): false hides the panels and gives their edges back to
-    /// the layout. Lives in the model because the layout rect depends on it — the reconciler reads
-    /// it to choose the panel insets, so a toggle is an ordinary command → relayout round trip.
-    public var shellUIVisible: Bool
+    /// Zen mode (M2 design ruling): true hides the shell panels and gives their edges back to the
+    /// layout. Lives in the model because the layout rect depends on it — the reconciler reads it
+    /// via `ShellInsets(config:hidden:)`, so a toggle is an ordinary command → relayout round
+    /// trip. Persisted in `state.json` (`PersistedState.zen`) so it survives relaunch.
+    public var zen: Bool
     public init(screens: [DisplayID: Screen], screenOrder: [DisplayID], focus: Focus,
                 ephemeral: Set<WindowRef>, ignored: Set<WindowRef>, hidden: Set<WindowRef>,
-                parents: [WindowRef: WindowRef], defaultLayout: Layout, shellUIVisible: Bool = true) {
+                parents: [WindowRef: WindowRef], defaultLayout: Layout, zen: Bool = false) {
         self.screens = screens; self.screenOrder = screenOrder; self.focus = focus
         self.ephemeral = ephemeral; self.ignored = ignored; self.hidden = hidden
-        self.parents = parents; self.defaultLayout = defaultLayout; self.shellUIVisible = shellUIVisible
+        self.parents = parents; self.defaultLayout = defaultLayout; self.zen = zen
     }
 }

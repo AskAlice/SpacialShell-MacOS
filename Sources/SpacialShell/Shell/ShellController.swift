@@ -4,8 +4,9 @@ import SpacialShellKit
 import SpacialShellPlatform
 
 /// Owns one rail + one bar per display and keeps them in step with the world. Pure plumbing: the
-/// content is `ShellUI.state(for:in:)`, the geometry is `[ui]` config, and every click goes back
-/// through the same `Command` pipeline as a hotkey — the panels never touch the model directly.
+/// content is `ShellUI.state(for:in:)`, the geometry is the `panel-width`/`panel-height`/
+/// `rail-side` config keys, and every click goes back through the same `Command` pipeline as a
+/// hotkey — the panels never touch the model directly.
 ///
 /// Runs entirely on the main actor and is driven by two inputs: `update(world:)` from the store's
 /// `onChange`, and `NSApplication.didChangeScreenParametersNotification` for hot-plugs (the world
@@ -22,12 +23,12 @@ final class ShellController: NSObject {
 
     private var panels: [DisplayID: Panels] = [:]
     private var world: World?
-    private var ui: UIConfig
+    private var config: Config
     private let send: @Sendable (Command) -> Void
     private let appMeta: AppMetaCache
 
-    init(ui: UIConfig, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
-        self.ui = ui
+    init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
+        self.config = config
         self.appMeta = appMeta
         self.send = send
         super.init()
@@ -45,8 +46,8 @@ final class ShellController: NSObject {
         render()
     }
 
-    func update(ui: UIConfig) {
-        self.ui = ui
+    func update(config: Config) {
+        self.config = config
         render()
     }
 
@@ -56,8 +57,8 @@ final class ShellController: NSObject {
 
     private func render() {
         guard let world else { return }
-        let visible = ui.enabled && world.shellUIVisible
-        let railWidth = CGFloat(ui.railWidth), barHeight = CGFloat(ui.barHeight)
+        let visible = config.showPanels && !world.zen
+        let railWidth = CGFloat(config.panelWidth), barHeight = CGFloat(config.panelHeight)
         var seen: Set<DisplayID> = []
 
         for nsScreen in NSScreen.screens {
@@ -68,12 +69,15 @@ final class ShellController: NSObject {
             panels[id] = p
 
             // NSScreen speaks bottom-left y-up; panels are placed directly in it, no flip needed.
+            // `rail-side` mirrors the rail; the bar always spans the rest of the top edge.
             let vf = nsScreen.visibleFrame
-            p.rail.setFrame(NSRect(x: vf.minX, y: vf.minY, width: railWidth, height: vf.height), display: true)
-            p.bar.setFrame(NSRect(x: vf.minX + railWidth, y: vf.maxY - barHeight,
+            let railX = config.railSide == .left ? vf.minX : vf.maxX - railWidth
+            let barX = config.railSide == .left ? vf.minX + railWidth : vf.minX
+            p.rail.setFrame(NSRect(x: railX, y: vf.minY, width: railWidth, height: vf.height), display: true)
+            p.bar.setFrame(NSRect(x: barX, y: vf.maxY - barHeight,
                                   width: vf.width - railWidth, height: barHeight), display: true)
 
-            p.railHost.rootView = ScreenPanelView(state: state, send: forward)
+            p.railHost.rootView = ScreenPanelView(state: state, launcherURL: config.launcherURL, send: forward)
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), send: forward)
 
             if visible {
@@ -94,7 +98,7 @@ final class ShellController: NSObject {
 
     private func makePanels(for id: DisplayID) -> Panels {
         let placeholder = ScreenShellState(display: id, isFocusedScreen: false, rail: [], tabs: [], layout: .maximize)
-        let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, send: forward))
+        let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL, send: forward))
         let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), send: forward))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost

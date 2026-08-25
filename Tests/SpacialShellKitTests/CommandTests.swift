@@ -77,7 +77,11 @@ import Foundation
         (w, _) = run(w, .toggleFloat); #expect(w.screens["D1"]!.active.floating == [a])
         (w, _) = run(w, .toggleFloat); #expect(w.screens["D1"]!.active.floating.isEmpty)
     }
-    @Test func toggleShellUIIsNoop() { let w = base(); #expect(run(w, .toggleShellUI).0 == w) }
+    @Test func toggleShellUIFlipsZen() {
+        let (w, e) = run(base(), .toggleShellUI)
+        #expect(w.zen && e == [.relayout])
+        #expect(!run(w, .toggleShellUI).0.zen)
+    }
     @Test func commandsOnEmptyWorldDontCrash() {
         let w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         for c: Command in [.focusWindow(.left), .moveWindow(.right), .moveWindowToWorkspace(.down), .closeFocusedWindow, .toggleFloat, .moveWindowToScreen(.next), .focusScreen(.prev)] {

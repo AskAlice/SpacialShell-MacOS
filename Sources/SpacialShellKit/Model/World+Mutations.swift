@@ -21,6 +21,13 @@ extension World {
     public func workspace(containing w: WindowRef) -> Workspace? {
         location(of: w).map { screens[$0.screen]!.workspaces[$0.index] }
     }
+    /// Workspace by id, wherever it lives — the address the shell-UI/IPC verbs speak.
+    public func location(ofWorkspace id: UUID) -> (screen: DisplayID, index: Int)? {
+        for sid in screenOrder {
+            if let i = screens[sid]!.workspaces.firstIndex(where: { $0.id == id }) { return (sid, i) }
+        }
+        return nil
+    }
     public func screenContaining(_ w: WindowRef) -> DisplayID? { location(of: w)?.screen }
     /// Windows the layout engine positions: not floating, not hidden.
     public func tiled(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !ws.floating.contains($0) && !hidden.contains($0) } }

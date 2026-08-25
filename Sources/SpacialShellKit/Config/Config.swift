@@ -1,5 +1,10 @@
 import Foundation
 import TOMLDecoder
+// `Layout` (used below as a default-argument shorthand, e.g. `= .maximize`) is now a
+// `SpacialShellProtocol.Layout` typealias (M2 D4); Swift requires the declaring module to be
+// imported in any file that resolves an implicit-member default argument against it, even though
+// the typealias itself is visible through `SpacialShellKit`.
+import SpacialShellProtocol
 
 public struct AppRule: Codable, Equatable, Sendable {
     public var bundleId: String
@@ -27,20 +32,27 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
 }
 
 public enum KeybindingPreset: String, Codable, Sendable { case fn, ctrlAlt = "ctrl-alt" }
+public enum RailSide: String, Codable, Sendable { case left, right }
+public enum ShellTheme: String, Codable, Sendable { case system, dark, light }
+public enum ShellFont: String, Codable, Sendable { case system, rounded, monospaced }
+public enum IconSet: String, Codable, Sendable { case sfSymbols = "sf-symbols", letters }
 
-/// `[ui]` table. `enabled = false` removes the shell panels entirely (M1 behaviour); with them
-/// enabled, `Fn+Esc` (Zen mode) hides and shows them at runtime.
-public struct UIConfig: Codable, Equatable, Sendable {
-    public var enabled: Bool = true
-    public var railWidth: Double = 48    // ScreenPanel (left workspace rail), pt
-    public var barHeight: Double = 38    // WorkspacePanel (top tab bar), pt
-    public init() {}
-    enum CodingKeys: String, CodingKey { case enabled, railWidth = "rail-width", barHeight = "bar-height" }
-    public init(from d: Decoder) throws {
-        let c = try d.container(keyedBy: CodingKeys.self)
-        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
-        railWidth = try c.decodeIfPresent(Double.self, forKey: .railWidth) ?? 48
-        barHeight = try c.decodeIfPresent(Double.self, forKey: .barHeight) ?? 38
+public enum HighlightColor {
+    public static func normalize(_ s: String) -> String? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.lowercased() == "system" { return "system" }
+        let hex = t.hasPrefix("#") ? String(t.dropFirst()) : t
+        guard hex.count == 6 || hex.count == 8, hex.allSatisfy(\.isHexDigit) else { return nil }
+        return "#" + hex.uppercased()
+    }
+    public static func rgba(_ s: String) -> (Double, Double, Double, Double)? {
+        guard let n = normalize(s), n != "system" else { return nil }
+        let h = String(n.dropFirst())
+        func byte(_ i: Int) -> Double {
+            let a = h.index(h.startIndex, offsetBy: i)
+            return Double(Int(h[a..<h.index(a, offsetBy: 2)], radix: 16)!) / 255
+        }
+        return (byte(0), byte(2), byte(4), h.count == 8 ? byte(6) : 1)
     }
 }
 
@@ -51,12 +63,21 @@ public struct Config: Codable, Equatable, Sendable {
     public var axTimeoutMs: Int = 1000
     public var refreshIntervalMs: Int = 2000
     public var startAtLogin: Bool = false
+    public var panelWidth: Double = 48
+    public var panelHeight: Double = 34
+    public var railSide: RailSide = .left
+    public var highlightMs: Int = 600
+    public var launcherURL: String = "raycast://"
+    public var showPanels: Bool = true
+    public var theme: ShellTheme = .system
+    public var highlightColor: String = "system"
+    public var font: ShellFont = .system
+    public var iconSet: IconSet = .sfSymbols
     public var workspaces: [WorkspaceSeed] = []
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
     public var keybindings: [String: String] = [:]
-    public var ui: UIConfig = UIConfig()
 
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.systempreferences"), AppRule(bundleId: "com.apple.calculator")]
 
@@ -65,7 +86,10 @@ public struct Config: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
-             ephemeral, float, ignore, keybindings, ui
+             ephemeral, float, ignore, keybindings,
+             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side",
+             highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
+             theme, highlightColor = "highlight-color", font, iconSet = "icon-set"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -75,16 +99,77 @@ public struct Config: Codable, Equatable, Sendable {
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
+        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 48
+        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
+        railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
+        highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
+        launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
+        showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
+        theme = try c.decodeIfPresent(ShellTheme.self, forKey: .theme) ?? .system
+        if let raw = try c.decodeIfPresent(String.self, forKey: .highlightColor) {
+            guard let n = HighlightColor.normalize(raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .highlightColor, in: c, debugDescription: "highlight-color must be \"system\" or #RRGGBB")
+            }
+            highlightColor = n
+        } else { highlightColor = "system" }
+        font = try c.decodeIfPresent(ShellFont.self, forKey: .font) ?? .system
+        iconSet = try c.decodeIfPresent(IconSet.self, forKey: .iconSet) ?? .sfSymbols
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
         ignore = try c.decodeIfPresent([AppRule].self, forKey: .ignore) ?? []
         keybindings = try c.decodeIfPresent([String: String].self, forKey: .keybindings) ?? [:]
-        ui = try c.decodeIfPresent(UIConfig.self, forKey: .ui) ?? UIConfig()
     }
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }
     public static func load(from url: URL) throws -> Config { try parse(toml: String(contentsOf: url, encoding: .utf8)) }
+
+    /// ponytail: hand-written TOML (no encoder in deps). Round-trips values; drops comments.
+    public func render() -> String {
+        func q(_ s: String) -> String {
+            "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+        }
+        var o = """
+        # written by SpacialShell settings; hand-edited comments are not preserved
+        keybinding-preset = \(q(keybindingPreset.rawValue))
+        gap = \(gap)
+        default-layout = \(q(defaultLayout.rawValue))
+        ax-timeout-ms = \(axTimeoutMs)
+        refresh-interval-ms = \(refreshIntervalMs)
+        start-at-login = \(startAtLogin)
+        panel-width = \(panelWidth)
+        panel-height = \(panelHeight)
+        rail-side = \(q(railSide.rawValue))
+        highlight-ms = \(highlightMs)
+        launcher-url = \(q(launcherURL))
+        show-panels = \(showPanels)
+        theme = \(q(theme.rawValue))
+        highlight-color = \(q(highlightColor))
+        font = \(q(font.rawValue))
+        icon-set = \(q(iconSet.rawValue))
+
+        """
+        func rules(_ name: String, _ items: [AppRule]) {
+            for r in items {
+                o += "\n[[\(name)]]\nbundle-id = \(q(r.bundleId))\n"
+                if let t = r.titleRegex { o += "title-regex = \(q(t))\n" }
+            }
+        }
+        for w in workspaces {
+            o += "\n[[workspace]]\nname = \(q(w.name))\nsymbol = \(q(w.symbol))\nlayout = \(q(w.layout.rawValue))\n"
+        }
+        rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore)
+        if !keybindings.isEmpty {
+            o += "\n[keybindings]\n"
+            for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }
+        }
+        return o
+    }
+
+    public func save(to url: URL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try render().write(to: url, atomically: true, encoding: .utf8)
+    }
 
     /// Spec §7.3 rule 0: config wins over heuristics. Order: ephemeral, float, ignore.
     public func kindOverride(bundleID: String?, title: String) -> WindowKind? {

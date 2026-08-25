@@ -16,14 +16,15 @@ public enum Command: Sendable, Hashable {
     case focusScreen(Neighbor)
     case moveWindowToScreen(Neighbor)
     case toggleFloat
+    case openSettings
 
-    // Shell-UI verbs (M2). The keyboard verbs above are relative to the focused screen; a panel
-    // click names its target outright — the rail on a second screen must work without moving
-    // focus there first.
-    case activateWorkspace(DisplayID, Int) // rail click; 0-based index into that screen's stack
-    case selectWindow(WindowRef)           // tab click
-    case setLayout(DisplayID, Layout)      // layout switcher; applies to that screen's active workspace
-    case closeWindow(WindowRef)            // tab close button
+    // Shell-UI verbs (M2 design §Decisions: distinct base names, payloads Hashable). The keyboard
+    // verbs above are relative to the focused screen; a panel click or IPC call names its target
+    // outright — the rail on a second screen must work without moving focus there first.
+    case focusWorkspaceID(UUID)            // rail click; workspace by id, wherever it lives
+    case focusWindowRef(WindowRef)         // tab click / overview selection
+    case setWorkspaceLayout(UUID, Layout)  // layout switcher; targets that workspace directly
+    case closeWindowRef(WindowRef)         // tab close button
     case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
 }
 

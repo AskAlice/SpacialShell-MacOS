@@ -5,7 +5,7 @@ import SpacialShellPlatform
 
 /// Owns the overview/launcher overlay. Toggled by `toggle-overview` (`Fn+Tab`), which AppRuntime
 /// routes here instead of the store — opening a search box is not a model mutation. Selections
-/// re-enter the ordinary pipeline: a window cell sends `.selectWindow`, an app cell launches via
+/// re-enter the ordinary pipeline: a window cell sends `.focusWindowRef`, an app cell launches via
 /// `NSWorkspace` and the new window is adopted by the store like any other window that appears.
 @MainActor
 final class OverviewController {
@@ -44,7 +44,7 @@ final class OverviewController {
             apps: installedApps(),
             onSelectWindow: { [weak self] ref in
                 self?.close(restoreFocus: false)   // the selection is the focus; a restore could race it
-                self?.send(.selectWindow(ref))
+                self?.send(.focusWindowRef(ref))
             },
             onLaunchApp: { [weak self] url in
                 self?.close(restoreFocus: false)   // the launched app takes focus when its window adopts
@@ -78,7 +78,7 @@ final class OverviewController {
         // hand it back to the window the model says is focused, so the overview leaves no trace.
         // Skipped when a selection follows — its own focus command must not race a restore.
         if restoreFocus, let f = world?.focus.window {
-            send(.selectWindow(f))
+            send(.focusWindowRef(f))
         }
     }
 
