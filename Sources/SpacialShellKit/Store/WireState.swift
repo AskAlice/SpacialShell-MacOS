@@ -1,6 +1,6 @@
 import Foundation
 
-/// v0 `spacialctl state` payload — workspaces only, no window rows.
+/// v1 `spacialctl state` payload — workspaces only, no window rows.
 /// ponytail: superseded by ShellSnapshot (M2 Task 8), which adds titles/appNames/chrome.
 public struct WireState: Codable, Equatable, Sendable {
     public struct WorkspaceDTO: Codable, Equatable, Sendable {
