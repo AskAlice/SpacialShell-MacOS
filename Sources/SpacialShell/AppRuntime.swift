@@ -12,7 +12,7 @@ import os
 /// *before* `AXWindowBackend.start()`, because the global event monitors it installs are silently
 /// `nil` without it and would never be retried; the world has to be built before the store, since
 /// the store's first reconcile lays out against it; and the hotkey tap comes up last so a
-/// keystroke canp't reach a store that has not started.
+/// keystroke can't reach a store that has not started.
 @MainActor
 final class AppRuntime: NSObject, NSApplicationDelegate {
     private let log = Logger(subsystem: Paths.bundleID, category: "app")
