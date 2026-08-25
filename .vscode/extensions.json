@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "swiftlang.swift-vscode",
+    "llvm-vs-code-extensions.lldb-dap",
+    "tamasfe.even-better-toml",
+    "timonwong.shellcheck",
+    "github.vscode-github-actions"
+  ]
+}

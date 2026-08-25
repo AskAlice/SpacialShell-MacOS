@@ -60,51 +60,57 @@ import Foundation
         return r
     }
 
-    @Test func activateWorkspaceOnOtherScreenMovesFocusThere() {
-        let (w, e) = run(base(), .activateWorkspace("D2", 0))
+    @Test func focusWorkspaceIDOnOtherScreenMovesFocusThere() {
+        let w0 = base()
+        let target = w0.screens["D2"]!.workspaces[0].id
+        let (w, e) = run(w0, .focusWorkspaceID(target))
         #expect(w.focus.screen == "D2" && w.focus.window == c)
         #expect(e == [.focus(c), .relayout])
     }
-    @Test func activateTrailingEmptyLandsNowhereReal() {
-        let (w, e) = run(base(), .activateWorkspace("D1", 1))
+    @Test func focusTrailingEmptyLandsNowhereReal() {
+        let w0 = base()
+        let target = w0.screens["D1"]!.workspaces[1].id
+        let (w, e) = run(w0, .focusWorkspaceID(target))
         #expect(w.screens["D1"]!.activeIndex == 1 && w.focus.window == nil)
         #expect(e == [.relayout])
     }
-    @Test func activateWorkspaceOutOfRangeIsANoOp() {
+    @Test func unknownWorkspaceIDIsANoOp() {
         let before = base()
-        let (w, e) = run(before, .activateWorkspace("D1", 9))
+        let (w, e) = run(before, .focusWorkspaceID(UUID()))
         #expect(w == before && e.isEmpty)
     }
 
-    @Test func selectWindowCrossesScreensAndAnchors() {
-        let (w, e) = run(base(), .selectWindow(c))
+    @Test func focusWindowRefCrossesScreensAndAnchors() {
+        let (w, e) = run(base(), .focusWindowRef(c))
         #expect(w.focus == Focus(screen: "D2", window: c))
         #expect(w.screens["D2"]!.active.anchor == c)
         #expect(e == [.focus(c), .relayout])
     }
-    @Test func selectHiddenWindowIsANoOp() {
+    @Test func focusHiddenWindowIsANoOp() {
         var w = base(); w.setHidden(b, true)
         let before = w
-        let (after, e) = run(w, .selectWindow(b))
+        let (after, e) = run(w, .focusWindowRef(b))
         #expect(after == before && e.isEmpty)
     }
-    @Test func selectEphemeralFocusesWithoutAWorkspace() {
+    @Test func focusEphemeralWorksWithoutAWorkspace() {
         var w = base(); let v = WindowRef(id: 9, pid: 9); w.adopt(v, kind: .ephemeral, on: "D1")
-        let (after, e) = run(w, .selectWindow(v))
+        let (after, e) = run(w, .focusWindowRef(v))
         #expect(after.focus.window == v && e == [.focus(v)])
     }
 
-    @Test func setLayoutHitsTheNamedScreensActiveWorkspace() {
-        let (w, e) = run(base(), .setLayout("D2", .grid))
+    @Test func setWorkspaceLayoutHitsOnlyItsTarget() {
+        let w0 = base()
+        let target = w0.screens["D2"]!.workspaces[0].id
+        let (w, e) = run(w0, .setWorkspaceLayout(target, .grid))
         #expect(w.screens["D2"]!.active.layout == .grid)
         #expect(w.screens["D1"]!.active.layout == .maximize)       // untouched
         #expect(w.focus.screen == "D1")                            // a layout click does not move focus
         #expect(e == [.relayout])
     }
 
-    @Test func closeWindowOnlyEmitsTheEffect() {
+    @Test func closeWindowRefOnlyEmitsTheEffect() {
         let before = base()
-        let (w, e) = run(before, .closeWindow(c))
+        let (w, e) = run(before, .closeWindowRef(c))
         #expect(w == before && e == [.close(c)])
     }
 
@@ -116,61 +122,43 @@ import Foundation
         let t = KeyBindings.table(for: try Config.parse(toml: ""))
         #expect(t[KeyBindings.parse("fn-tab")!] == .toggleOverview)
     }
-
-    @Test func toggleShellUIFlipsAndRelayouts() {
-        let (w, e) = run(base(), .toggleShellUI)
-        #expect(!w.shellUIVisible && e == [.relayout])
-        let (w2, _) = run(w, .toggleShellUI)
-        #expect(w2.shellUIVisible)
-    }
 }
 
-@Suite struct PanelInsetTests {
+@Suite struct ZenTests {
     let a = WindowRef(id: 1, pid: 1)
     let display = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1000, height: 600),
                               visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 575), isMain: true)
 
-    @Test func insetsComeOffTheTopAndLeadingEdges() {
+    /// The whole Zen round trip at the reconciler boundary: panels on = inset rect, Zen = M1 rect.
+    @Test func zenGivesTheEdgesBack() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         w.adopt(a, kind: .tile, on: "D1")
-        let cfg = LayoutConfig(gap: 8, insets: PanelInsets(top: 38, leading: 48))
-        let out = Reconciler.desired(world: w, displays: [display], config: cfg,
-                                     observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
-        // visibleFrame minus panels, minus gap, minus the 1 pt height guard:
-        let expected = CGRect(x: 0 + 48 + 8, y: 25 + 38 + 8, width: 1000 - 48 - 16, height: 575 - 38 - 16 - 1)
-        #expect(out[a] == .frame(expected))
+        let cfg = Config()
+        func rect(_ world: World) -> Placement? {
+            let insets = ["D1": ShellInsets(config: cfg, hidden: world.zen)]
+            return Reconciler.desired(world: world, displays: [display], config: LayoutConfig(gap: 8),
+                                      observed: [:], prePark: [:], parkedNow: [], zeroSliver: [],
+                                      insets: insets)[a]
+        }
+        // panel-width 48, panel-height 34, gap 8, height−1:
+        #expect(rect(w) == .frame(CGRect(x: 56, y: 67, width: 936, height: 524)))
+        w = CommandRunner.apply(.toggleShellUI, to: w).0
+        #expect(w.zen)
+        #expect(rect(w) == .frame(CGRect(x: 8, y: 33, width: 984, height: 558)))
     }
 
-    @Test func zeroInsetsAreTheM1Rect() {
+    @Test func zenSurvivesThePersistenceRoundTrip() throws {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
-        w.adopt(a, kind: .tile, on: "D1")
-        let out = Reconciler.desired(world: w, displays: [display], config: LayoutConfig(gap: 8),
-                                     observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
-        let expected = CGRect(x: 8, y: 33, width: 984, height: 558)
-        #expect(out[a] == .frame(expected))
+        w.zen = true
+        let data = try JSONEncoder().encode(PersistedState(world: w))
+        let loaded = try JSONDecoder().decode(PersistedState.self, from: data)
+        #expect(loaded.zen)
+        #expect(loaded.restore(into: World.empty(screens: ["D1"], defaultLayout: .maximize)).zen)
     }
-}
 
-@Suite struct UIConfigTests {
-    @Test func uiTableParses() throws {
-        let c = try Config.parse(toml: """
-        [ui]
-        enabled = true
-        rail-width = 56
-        bar-height = 40
-        """)
-        #expect(c.ui.enabled && c.ui.railWidth == 56 && c.ui.barHeight == 40)
-    }
-    @Test func missingUiTableIsTheDefault() throws {
-        let c = try Config.parse(toml: "gap = 4")
-        #expect(c.ui == UIConfig())
-        #expect(c.ui.enabled && c.ui.railWidth == 48 && c.ui.barHeight == 38)
-    }
-    @Test func partialUiTableFillsDefaults() throws {
-        let c = try Config.parse(toml: """
-        [ui]
-        enabled = false
-        """)
-        #expect(!c.ui.enabled && c.ui.railWidth == 48)
+    @Test func m1StateFilesWithoutZenStillLoad() throws {
+        let json = #"{"version":1,"screens":{}}"#
+        let loaded = try JSONDecoder().decode(PersistedState.self, from: Data(json.utf8))
+        #expect(!loaded.zen)
     }
 }

@@ -1,0 +1,33 @@
+{
+  "swift.debugger.debugAdapter": "auto",
+  "swift.autoGenerateLaunchConfigurations": false,
+  "swift.excludePathsFromPackageDependencies": true,
+  "editor.formatOnSave": true,
+  "editor.rulers": [120],
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.exclude": {
+    "**/.build": true,
+    "**/.swiftpm": true,
+    "**/xcuserdata": true
+  },
+  "search.exclude": {
+    "**/.build": true,
+    "**/.swiftpm": true,
+    "**/DerivedData": true,
+    "**/build": true
+  },
+  "files.watcherExclude": {
+    "**/.build/**": true,
+    "**/.swiftpm/**": true,
+    "**/DerivedData/**": true
+  },
+  "[swift]": {
+    "editor.defaultFormatter": "swiftlang.swift-vscode",
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml"
+  }
+}

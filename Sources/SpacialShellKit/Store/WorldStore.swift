@@ -167,12 +167,14 @@ public actor WorldStore {
         generation += 1
         let gen = generation
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
-        // Zen (spec §6) and `[ui] enabled` decide whether the panels' edges belong to the layout.
-        let insets = config.ui.enabled && world.shellUIVisible
-            ? PanelInsets(top: config.ui.barHeight, leading: config.ui.railWidth)
-            : .zero
-        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap, insets: insets),
-                                         observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero)
+        // Zen and `show-panels` decide whether the panels' edges belong to the layout (M2 design
+        // §Decisions: `ShellInsets(config:hidden:)` computed purely in Kit; same insets on every
+        // screen — each screen carries both panels).
+        let shellInsets = ShellInsets(config: config, hidden: world.zen)
+        let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
+        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
+                                         observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
+                                         insets: insets)
         // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
         // of them (superseded mid-write) used to leave the queue full, so the next pass centred the
         // same windows again — dragging an ephemeral window back to the middle of the screen long

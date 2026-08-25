@@ -9,18 +9,31 @@ public struct PersistedState: Codable, Equatable, Sendable {
     }
     public var version: Int = 1
     public var screens: [DisplayID: ScreenState]
+    /// M2 design ruling: Zen survives relaunch. `decodeIfPresent ?? false` keeps M1 state files
+    /// loading; version stays 1.
+    public var zen: Bool = false
 
     public init(world: World) {
         screens = world.screens.mapValues { s in
             ScreenState(workspaces: s.workspaces.map { WorkspaceState(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: $0.pinned) },
                         activeIndex: s.activeIndex)
         }
+        zen = world.zen
+    }
+
+    enum CodingKeys: String, CodingKey { case version, screens, zen }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
+        screens = try c.decode([DisplayID: ScreenState].self, forKey: .screens)
+        zen = try c.decodeIfPresent(Bool.self, forKey: .zen) ?? false
     }
 
     /// Re-creates pinned workspaces (empty) on screens the state knows; unpinned ones are dropped
     /// (their windows are gone anyway); trailing empty and invariants restored by normalize().
     public func restore(into world: World) -> World {
         var w = world
+        w.zen = zen
         for (id, ss) in screens {
             guard var screen = w.screens[id] else { continue }
             let restored = ss.workspaces.filter(\.pinned).map { Workspace(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: true) }

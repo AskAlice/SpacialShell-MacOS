@@ -6,13 +6,29 @@ import SpacialShellKit
 /// drawn as "+" — activating it *is* creating one, that's invariant 4 doing the work.
 struct ScreenPanelView: View {
     let state: ScreenShellState
+    let launcherURL: String
     let send: (Command) -> Void
 
     var body: some View {
         VStack(spacing: 4) {
+            // M2 design: the search glyph opens the configured launcher (Raycast by default) —
+            // the honest macOS "overview". No handler for the URL → the built-in overview.
+            Button {
+                let opened = URL(string: launcherURL).map { NSWorkspace.shared.open($0) } ?? false
+                if !opened { send(.toggleOverview) }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 36, height: 30)
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Search / launcher")
+
             ForEach(state.rail) { item in
                 Button {
-                    send(.activateWorkspace(state.display, item.index))
+                    send(.focusWorkspaceID(item.id))
                 } label: {
                     VStack(spacing: 1) {
                         Image(systemName: item.isTrailingEmpty ? "plus" : item.symbol)
