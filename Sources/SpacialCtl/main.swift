@@ -32,6 +32,7 @@ func die(_ message: String, code: Int32) -> Never {
 }
 
 let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+guard fd >= 0 else { die("socket() failed", code: 3) }
 var addr = sockaddr_un()
 addr.sun_family = sa_family_t(AF_UNIX)
 socketPath.utf8CString.withUnsafeBufferPointer { src in
