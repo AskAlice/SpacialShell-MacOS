@@ -1,0 +1,48 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "spacial-shell",
+  "title": "SpacialShell",
+  "description": "Control the SpacialShell tiling window manager: switch workspaces, move windows, cycle layouts.",
+  "icon": "icon.png",
+  "author": "alice",
+  "license": "MIT",
+  "categories": ["System"],
+  "commands": [
+    { "name": "switch", "title": "Switch Workspace", "description": "List and focus workspaces on the current screen", "mode": "view" },
+    { "name": "cycle-layout", "title": "Cycle Layout", "description": "Cycle the active workspace's layout", "mode": "no-view" },
+    { "name": "focus-workspace-up", "title": "Workspace Up", "description": "Focus the workspace above", "mode": "no-view" },
+    { "name": "focus-workspace-down", "title": "Workspace Down", "description": "Focus the workspace below", "mode": "no-view" },
+    { "name": "focus-window-left", "title": "Focus Window Left", "description": "Focus the window to the left", "mode": "no-view" },
+    { "name": "focus-window-right", "title": "Focus Window Right", "description": "Focus the window to the right", "mode": "no-view" },
+    { "name": "move-window-up", "title": "Move Window Up", "description": "Move the focused window to the workspace above", "mode": "no-view" },
+    { "name": "move-window-down", "title": "Move Window Down", "description": "Move the focused window to the workspace below (new category)", "mode": "no-view" },
+    { "name": "move-window-left", "title": "Move Window Left", "description": "Move the focused window left", "mode": "no-view" },
+    { "name": "move-window-right", "title": "Move Window Right", "description": "Move the focused window right", "mode": "no-view" },
+    { "name": "toggle-float", "title": "Toggle Float", "description": "Float or re-tile the focused window", "mode": "no-view" },
+    { "name": "close-window", "title": "Close Window", "description": "Close the focused window", "mode": "no-view" }
+  ],
+  "preferences": [
+    {
+      "name": "spacialctl",
+      "title": "spacialctl Path",
+      "description": "Override the path to the spacialctl binary",
+      "type": "textfield",
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "dev": "ray develop",
+    "build": "ray build -e dist",
+    "typecheck": "tsc --noEmit",
+    "publish": "ray publish"
+  }
+}

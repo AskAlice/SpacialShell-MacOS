@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "SpacialShellKit", targets: ["SpacialShellKit"]),
         .executable(name: "SpacialShell", targets: ["SpacialShell"]),
+        .executable(name: "spacialctl", targets: ["SpacialCtl"]),
     ],
     dependencies: [
         .package(url: "https://github.com/dduan/TOMLDecoder", from: "0.4.0"),
@@ -20,6 +21,7 @@ let package = Package(
         ),
         .target(name: "SpacialShellPlatform", dependencies: ["SpacialShellKit", "SpacialShellProtocol", "PrivateApi"]),
         .executableTarget(name: "SpacialShell", dependencies: ["SpacialShellKit", "SpacialShellPlatform", "SpacialShellProtocol"]),
+        .executableTarget(name: "SpacialCtl", dependencies: ["SpacialShellProtocol"]),
         .testTarget(name: "SpacialShellKitTests", dependencies: ["SpacialShellKit"]),
         .testTarget(name: "SpacialShellProtocolTests", dependencies: ["SpacialShellProtocol"]),
         .testTarget(name: "SpacialShellPlatformTests", dependencies: ["SpacialShellPlatform"]),
