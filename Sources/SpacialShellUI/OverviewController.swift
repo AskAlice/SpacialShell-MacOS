@@ -8,7 +8,7 @@ import SpacialShellPlatform
 /// re-enter the ordinary pipeline: a window cell sends `.focusWindowRef`, an app cell launches via
 /// `NSWorkspace` and the new window is adopted by the store like any other window that appears.
 @MainActor
-final class OverviewController {
+public final class OverviewController {
     private let panel = OverviewPanel()
     private var host: NSHostingView<OverviewView>?
     private let appMeta: AppMetaCache
@@ -22,17 +22,17 @@ final class OverviewController {
     private static let appDirs = ["/Applications", "/System/Applications", "/System/Applications/Utilities",
                                   NSHomeDirectory() + "/Applications"]
 
-    init(appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
+    public init(appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.appMeta = appMeta
         self.send = send
         panel.onDismiss = { [weak self] in self?.close() }
     }
 
-    func update(world: World) {
+    public func update(world: World) {
         self.world = world
     }
 
-    func toggle() {
+    public func toggle() {
         isOpen ? close() : open()
     }
 

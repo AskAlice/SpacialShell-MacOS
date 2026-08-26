@@ -89,7 +89,8 @@ workspace, the trailing empty one drawn as "+", search glyph opening the configu
 `WorkspacePanel` tab bar + layout switcher (one tab per window in the active row, in `Fn+A`/`Fn+D`
 order), **Zen mode** on `Fn+Esc` (hides both panels and gives their edges back to the layout;
 survives relaunch), a built-in **overview** on `Fn+Tab` (search over open windows and installed
-apps — the fallback when `launcher-url` has no handler), and the control surface: unix-socket IPC,
+apps — the fallback when `launcher-url` has no handler), a **hold-`Fn` cheat sheet** showing your
+live bindings, `Fn+,` opening the config file, and the control surface: unix-socket IPC,
 `spacialctl`, and the Raycast extension under [`raycast/`](raycast/). Panels are Apple-native
 materials, never take key focus (the overview's search field is the one exception), and every
 click re-enters the same command pipeline as a hotkey. Still to come: the focus glow, `Fn+Drag`
@@ -138,6 +139,7 @@ keyboards and can never be bound.
 | Cycle layout | `Fn+Space` | `⌃⌥Space` |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` |
+| Open the config file | `Fn+,` | `⌃⌥,` |
 | Focus screen prev / next | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` |
 | Move window to screen prev / next | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` |
 | Toggle float | `Fn+G` | `⌃⌥G` |

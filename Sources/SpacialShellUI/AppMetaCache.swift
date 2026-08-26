@@ -10,7 +10,9 @@ struct AppMeta {
 /// re-render on every world change. Dead pids leave stale entries; they are unreachable once
 /// their windows leave the world, and the map stays small (one entry per app, not per window).
 @MainActor
-final class AppMetaCache {
+public final class AppMetaCache {
+    public init() {}
+
     private var cache: [Int32: AppMeta] = [:]
 
     func meta(for pid: Int32) -> AppMeta {
