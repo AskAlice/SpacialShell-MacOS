@@ -10,6 +10,9 @@ SpacialShell is a spatial window manager for macOS (material-shell / Veshell lin
 - `Scripts/dev.sh` builds debug and runs the app in the foreground (macOS only; needs the
   Accessibility grant — see `Scripts/README` for the TCC identity caveats).
 - `Scripts/bundle.sh` produces the signed app bundle.
+- `make hooks` enables the repo pre-commit hook: on macOS every commit builds, runs the fast pure
+  tests, bundles, and installs to `/Applications` (`SPACIAL_SKIP_INSTALL=1` or `--no-verify` to
+  bypass; the hook auto-skips on non-macOS, where CI and a Mac gate the commit instead).
 - The app targets macOS 14+; Kit code must not silently grow AppKit dependencies.
 
 ## Pull requests
