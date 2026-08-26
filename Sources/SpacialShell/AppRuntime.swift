@@ -80,16 +80,40 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
         // The shell panels and the overview (M2). Wired before the store starts so the first
         // reconcile's onChange already reaches them; they draw nothing until that first world
-        // arrives. Clicks re-enter through the same command pipeline as hotkeys — the store is
-        // captured directly (ruling 8's spirit: panel callbacks must not depend on `self`).
+        // arrives. Clicks re-enter through the same command pipeline as hotkeys — the store and
+        // the overview are captured directly (ruling 8's spirit: these callbacks run off the main
+        // actor and must not depend on `self`).
         let appMeta = AppMetaCache()
-        shell = ShellController(config: config, appMeta: appMeta) { command in
-            Task { await store.run(command) }
-        }
         let overview = OverviewController(appMeta: appMeta) { command in
             Task { await store.run(command) }
         }
         self.overview = overview
+
+        // One dispatch path for every command source — hotkey tap, panel clicks, and whatever
+        // comes next. App-layer surfaces route to their controllers; everything else is a model
+        // command for the store. Without this, a panel's `.toggleOverview` (the search glyph's
+        // no-launcher fallback) would reach the store, where it is deliberately a no-op.
+        let route: @Sendable (Command) -> Void = { command in
+            switch command {
+            case .toggleOverview:
+                Task { @MainActor in overview.toggle() }
+            case .openSettings:
+                // No settings UI exists (and none is pretended): Fn+, opens the config file the
+                // whole app is actually driven by. A missing file is created empty — an empty
+                // config is the documented "all defaults".
+                Task { @MainActor in
+                    let url = Paths.configFile
+                    if !FileManager.default.fileExists(atPath: url.path) {
+                        try? FileManager.default.createDirectory(at: Paths.configDir, withIntermediateDirectories: true)
+                        try? Data().write(to: url)
+                    }
+                    NSWorkspace.shared.open(url)
+                }
+            default:
+                Task { await store.run(command) }
+            }
+        }
+        shell = ShellController(config: config, appMeta: appMeta, send: route)
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
@@ -122,17 +146,11 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
 
         log.info("stage 7/8: starting the hotkey tap")
-        // Ruling 8: the store and the overview are captured directly, never through `self` — the
+        // Ruling 8: `route` captures the store and controllers directly, never `self` — this
         // closure runs on the tap thread inside the event tap's deadline and must not touch the
         // main actor. Spawning a task that hops there later is fine; blocking on it is not.
-        // `toggle-overview` is app-layer surface, not a model mutation, so it routes around the
-        // store entirely.
         let tap = HotkeyTap(table: KeyBindings.table(for: config)) { command in
-            if command == .toggleOverview {
-                Task { @MainActor in overview.toggle() }
-            } else {
-                Task { await store.run(command) }
-            }
+            route(command)
         }
         self.tap = tap
         termination.arm(tap: tap)
