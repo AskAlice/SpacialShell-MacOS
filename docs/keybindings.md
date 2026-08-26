@@ -29,6 +29,10 @@ keybinding-preset = "ctrl-alt"
 
 ## Cheat-sheet
 
+**On-screen version:** hold the bare preset modifier — `Fn` alone (or `⌃⌥` on the `ctrl-alt`
+preset) — for about ¾ s and this table appears as an overlay with your *actual* bindings,
+including everything you rebound; release to dismiss.
+
 Same shape as material-shell: **W/S move between workspaces (rows), A/D between windows (columns);
 Shift moves the window instead of the focus.** Arrow keys are aliases and are always on `⌃⌥`,
 in both presets — `Fn+arrows` are Home/End/PgUp/PgDn at the keyboard-driver level and can never be
@@ -45,6 +49,7 @@ bound.
 | Cycle layout (maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` | Super (overview) |
+| Open the config file | `Fn+,` | `⌃⌥,` | — |
 | Focus previous / next screen | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` | — |
 | Move window to previous / next screen | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` | — |
 | Toggle float on the focused window | `Fn+G` | `⌃⌥G` | — |

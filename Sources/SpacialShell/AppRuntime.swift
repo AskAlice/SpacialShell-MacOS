@@ -4,6 +4,7 @@ import SpacialShellKit
 import struct SpacialShellProtocol.WindowRef
 import enum SpacialShellProtocol.JSONValue
 import SpacialShellPlatform
+import SpacialShellUI
 import os
 
 /// Boot, live wiring, and the way out.
@@ -30,6 +31,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var tap: HotkeyTap?
     private var shell: ShellController?
     private var overview: OverviewController?
+    private var cheatSheet: CheatSheetController?
     private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
@@ -146,12 +148,17 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
 
         log.info("stage 7/8: starting the hotkey tap")
-        // Ruling 8: `route` captures the store and controllers directly, never `self` — this
-        // closure runs on the tap thread inside the event tap's deadline and must not touch the
+        // Ruling 8: `route` and the cheat sheet are captured directly, never `self` — these
+        // closures run on the tap thread inside the event tap's deadline and must not touch the
         // main actor. Spawning a task that hops there later is fine; blocking on it is not.
-        let tap = HotkeyTap(table: KeyBindings.table(for: config)) { command in
-            route(command)
-        }
+        // `onFlags` never consumes events: holding the bare modifier shows the cheat sheet.
+        let cheatSheet = CheatSheetController(config: config)
+        self.cheatSheet = cheatSheet
+        let tap = HotkeyTap(
+            table: KeyBindings.table(for: config),
+            onCommand: { command in route(command) },
+            onFlags: { flags in Task { @MainActor in cheatSheet.flagsChanged(flags) } },
+        )
         self.tap = tap
         termination.arm(tap: tap)
         do {
@@ -224,6 +231,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
         tap?.update(table: KeyBindings.table(for: config))
         shell?.update(config: config)
+        cheatSheet?.update(config: config)
         guard let store else { return }
         let config = config
         Task { await store.update(config: config) }   // reconcile picks up new insets; onChange re-renders the panels

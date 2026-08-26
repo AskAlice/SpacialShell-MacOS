@@ -53,8 +53,8 @@ title-regex = "^Picture in Picture$"
 | `panel-width` | number (pt) | `48` | Width of the workspace rail. Windows are inset by this on the rail side. |
 | `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
 | `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
-| `highlight-ms` | integer | `600` | Duration of the focus-highlight flash, in milliseconds. `0` skips the animation. |
-| `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the click is a no-op. |
+| `highlight-ms` | integer | `600` | Duration of the focus-highlight flash, in milliseconds. `0` skips the animation. **Parsed but not yet wired** — the focus glow lands with M3b (T20); until then the key is accepted and nothing reads it (same for `highlight-color`). |
+| `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
@@ -134,6 +134,7 @@ Generated from `KeyBindings.commandNames`:
 | `cycle-layout` | Cycle the active workspace's layout: maximize → split → column → half → grid → maximize |
 | `toggle-shell-ui` | Zen mode: hide/show the shell panels; their edges go back to the layout while hidden |
 | `toggle-overview` | Open/close the overview/launcher (search over open windows and installed apps) |
+| `open-settings` | Open `~/.config/spacial-shell/config.toml` in its default editor (created empty — all defaults — if missing) |
 | `focus-screen-prev` | Focus the previous screen |
 | `focus-screen-next` | Focus the next screen |
 | `move-window-to-screen-prev` | Move the focused window to the previous screen and follow it |

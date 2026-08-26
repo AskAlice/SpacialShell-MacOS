@@ -13,7 +13,7 @@ import SpacialShellPlatform
 /// follows via the backend's own snapshot; the notification just re-anchors panel frames early so
 /// they don't sit on a dead screen while that snapshot is in flight).
 @MainActor
-final class ShellController: NSObject {
+public final class ShellController: NSObject {
     private struct Panels {
         let rail: PanelWindow
         let railHost: NSHostingView<ScreenPanelView>
@@ -27,7 +27,7 @@ final class ShellController: NSObject {
     private let send: @Sendable (Command) -> Void
     private let appMeta: AppMetaCache
 
-    init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
+    public init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.config = config
         self.appMeta = appMeta
         self.send = send
@@ -41,12 +41,12 @@ final class ShellController: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    func update(world: World) {
+    public func update(world: World) {
         self.world = world
         render()
     }
 
-    func update(config: Config) {
+    public func update(config: Config) {
         self.config = config
         render()
     }
