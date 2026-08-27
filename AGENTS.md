@@ -3,6 +3,8 @@
 SpacialShell is a spatial window manager for macOS (material-shell / Veshell lineage). Read
 `README.md` for the model and `docs/superpowers/specs/` for the accepted designs — the
 2026-08-19 M2 design's rulings are binding; don't re-open them mid-implementation.
+For any UI/design work (Figma imports included), `docs/design-system.md` is the rules doc:
+tokens, components, icons, styling, and the six musts for integrating a design.
 
 ## Build and test
 
