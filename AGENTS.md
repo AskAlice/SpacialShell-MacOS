@@ -44,6 +44,13 @@ Commit media into `docs/media/` (small: webp preferred, gif alongside for inline
 stills as webp/png, keep files small — the showcase loops in `docs/media/` are the size reference)
 or attach via the PR upload widget; either way the PR body must show everything inline.
 
+**Embedding committed media (this repo is private):** the only URL schema that renders inline in
+PR/issue bodies and the README is
+`https://github.com/AskAlice/alice-material/blob/<branch>/docs/media/<file>?raw=true` —
+GitHub serves it with the viewer's session. Never use `raw.githubusercontent.com` URLs (proxied
+anonymously → broken), never `data:` URIs (stripped by the sanitizer), never `?token=GHSAT…` raw
+links (per-file signed tokens that expire within days).
+
 Other PR expectations:
 
 - Keep PRs on the milestone's task granularity (see the design's task list); one concern per PR.
