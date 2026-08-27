@@ -1,14 +1,14 @@
 # SpacialShell
 
 <p align="center">
-  <img src="docs/media/screenshot-grid.webp" width="920" alt="SpacialShell M2 — rail, tab bar, grid layout">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/screenshot-grid.webp?raw=true" width="920" alt="SpacialShell M2 — rail, tab bar, grid layout">
 </p>
 
 A spatial window manager for macOS: workspaces stacked vertically, windows arranged horizontally,
 every window has one address.
 
 <p align="center">
-  <img src="docs/media/general-showcase.webp" width="920" alt="M2: focus a window, switch workspace, come back">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/general-showcase.webp?raw=true" width="920" alt="M2: focus a window, switch workspace, come back">
 </p>
 
 ## What it is
@@ -28,14 +28,17 @@ M1 is the headless spatial core. **M2** is the face: a left workspace rail, a to
 five tiling layouts, and a focus glow that lands on the tile.
 
 <p align="center">
-  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split, focus glow">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/hero-still.webp?raw=true" width="720" alt="M2 chrome — rail, tabs, split, focus glow">
 </p>
 
 ## The model
 
 <p align="center">
-  <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/spatialisation.webp?raw=true" width="720" alt="Workspaces as rows, windows as cells">
 </p>
+
+*(The zoomed-out spatial view above illustrates the model — it ships as a toggleable mode with
+M3b's spatialisation view; today you ride it with `Fn+W`/`Fn+S`.)*
 
 A **workspace** is a row. An **application** is a cell. New windows append to the current row;
 new workspaces append underneath. Navigate **up/down** to change workspace, **left/right** to
@@ -57,7 +60,11 @@ change window. The screen is a viewport over a larger, always-sorted grid.
 ## Interface
 
 <p align="center">
-  <img src="docs/media/interface-showcase.webp" width="720" alt="Rail tiles and window tabs tracking focus">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/interface-showcase.webp?raw=true" width="720" alt="Rail tiles and window tabs tracking focus">
+</p>
+
+<p align="center">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/m2-ui-showcase.webp?raw=true" width="720" alt="Overview search, hold-Fn cheat sheet, Zen mode">
 </p>
 
 Two panels, one job: show *where you are*.
@@ -72,7 +79,7 @@ Two panels, one job: show *where you are*.
 ## Layouts
 
 <p align="center">
-  <img src="docs/media/tiling-showcase.webp" width="720" alt="Cycle maximize, split, column, half, grid">
+  <img src="https://github.com/AskAlice/alice-material/blob/main/docs/media/tiling-showcase.webp?raw=true" width="720" alt="Cycle maximize, split, column, half, grid">
 </p>
 
 `Fn+Space` cycles them: **maximize** · **split** · **column** · **half** · **grid**.

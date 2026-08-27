@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""Render M2 chrome stills + looping showcases (webp / gif) for the README."""
+"""Render M2 chrome stills + looping showcases (webp / gif) for the README.
+
+Usage: render-m2-media.py [scene ...] — no args renders every scene; naming scenes
+(e.g. `render-m2-media.py spatialisation ui-showcase`) regenerates only those files.
+"""
 from __future__ import annotations
 import math
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
@@ -14,8 +19,13 @@ FPS = 14
 UI = "/System/Library/Fonts/SFNS.ttf"
 MONO = "/System/Library/Fonts/SFNSMono.ttf"
 def font(size, mono=False):
-    try: return ImageFont.truetype(MONO if mono else UI, size)
-    except OSError: return ImageFont.truetype("/System/Library/Fonts/HelveticaNeue.ttc", size)
+    # SF on macOS; DejaVu (bundled with Pillow) keeps the pipeline runnable in Linux containers.
+    candidates = [MONO if mono else UI, "/System/Library/Fonts/HelveticaNeue.ttc",
+                  "DejaVuSansMono.ttf" if mono else "DejaVuSans.ttf"]
+    for c in candidates:
+        try: return ImageFont.truetype(c, size)
+        except OSError: continue
+    return ImageFont.load_default(size)
 
 F12, F11, F10, F9 = font(12), font(11), font(10), font(9)
 FCLK = font(11, True)
@@ -200,13 +210,101 @@ def still(im, stem):
     im.save(OUT / f"{stem}.webp", "WEBP", quality=86, method=6)
     im.save(OUT / f"{stem}.png")
 
-def main():
-    code = ("Code", ["Cursor", "Terminal", "Safari"])
-    browse = ("Browse", ["Safari", "Mail"])
-    notes = ("Notes", ["Notes"])
-    ws = [code, browse, notes]
+# One fixture world for every scene.
+CODE = ("Code", ["Cursor", "Terminal", "Safari"])
+BROWSE = ("Browse", ["Safari", "Mail"])
+NOTES = ("Notes", ["Notes"])
+WS = [CODE, BROWSE, NOTES]
 
-    still(frame(ws, 0, "split", code[1], 0, 1), "hero-still")
+def frame_zen(workspaces, active, layout, tabs, focused, glow=1.0):
+    """Zen mode: no chrome, the panel edges given back to the windows."""
+    im = WALL.copy().convert("RGBA")
+    names = workspaces[active][1]
+    vis = layouts(layout, names, focused, (GAP, GAP, W - GAP * 2, H - GAP * 2))
+    for i, box in enumerate(vis):
+        if box and i != focused: draw_win(im, names[i], box, 0)
+    if focused < len(vis) and vis[focused]:
+        draw_win(im, names[focused], vis[focused], glow)
+    return im.convert("RGB")
+
+def draw_overview(im, query, highlight=None, t=1.0):
+    """The Fn+Tab overview: search field over Windows + Applications app-chip grids."""
+    base = im.convert("RGBA")
+    d = ImageDraw.Draw(base, "RGBA")
+    dim = Image.new("RGBA", (W, H), (8, 10, 14, int(110 * t)))
+    base.alpha_composite(dim)
+    ow, oh = 460, 262
+    ox, oy = (W - ow) // 2, int(100 - 14 * t)
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    rr(ld, (ox, oy, ox + ow, oy + oh), 14, fill=(40, 42, 50, int(242 * t)), outline=(255, 255, 255, int(40 * t)))
+    rr(ld, (ox + 14, oy + 14, ox + ow - 14, oy + 44), 8, fill=(66, 70, 82, 160))
+    ld.ellipse((ox + 24, oy + 21, ox + 36, oy + 33), outline=(190, 192, 200, 220), width=2)
+    ld.text((ox + 46, oy + 21), query if query else "Type to search…", font=F12,
+            fill=(240, 242, 246, 255) if query else (150, 152, 160, 255))
+    windows = [n for n in ("Cursor", "Terminal", "Safari") if not query or query.lower() in n.lower()]
+    apps = [n for n in APPS if not query or query.lower() in n.lower()]
+    cw = 76
+    ld.text((ox + 18, oy + 54), "WINDOWS", font=F9, fill=(150, 153, 162, 255))
+    for i, name in enumerate(windows):
+        cx, cy = ox + 18 + i * (cw + 8), oy + 68
+        on = highlight == name
+        rr(ld, (cx, cy, cx + cw, cy + 74), 8, fill=(*ACCENT, 110) if on else (255, 255, 255, 18))
+        _bg, accent, letter = APPS[name]
+        ld.rounded_rectangle((cx + cw // 2 - 14, cy + 8, cx + cw // 2 + 14, cy + 36), 7, fill=accent)
+        ld.text((cx + cw // 2 - 4, cy + 14), letter, font=F12, fill=(255, 255, 255))
+        ld.text((cx + 8, cy + 44), name[:9], font=F10, fill=(235, 236, 240, 255))
+        ld.text((cx + 8, cy + 58), "Code", font=F9, fill=(150, 153, 162, 255))
+    ld.text((ox + 18, oy + 154), "APPLICATIONS", font=F9, fill=(150, 153, 162, 255))
+    for i, name in enumerate(list(APPS)[:5]):
+        cx, cy = ox + 18 + i * (cw + 8), oy + 168
+        if name not in apps: continue
+        rr(ld, (cx, cy, cx + cw, cy + 66), 8, fill=(255, 255, 255, 18))
+        _bg, accent, letter = APPS[name]
+        ld.rounded_rectangle((cx + cw // 2 - 14, cy + 6, cx + cw // 2 + 14, cy + 34), 7, fill=accent)
+        ld.text((cx + cw // 2 - 4, cy + 12), letter, font=F12, fill=(255, 255, 255))
+        ld.text((cx + 8, cy + 42), name[:9], font=F10, fill=(235, 236, 240, 255))
+    base.alpha_composite(layer)
+    return base.convert("RGB")
+
+def draw_cheatsheet(im):
+    """The hold-Fn cheat sheet: grouped bindings, centred card."""
+    base = im.convert("RGBA")
+    d = ImageDraw.Draw(base, "RGBA")
+    dim = Image.new("RGBA", (W, H), (8, 10, 14, 90))
+    base.alpha_composite(dim)
+    groups = [
+        ("Navigate", [("Workspace up", "Fn W"), ("Workspace down", "Fn S"),
+                      ("Window left", "Fn A"), ("Window right", "Fn D")]),
+        ("Move & tiling", [("Move left", "Fn ⇧A"), ("Move right", "Fn ⇧D"),
+                           ("To workspace above", "Fn ⇧W"), ("Toggle float", "Fn G")]),
+        ("App", [("Cycle layout", "Fn Spc"), ("Zen mode", "Fn Esc"),
+                 ("Overview", "Fn Tab"), ("Open config", "Fn ,")]),
+    ]
+    colw, pad, gap = 214, 18, 20
+    cw = pad * 2 + len(groups) * colw + (len(groups) - 1) * gap
+    ch = 152
+    cx, cy = (W - cw) // 2, (H - ch) // 2
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    rr(ld, (cx, cy, cx + cw, cy + ch), 14, fill=(40, 42, 50, 242), outline=(255, 255, 255, 40))
+    for g, (title, items) in enumerate(groups):
+        gx = cx + pad + g * (colw + gap)
+        ld.text((gx, cy + 14), title, font=F11, fill=(150, 153, 162, 255))
+        for i, (label, key) in enumerate(items):
+            yy = cy + 40 + i * 25
+            ld.text((gx, yy), label, font=F11, fill=(235, 236, 240, 255))
+            kw = ld.textlength(key, font=FCLK)
+            ld.text((gx + colw - kw, yy), key, font=FCLK, fill=(170, 173, 182, 255))
+    base.alpha_composite(layer)
+    return base.convert("RGB")
+
+def scene_hero():
+    still(frame(WS, 0, "split", CODE[1], 0, 1), "hero-still")
+
+def scene_general():
+    code, browse, notes = CODE, BROWSE, NOTES
+    ws = WS
 
     # general showcase: split → focus right → workspace down → back
     seq = []
@@ -224,14 +322,15 @@ def main():
         seq.append(frame(ws, 1 if t < 0.5 else 0, "split", (browse[1] if t < 0.5 else code[1]), 0, 1))
     encode(seq, "general-showcase")
 
-    # tiling cycle
+def scene_tiling():
     kinds = ["maximize", "split", "column", "half", "grid"]
     seq = []
     for k in kinds:
-        seq += hold(frame(ws, 0, k, code[1], 0, 1), 12)
+        seq += hold(frame(WS, 0, k, CODE[1], 0, 1), 12)
     encode(seq, "tiling-showcase")
 
-    # interface: walk rail + tabs
+def scene_interface():
+    ws, code, browse, notes = WS, CODE, BROWSE, NOTES
     seq = []
     for active, tabs, foc, lay in (
         (0, code[1], 0, "split"),
@@ -244,6 +343,8 @@ def main():
         seq += hold(frame(ws, active, lay, tabs, foc, 1), 12)
     encode(seq, "interface-showcase")
 
+def scene_spatialisation():
+    ws = WS
     # spatialisation: three stacked mini-desktops, camera slides
     seq = []
     mini_h = 180
@@ -262,5 +363,46 @@ def main():
         seq.append(canvas.convert("RGB"))
     encode(seq, "spatialisation")
 
+def scene_ui():
+    """UI showcase: overview opens on Fn+Tab, search filters, Enter jumps; hold-Fn cheat
+    sheet; Fn+Esc Zen round trip. Renders only what is implemented on this branch."""
+    ws, code = WS, CODE
+    base = frame(ws, 0, "split", code[1], 0, 1)
+    seq = hold(base, 12)
+    for t in tween(0, 1, 6):
+        seq.append(draw_overview(base, "", t=t))
+    seq += hold(draw_overview(base, ""), 10)
+    seq += hold(draw_overview(base, "sa"), 8)
+    seq += hold(draw_overview(base, "sa", highlight="Safari"), 8)
+    focused = frame(ws, 0, "maximize", code[1], 2, 1)
+    seq += hold(focused, 12)
+    seq += hold(draw_cheatsheet(focused), 18)
+    seq += hold(focused, 6)
+    zen = frame_zen(ws, 0, "maximize", code[1], 2, 0)
+    for t in tween(0, 1, 5):
+        seq.append(Image.blend(focused, zen, t))
+    seq += hold(zen, 12)
+    for t in tween(0, 1, 5):
+        seq.append(Image.blend(zen, base, t))
+    seq += hold(base, 8)
+    encode(seq, "m2-ui-showcase")
+
+SCENES = {
+    "hero-still": scene_hero,
+    "general-showcase": scene_general,
+    "tiling-showcase": scene_tiling,
+    "interface-showcase": scene_interface,
+    "spatialisation": scene_spatialisation,
+    "ui-showcase": scene_ui,
+}
+
+def main(argv):
+    names = argv or list(SCENES)
+    unknown = [n for n in names if n not in SCENES]
+    if unknown:
+        sys.exit(f"unknown scene(s): {', '.join(unknown)}; have: {', '.join(SCENES)}")
+    for n in names:
+        SCENES[n]()
+
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
