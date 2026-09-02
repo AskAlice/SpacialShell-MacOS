@@ -21,11 +21,15 @@ tokens, components, icons, styling, and the six musts for integrating a design.
 
 **Every PR must include, inline in its description:**
 
-1. **UI/UX screenshots** — for anything with a visible surface, these are mandatory and must show
-   **both**: (a) the specific thing the PR changes, featured clearly, and (b) an **overview** shot
-   of the shell as it stands with the change in (rail, tab bar, tiled windows in frame), so the
-   change is seen in context and not as a cropped detail. A PR that touches visible surface and
-   ships no UI screenshot is not ready.
+1. **UI/UX screenshots** — mandatory for anything with a visible surface, showing **both**:
+   (a) the specific thing the PR touches, featured clearly, and (b) an **overview** shot of the
+   shell as it stands with the change in (rail, tab bar, tiled windows in frame), so it is seen in
+   context and not as a cropped detail.
+
+   The test is **"is the affected thing visible?"**, never "is this a feature?". A bug fix, a
+   one-line tweak, a refactor, a config default — if it can be seen on screen, it ships both
+   shots. "It's just a fix" is not an exemption. A PR that touches visible surface with no UI
+   screenshot is not ready to review.
 2. **Animations** (short loops, webp/gif, ≲10 s each) showing **both** (a) the changed behaviour
    in motion and (b) a general overview of the app's functionality as of that PR — every PR's
    description doubles as a current demo of the whole shell.
