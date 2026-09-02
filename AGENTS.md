@@ -21,12 +21,18 @@ tokens, components, icons, styling, and the six musts for integrating a design.
 
 **Every PR must include, inline in its description:**
 
-1. **Screenshots** of the specific changes — UI changes show the UI; non-UI changes show the
-   observable effect (a `spacialctl` transcript rendered as an image, a passing `swift test` run,
-   a before/after of the tiling the change affects).
+1. **UI/UX screenshots** — for anything with a visible surface, these are mandatory and must show
+   **both**: (a) the specific thing the PR changes, featured clearly, and (b) an **overview** shot
+   of the shell as it stands with the change in (rail, tab bar, tiled windows in frame), so the
+   change is seen in context and not as a cropped detail. A PR that touches visible surface and
+   ships no UI screenshot is not ready.
 2. **Animations** (short loops, webp/gif, ≲10 s each) showing **both** (a) the changed behaviour
    in motion and (b) a general overview of the app's functionality as of that PR — every PR's
    description doubles as a current demo of the whole shell.
+
+For changes with **no** visible surface, screenshots show the observable effect instead: a
+`spacialctl` transcript rendered as an image, a passing `swift test` run, a before/after of the
+tiling the change affects.
 
 No exceptions by change type. A reviewer should see what the change does — and what the app does —
 before reading the diff.
@@ -46,12 +52,19 @@ Commit media into `docs/media/` (small: webp preferred, gif alongside for inline
 stills as webp/png, keep files small — the showcase loops in `docs/media/` are the size reference)
 or attach via the PR upload widget; either way the PR body must show everything inline.
 
-**Embedding committed media (this repo is private):** the only URL schema that renders inline in
-PR/issue bodies and the README is
-`https://github.com/AskAlice/alice-material/blob/<branch>/docs/media/<file>?raw=true` —
-GitHub serves it with the viewer's session. Never use `raw.githubusercontent.com` URLs (proxied
-anonymously → broken), never `data:` URIs (stripped by the sanitizer), never `?token=…` raw
-links (per-file signed tokens that expire within days).
+**Embedding committed media (this repo is private) — two different rules:**
+
+- **README and other in-repo markdown:** use **ref-relative** paths (`docs/media/<file>`). GitHub
+  resolves them against the ref you are viewing, so a branch README shows that branch's media and
+  main's shows main's. Never hardcode `blob/main/…` in the README — on a feature branch it renders
+  main's stale media, and any file the branch adds is a broken image until it merges.
+- **PR and issue bodies** (no ref context): use
+  `https://github.com/AskAlice/alice-material/blob/<branch>/docs/media/<file>?raw=true` — GitHub
+  serves it with the viewer's session. Point it at the **PR's branch**, not main.
+
+Never use `raw.githubusercontent.com` URLs (proxied anonymously → broken), never `data:` URIs
+(stripped by the sanitizer), never `?token=…` raw links (per-file signed tokens that expire
+within days).
 
 Other PR expectations:
 
