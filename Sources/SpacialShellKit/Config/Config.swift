@@ -33,9 +33,6 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
 
 public enum KeybindingPreset: String, Codable, Sendable { case fn, ctrlAlt = "ctrl-alt" }
 public enum RailSide: String, Codable, Sendable { case left, right }
-public enum ShellTheme: String, Codable, Sendable { case system, dark, light }
-public enum ShellFont: String, Codable, Sendable { case system, rounded, monospaced }
-public enum IconSet: String, Codable, Sendable { case sfSymbols = "sf-symbols", letters }
 
 public enum HighlightColor {
     public static func normalize(_ s: String) -> String? {
@@ -69,10 +66,7 @@ public struct Config: Codable, Equatable, Sendable {
     public var highlightMs: Int = 600
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
-    public var theme: ShellTheme = .system
     public var highlightColor: String = "system"
-    public var font: ShellFont = .system
-    public var iconSet: IconSet = .sfSymbols
     public var workspaces: [WorkspaceSeed] = []
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
@@ -89,7 +83,7 @@ public struct Config: Codable, Equatable, Sendable {
              ephemeral, float, ignore, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side",
              highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
-             theme, highlightColor = "highlight-color", font, iconSet = "icon-set"
+             highlightColor = "highlight-color"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -105,15 +99,12 @@ public struct Config: Codable, Equatable, Sendable {
         highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
-        theme = try c.decodeIfPresent(ShellTheme.self, forKey: .theme) ?? .system
         if let raw = try c.decodeIfPresent(String.self, forKey: .highlightColor) {
             guard let n = HighlightColor.normalize(raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .highlightColor, in: c, debugDescription: "highlight-color must be \"system\" or #RRGGBB")
             }
             highlightColor = n
         } else { highlightColor = "system" }
-        font = try c.decodeIfPresent(ShellFont.self, forKey: .font) ?? .system
-        iconSet = try c.decodeIfPresent(IconSet.self, forKey: .iconSet) ?? .sfSymbols
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
@@ -143,10 +134,7 @@ public struct Config: Codable, Equatable, Sendable {
         highlight-ms = \(highlightMs)
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
-        theme = \(q(theme.rawValue))
         highlight-color = \(q(highlightColor))
-        font = \(q(font.rawValue))
-        icon-set = \(q(iconSet.rawValue))
 
         """
         func rules(_ name: String, _ items: [AppRule]) {

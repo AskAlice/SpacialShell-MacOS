@@ -5,6 +5,9 @@ import Foundation
 @Suite struct WorldStoreTests {
     let d1 = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1000, height: 700), visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 675), isMain: true)
     let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1)
+    /// M1 geometry: the frame maths in this suite predates the shell panels, and what it tests
+    /// (adoption, echoes, parking, locking) is inset-agnostic — `PanelInsetTests` owns the insets.
+    func m1Config() -> Config { var c = Config(); c.showPanels = false; return c }
     func win(_ r: WindowRef, _ f: CGRect = CGRect(x: 0, y: 0, width: 300, height: 200), kind: WindowKind = .tile, bundle: String? = "com.x", min: Bool = false, fs: Bool = false, parent: WindowRef? = nil) -> WindowSnapshot {
         WindowSnapshot(ref: r, frame: f, title: "t", bundleID: bundle, kind: kind, parent: parent, isMinimized: min, isFullscreen: fs)
     }
@@ -13,7 +16,7 @@ import Foundation
     }
     func make(_ s: Snapshot) async -> (WorldStore, FakeBackend) {
         let be = FakeBackend(snapshot: s)
-        let store = WorldStore(backend: be, config: Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
         await store.start()
         return (store, be)
     }
@@ -103,7 +106,7 @@ import Foundation
         #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == b)
     }
     @Test func configOverridesHeuristicKind() async {
-        var c = Config(); c.float = [AppRule(bundleId: "com.x")]
+        var c = m1Config(); c.float = [AppRule(bundleId: "com.x")]
         let be = FakeBackend(snapshot: snap([win(a)], focused: a))
         let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
         await store.start()
@@ -202,7 +205,7 @@ import Foundation
     @Test func onChangeFiresWithWorld() async {
         let be = FakeBackend(snapshot: snap([win(a)], focused: a))
         let box = ChangeBox()
-        let store = WorldStore(backend: be, config: Config(), world: nil, zeroSliverBundleIDs: [], onChange: { w in Task { await box.set(w) } })
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { w in Task { await box.set(w) } })
         await store.start()
         try? await Task.sleep(for: .milliseconds(50))
         #expect(await box.value?.screens["D1"]?.active.windows == [a])
@@ -222,7 +225,7 @@ import Foundation
     func randomSnapshotsPreserveInvariants(seed: Int) async {
         var rng = TestRNG(seed: UInt64(seed) &+ 7_000)
         let be = FakeBackend(snapshot: snap([]))
-        let store = WorldStore(backend: be, config: Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
         await store.start()
 
         let cmds: [Command] = [

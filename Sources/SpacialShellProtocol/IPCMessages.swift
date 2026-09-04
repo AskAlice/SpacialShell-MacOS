@@ -45,6 +45,7 @@ public struct IPCResponse: Codable, Sendable, Equatable {
     }
 }
 
+/// NOT YET EMITTED: the subscribe/push channel is M2 T12; no server constructs this yet.
 public struct IPCEvent: Codable, Sendable, Equatable {
     public var v: Int
     public var event: String

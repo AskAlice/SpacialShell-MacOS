@@ -86,6 +86,18 @@ process would be unsound.
 
 ## 4. Manual checklist
 
+## Story snapshots (`Tests/ShellStoryTests`)
+
+Storybook for the shell: every interesting state of the rail, tab bar, overview and cheat sheet is
+a fixture "story" (`Stories.swift`), rendered at true panel geometry in light and dark. Each story
+is image-snapshotted (references under `__Snapshots__/`, committed; `SNAPSHOT_RECORD=1 swift test
+--filter ShellStoryTests` re-records) and run through `LayoutLint`, which fails on overlapping
+text, content escaping its container, or content that wants more space than the panel has —
+the wrap/truncate/line-height class of regressions a pixel diff alone can hide. Stories flagged
+`knownOverflow` model conditions the design hasn't built handling for yet (tab "+N" badge, rail
+overflow) and run under `withKnownIssue`. macOS-only; new UI states get a story with their PR,
+and the recorded stills feed the PR-media rule in `AGENTS.md`.
+
 The items below need a human, a real display arrangement, and things a test suite cannot simulate
 (unplugging a monitor, locking the screen, a real password field). None of this is automated;
 record what you observe.

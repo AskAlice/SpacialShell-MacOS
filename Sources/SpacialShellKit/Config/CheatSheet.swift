@@ -66,8 +66,9 @@ public enum CheatSheet {
         add(.screens, "focus-screen-next", "Next screen", "display.2", "]")
         add(.screens, "move-window-to-screen-prev", "Move to previous screen", "rectangle.portrait.and.arrow.left", "⇧[")
         add(.screens, "move-window-to-screen-next", "Move to next screen", "rectangle.portrait.and.arrow.right", "⇧]")
-        add(.app, "toggle-shell-ui", "Toggle shell UI", "eye", "Esc")
-        add(.app, "open-settings", "Settings", "gearshape", ",")
+        add(.app, "toggle-shell-ui", "Zen mode", "eye", "Esc")
+        add(.app, "toggle-overview", "Overview / launcher", "magnifyingglass", "⇥")
+        add(.app, "open-settings", "Open config file", "gearshape", ",")
         add(.app, "close-window", "Close window", "xmark", "Q")
         return out
     }
@@ -77,6 +78,9 @@ public enum CheatSheet {
     }
 }
 
+/// Transient toast copy for command feedback. **Not yet wired** — the toast surface lands with
+/// M3b task B5 (`2026-08-25-m3-roadmap.md`); until then nothing calls this. It stays because the
+/// cheat-sheet overlay (which is wired) shares `primaryDisplay`, and the copy is spec'd.
 public enum Hint {
     public static func after(_ command: Command, before: World, after: World, config: Config) -> String? {
         switch command {

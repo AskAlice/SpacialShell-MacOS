@@ -4,6 +4,7 @@ import SpacialShellKit
 import struct SpacialShellProtocol.WindowRef
 import enum SpacialShellProtocol.JSONValue
 import SpacialShellPlatform
+import SpacialShellUI
 import os
 
 /// Boot, live wiring, and the way out.
@@ -28,6 +29,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     private var tap: HotkeyTap?
+    private var shell: ShellController?
+    private var overview: OverviewController?
+    private var cheatSheet: CheatSheetController?
     private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
@@ -67,10 +71,51 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
         ) { [weak self] world in
             gate.note(world: world)
-            Task { @MainActor in self?.scheduleSave(world) }
+            Task { @MainActor in
+                self?.scheduleSave(world)
+                self?.shell?.update(world: world)
+                self?.overview?.update(world: world)
+            }
         }
         self.store = store
         termination.arm(store: store, backend: backend)
+
+        // The shell panels and the overview (M2). Wired before the store starts so the first
+        // reconcile's onChange already reaches them; they draw nothing until that first world
+        // arrives. Clicks re-enter through the same command pipeline as hotkeys — the store and
+        // the overview are captured directly (ruling 8's spirit: these callbacks run off the main
+        // actor and must not depend on `self`).
+        let appMeta = AppMetaCache()
+        let overview = OverviewController(appMeta: appMeta) { command in
+            Task { await store.run(command) }
+        }
+        self.overview = overview
+
+        // One dispatch path for every command source — hotkey tap, panel clicks, and whatever
+        // comes next. App-layer surfaces route to their controllers; everything else is a model
+        // command for the store. Without this, a panel's `.toggleOverview` (the search glyph's
+        // no-launcher fallback) would reach the store, where it is deliberately a no-op.
+        let route: @Sendable (Command) -> Void = { command in
+            switch command {
+            case .toggleOverview:
+                Task { @MainActor in overview.toggle() }
+            case .openSettings:
+                // No settings UI exists (and none is pretended): Fn+, opens the config file the
+                // whole app is actually driven by. A missing file is created empty — an empty
+                // config is the documented "all defaults".
+                Task { @MainActor in
+                    let url = Paths.configFile
+                    if !FileManager.default.fileExists(atPath: url.path) {
+                        try? FileManager.default.createDirectory(at: Paths.configDir, withIntermediateDirectories: true)
+                        try? Data().write(to: url)
+                    }
+                    NSWorkspace.shared.open(url)
+                }
+            default:
+                Task { await store.run(command) }
+            }
+        }
+        shell = ShellController(config: config, appMeta: appMeta, send: route)
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
@@ -103,11 +148,17 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
 
         log.info("stage 7/8: starting the hotkey tap")
-        // Ruling 8: the store is captured directly, never through `self` — the closure runs on the
-        // tap thread inside the event tap's deadline and must not touch the main actor.
-        let tap = HotkeyTap(table: KeyBindings.table(for: config)) { command in
-            Task { await store.run(command) }
-        }
+        // Ruling 8: `route` and the cheat sheet are captured directly, never `self` — these
+        // closures run on the tap thread inside the event tap's deadline and must not touch the
+        // main actor. Spawning a task that hops there later is fine; blocking on it is not.
+        // `onFlags` never consumes events: holding the bare modifier shows the cheat sheet.
+        let cheatSheet = CheatSheetController(config: config)
+        self.cheatSheet = cheatSheet
+        let tap = HotkeyTap(
+            table: KeyBindings.table(for: config),
+            onCommand: { command in route(command) },
+            onFlags: { flags in Task { @MainActor in cheatSheet.flagsChanged(flags) } },
+        )
         self.tap = tap
         termination.arm(tap: tap)
         do {
@@ -179,9 +230,11 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             log.notice("ax-timeout-ms / refresh-interval-ms changed; those take effect at the next launch")
         }
         tap?.update(table: KeyBindings.table(for: config))
+        shell?.update(config: config)
+        cheatSheet?.update(config: config)
         guard let store else { return }
         let config = config
-        Task { await store.update(config: config) }
+        Task { await store.update(config: config) }   // reconcile picks up new insets; onChange re-renders the panels
     }
 
     // MARK: - State

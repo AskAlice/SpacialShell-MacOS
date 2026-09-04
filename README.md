@@ -37,6 +37,9 @@ five tiling layouts, and a focus glow that lands on the tile.
   <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells">
 </p>
 
+*(The zoomed-out spatial view above illustrates the model — it ships as a toggleable mode with
+M3b's spatialisation view; today you ride it with `Fn+W`/`Fn+S`.)*
+
 A **workspace** is a row. An **application** is a cell. New windows append to the current row;
 new workspaces append underneath. Navigate **up/down** to change workspace, **left/right** to
 change window. The screen is a viewport over a larger, always-sorted grid.
@@ -58,6 +61,10 @@ change window. The screen is a viewport over a larger, always-sorted grid.
 
 <p align="center">
   <img src="docs/media/interface-showcase.webp" width="720" alt="Rail tiles and window tabs tracking focus">
+</p>
+
+<p align="center">
+  <img src="docs/media/m2-ui-showcase.webp" width="720" alt="Overview search, hold-Fn cheat sheet, Zen mode">
 </p>
 
 Two panels, one job: show *where you are*.
@@ -84,8 +91,17 @@ invariants, all five tiling layouts, the full hotkey set under two presets, TOML
 reload, JSON state persistence for pinned workspaces, window classification (tiled / floating /
 ephemeral / ignored), and parking.
 
-**M2 — shell UI**, in progress. The loops above are rendered from the M2 chrome (rail, tabs,
-layouts, glow). Runtime still needs the panels wired; `Fn+Esc` (Zen) is reserved.
+**M2 — shell UI**, in progress. Landed so far: the `ScreenPanel` workspace rail (one button per
+workspace, the trailing empty one drawn as "+", search glyph opening the configured launcher), the
+`WorkspacePanel` tab bar + layout switcher (one tab per window in the active row, in `Fn+A`/`Fn+D`
+order), **Zen mode** on `Fn+Esc` (hides both panels and gives their edges back to the layout;
+survives relaunch), a built-in **overview** on `Fn+Tab` (search over open windows and installed
+apps — the fallback when `launcher-url` has no handler), a **hold-`Fn` cheat sheet** showing your
+live bindings, `Fn+,` opening the config file, and the control surface: unix-socket IPC,
+`spacialctl`, and the Raycast extension under [`raycast/`](raycast/). Panels are Apple-native
+materials, never take key focus (the overview's search field is the one exception), and every
+click re-enters the same command pipeline as a hotkey. Still to come: the focus glow, `Fn+Drag`
+reordering, workspace rename/menus, and window titles in tabs (app name + icon until then).
 
 Loops are served as animated **webp** (and **gif** next to them) from
 [`docs/media/`](docs/media/). Regenerate with `Scripts/render-m2-media.py`.
@@ -128,7 +144,9 @@ keyboards and can never be bound.
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` |
 | Move window to workspace up / down | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` |
 | Cycle layout | `Fn+Space` | `⌃⌥Space` |
-| Toggle shell UI *(no-op in M1)* | `Fn+Esc` | `⌃⌥Esc` |
+| Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` |
+| Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` |
+| Open the config file | `Fn+,` | `⌃⌥,` |
 | Focus screen prev / next | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` |
 | Move window to screen prev / next | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` |
 | Toggle float | `Fn+G` | `⌃⌥G` |
@@ -157,6 +175,9 @@ for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/c
 - **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
   the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
   keyboard) or the `ctrl-alt` preset instead.
+- **The shell UI is young.** The rail, tab bar, and overview are in; the focus glow and `Fn+Drag`
+  reordering are not yet, and tabs show app names, not window titles. `show-panels = false` in
+  config brings back the panel-less behaviour (the overview and `spacialctl` stay).
 
 ## Licence and attribution
 

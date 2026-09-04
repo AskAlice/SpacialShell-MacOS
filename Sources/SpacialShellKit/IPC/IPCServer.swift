@@ -65,13 +65,18 @@ public final class IPCServer: @unchecked Sendable {
     // MARK: queue only
 
     private func acceptOne() {
-let fd = accept(listenFD, nil, nil)
-guard fd >= 0 else { return }
-var one: Int32 = 1
-_ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout.size(ofValue: one)))
-let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+        let fd = accept(listenFD, nil, nil)
+        guard fd >= 0 else { return }
+        var one: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout.size(ofValue: one)))
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.readSome(fd) }
         source.setCancelHandler { close(fd) }
+        // The registration is what makes the connection live: `readSome` and `send` both refuse
+        // fds they don't know. (Regression guard: an "autofix" once deleted this line while adding
+        // SO_NOSIGPIPE above, which turned every spacialctl call into an eternal hang —
+        // `IPCServerTests.roundTrip` pins it, with a recv timeout so the failure is loud.)
+        readers[fd] = (source, LineFramer())
         source.resume()
     }
 

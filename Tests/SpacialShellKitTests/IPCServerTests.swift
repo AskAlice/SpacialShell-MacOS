@@ -19,6 +19,11 @@ import SpacialShellProtocol
         func ask(_ request: IPCRequest) throws -> IPCResponse {
             let fd = socket(AF_UNIX, SOCK_STREAM, 0)
             defer { close(fd) }
+            // A server that accepts but never answers (the readers-registration regression) must
+            // fail this test in seconds, not hang it: the recv timeout turns silence into n <= 0,
+            // which `#require(n > 0)` reports.
+            var tv = timeval(tv_sec: 5, tv_usec: 0)
+            _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
             var addr = sockaddr_un()
             addr.sun_family = sa_family_t(AF_UNIX)
             path.utf8CString.withUnsafeBufferPointer { src in

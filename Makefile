@@ -1,5 +1,13 @@
 # SpacialShell — thin wrappers over Scripts/ and swift build/test.
-.PHONY: build release test test-all bundle dmg dev run clean raycast raycast-dev
+.PHONY: build release test test-all bundle dmg dev run clean raycast raycast-dev hooks install
+
+hooks:            ## enable repo git hooks (pre-commit: build + fast tests + install)
+	git config core.hooksPath .githooks
+	@echo "hooks enabled; SPACIAL_SKIP_INSTALL=1 or --no-verify to bypass"
+
+install: bundle   ## bundle + install to /Applications (same as the pre-commit hook)
+	rm -rf /Applications/SpacialShell.app
+	cp -R build/SpacialShell.app /Applications/SpacialShell.app
 
 build:            ## debug build
 	swift build

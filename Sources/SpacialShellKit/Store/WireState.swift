@@ -16,7 +16,7 @@ public struct WireState: Codable, Equatable, Sendable {
         public var workspaces: [WorkspaceDTO]
     }
     public var v: Int = 1
-    public var capabilities: [String] = ["run"]
+    public var capabilities: [String] = ["run", "state", "version"]   // what the daemon actually serves
     public var screens: [ScreenDTO]
 
     public init(world: World) {

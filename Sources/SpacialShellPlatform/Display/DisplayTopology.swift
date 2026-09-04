@@ -17,7 +17,7 @@ public enum DisplayTopology {
 
     /// Spec §7.8: identity is the display's UUID, which survives unplug/replug, not the
     /// `CGDirectDisplayID` (recycled) and not the top-left point (moves when you rearrange).
-    static func uuid(for screen: NSScreen) -> DisplayID {
+    public static func uuid(for screen: NSScreen) -> DisplayID {
         guard let num = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else {
             // Deviation from the brief, which force-casts: a missing `NSScreenNumber` must not
             // crash the window manager. The frame is a unique-enough stand-in — screens never

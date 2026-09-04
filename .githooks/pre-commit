@@ -1,0 +1,46 @@
+#!/bin/sh
+# Pre-commit: build, run the fast pure tests, then bundle + install to /Applications.
+# Enable with `make hooks` (sets core.hooksPath to .githooks).
+#
+# - macOS only: on Linux/CI containers there is no Swift-with-AppKit toolchain, so the hook
+#   prints a notice and passes — commits authored there are gated by CI and a Mac instead.
+# - SPACIAL_SKIP_INSTALL=1 skips the bundle+install step (keeps build+test).
+# - `git commit --no-verify` skips everything, as always.
+#
+# The install replaces /Applications/SpacialShell.app in place; the stable ad-hoc bundle id
+# keeps the Accessibility grant across reinstalls (see Scripts/README for the TCC caveats).
+
+set -e
+
+if [ "$(uname -s)" != "Darwin" ]; then
+    echo "pre-commit: not macOS — skipping build/install (CI and a Mac gate this commit)."
+    exit 0
+fi
+
+if ! command -v swift >/dev/null 2>&1; then
+    echo "pre-commit: no swift toolchain on PATH — skipping." >&2
+    exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+echo "pre-commit: swift build"
+swift build
+
+echo "pre-commit: fast test gate (Kit + Protocol)"
+swift test --skip SpacialShellPlatformTests --skip PlatformIntegrationTests
+
+if [ "${SPACIAL_SKIP_INSTALL:-0}" = "1" ]; then
+    echo "pre-commit: SPACIAL_SKIP_INSTALL=1 — skipping bundle + install."
+    exit 0
+fi
+
+echo "pre-commit: bundling"
+Scripts/bundle.sh
+
+echo "pre-commit: installing to /Applications/SpacialShell.app"
+rm -rf /Applications/SpacialShell.app
+cp -R build/SpacialShell.app /Applications/SpacialShell.app
+
+echo "pre-commit: done — built, tested, installed."
