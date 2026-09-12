@@ -1,9 +1,12 @@
 # Window identity without the private AX call
 
 Date: 2026-09-12
-Status: accepted
+Status: accepted (Alice, 2026-09-12 — App Store distribution confirmed as the goal, option (a))
+Implemented: `bd6751f` on `prototype/window-identity`, alongside this document rather than gated
+behind it, at Alice's direction
 Supersedes: M1 §7.2 ("`WindowRef.id` comes from `_AXUIElementGetWindow`")
-Issues: #17 (spike), #18 (this change), unblocks #19, #20
+Issues: #17 (spike; its first verdict of "not viable" was withdrawn in a follow-up comment — see
+"History" at the end), #18 (this change), unblocks #19, #20
 
 ## The ruling this replaces
 
@@ -182,3 +185,24 @@ change and a relayout. Two *pre-existing* frame assertions in that suite fail on
 fail identically on `main`'s code, verified by A/B — most likely the rebuild-invalidates-the-TCC-grant
 hazard documented in `docs/testing.md`, or the 3-display layout. Not a regression from this change,
 and not fixed here.
+
+The built binary was checked directly: `nm -u` on `SpacialShell` reports zero references to
+`_AXUIElementGetWindow`. That, not the absence of the source directory, is the App Store bar.
+
+## History
+
+The #17 spike's first comment concluded **not viable** and recommended closing #18, #19 and #20
+unbuilt. That was withdrawn the same day in a follow-up comment on #17, once the requirement was
+reframed from "derive a `CGWindowID`" to "hold a stable identity" and `AXUIElement` was measured
+as that key. The original measurements were never wrong; the conclusion drawn from them was. Both
+comments are left in place on the issue so the reasoning is auditable — a future reader who finds
+only the first would close three tickets on a mistake.
+
+Two other things worth recording for whoever touches this next:
+
+- The private call had been doing a *second* job nobody had written down: its nil return was the
+  filter that dropped Finder's desktop. The public replacement (`AXRole == AXWindow`) was found by
+  measuring what the private call actually excluded, not by reading its documentation, because it
+  has none.
+- The window-level fail-open fix was found by an independent audit of the classifier, not by the
+  test suite, which had no coverage for a nil level. The corpus-replay test now closes that gap.
