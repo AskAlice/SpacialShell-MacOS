@@ -120,7 +120,12 @@ Loops are served as animated **webp** (and **gif** next to them) from
 3. Launch it. On first launch SpacialShell asks for the **Accessibility** permission and opens
    System Settings → Privacy & Security → Accessibility for you; tick the checkbox next to
    SpacialShell and it continues on its own.
-4. That's it — no menu bar UI in M1, and no Dock icon (it runs as an accessory app), so there is no
+4. *Optional:* hovering a workspace tile shows live miniatures of that workspace's windows,
+   which needs the **Screen Recording** permission on top of Accessibility. It is not asked for
+   on launch — hover a tile and the card offers it, because that is the only moment it matters.
+   macOS applies this grant at launch, so **restart SpacialShell after granting it**; until then
+   the card says so rather than drawing blank rectangles. Everything else works without it.
+5. That's it — no menu bar UI in M1, and no Dock icon (it runs as an accessory app), so there is no
    `⌘Q` to quit with, and `Fn+Q` with no window focused is simply a no-op, not a quit shortcut.
    Quit with `Ctrl-C` if you're running the dev binary in a terminal, or `kill`/SIGTERM otherwise —
    either one runs the termination gate: state is saved, every managed window is restored to the

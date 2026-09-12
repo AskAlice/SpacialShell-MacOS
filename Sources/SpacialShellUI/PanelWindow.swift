@@ -16,6 +16,9 @@ final class PanelWindow: NSPanel {
         isMovable = false
         isReleasedWhenClosed = false
         animationBehavior = .none
+        // Hover is a real interaction here (the rail's workspace previews), and a window that
+        // can never become key has to ask for pointer movement explicitly.
+        acceptsMouseMovedEvents = true
         // One native Space per display (README): the panels simply stay put everywhere, and stay
         // out of Mission Control's and ⌘Tab's way as far as macOS lets a window opt out.
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]

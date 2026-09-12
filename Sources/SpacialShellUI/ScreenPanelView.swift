@@ -15,10 +15,21 @@ struct ScreenPanelView: View {
     let launcherURL: String
     let metaFor: (Int32) -> AppMeta
     let send: (Command) -> Void
+    /// Pointer entered or left a tile. The rect is the tile's frame in the hosting view's
+    /// coordinate space; the controller owns the conversion to screen coordinates and the card
+    /// itself — the rail is 48 pt wide and cannot draw outside its own window.
+    ///
+    /// The exited tile is named rather than reported as a bare "gone", because SwiftUI does not
+    /// promise that leaving one tile is delivered before entering the next: an unlabelled exit
+    /// arriving late would dismiss the card the next tile had already opened.
+    var onHoverTile: (WorkspaceRailItem, Bool, CGRect) -> Void = { _, _, _ in }
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
     /// re-enters through `Command` like every other interaction.
     @State private var dropTarget: UUID?
+
+    /// Where each tile is, so a hover can tell the controller what to put the card next to.
+    @State private var tileFrames: [UUID: CGRect] = [:]
 
     /// A 2x2 grid inside a 32 pt tile; past four, the count carries the load.
     private static let maxIcons = 4
@@ -54,7 +65,16 @@ struct ScreenPanelView: View {
                     row(item)
                 }
                 .buttonStyle(.plain)
-                .help(item.isTrailingEmpty ? "New workspace" : tooltip(item))
+                // No `.help` here any more: the hover card says everything the tooltip said and
+                // shows the windows as well, and two hover surfaces on one tile is one too many.
+                .background(GeometryReader { geo in
+                    Color.clear.onChange(of: geo.frame(in: .global), initial: true) { _, frame in
+                        tileFrames[item.id] = frame
+                    }
+                })
+                .onHover { inside in
+                    onHoverTile(item, inside, tileFrames[item.id] ?? .zero)
+                }
                 // Dropping a tab here sends its window to this workspace. The trailing "+" row is
                 // not special-cased: it is a workspace, and moving into it grows a new one.
                 .dropDestination(for: DraggedWindow.self) { items, _ in
@@ -152,16 +172,4 @@ struct ScreenPanelView: View {
         return item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid) : nil }
     }
 
-    private func categoryLabel(_ apps: [AppMeta]) -> String? {
-        AppCategories.summarise(apps.map(\.category))?.label
-    }
-
-    /// The tile has no room for words, so everything the old inline label said lives here.
-    private func tooltip(_ item: WorkspaceRailItem) -> String {
-        let apps = distinctApps(item)
-        var head = "\(item.name) (\(item.index + 1))"
-        if let label = categoryLabel(apps) { head += " · \(label)" }
-        let names = apps.map(\.name).joined(separator: ", ")
-        return names.isEmpty ? head : "\(head)\n\(names)"
-    }
 }
