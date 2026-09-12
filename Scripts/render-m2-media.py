@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 960, 600
-RAIL, TOP, GAP, R = 48, 34, 8, 10
+RAIL, TOP, GAP, R = 140, 34, 8, 10
 ACCENT = (10, 132, 255)
 OUT = Path(__file__).resolve().parents[1] / "docs" / "media"
 FPS = 14
@@ -29,6 +29,19 @@ def font(size, mono=False):
 
 F12, F11, F10, F9 = font(12), font(11), font(10), font(9)
 FCLK = font(11, True)
+
+# Mirrors AppCategories.table in SpacialShellKit for the five apps these scenes use, so the
+# rendered rail says the same thing the running app would.
+CATEGORY = {
+    "Cursor": "coding", "Terminal": "terminal", "Safari": "web browsing",
+    "Mail": "productivity", "Notes": "productivity",
+}
+def summarise(names):
+    """Most common category, ties broken by first appearance — same rule as the Swift side."""
+    cats = [CATEGORY[n] for n in dict.fromkeys(names) if n in CATEGORY]
+    if not cats: return None
+    best = max(cats.count(c) for c in cats)
+    return next(c for c in cats if cats.count(c) == best)
 
 APPS = {
     "Cursor":   ((28, 30, 38), (90, 200, 250), "C"),
@@ -136,19 +149,33 @@ def draw_chrome(base, workspaces, active, layout, tabs, focused_tab):
     # search
     d.ellipse((12, 12, 36, 36), outline=(200, 200, 205, 180), width=2)
     d.line((32, 32, 38, 38), fill=(200, 200, 205, 180), width=2)
-    # tiles
+    # workspace rows: app icons + window count + category label, as the shell draws them
     y0 = 52
-    for i, (name, _sym) in enumerate(workspaces):
-        x, y = 8, y0 + i * 40
+    row_h = 44
+    for i, (_name, apps) in enumerate(workspaces):
+        x, y = 6, y0 + i * row_h
         on = i == active
         fill = (*ACCENT, 46) if on else (255, 255, 255, 14)
-        rr(d, (x, y, x + 32, y + 32), 8, fill=fill)
-        glyph = "<>" if i == 0 else "○" if i == 1 else "+"
-        d.text((x + (6 if i == 0 else 10), y + 7), glyph, font=F12, fill=(*ACCENT, 255) if on else (200, 200, 205, 200))
-    plus_y = y0 + len(workspaces) * 40
-    d.text((18, plus_y + 4), "+", font=F12, fill=(180, 180, 185, 200))
-    d.text((14, H - 42), "21", font=FCLK, fill=(230, 230, 235, 230))
-    d.text((14, H - 28), "14", font=FCLK, fill=(230, 230, 235, 230))
+        rr(d, (x, y, RAIL - 6, y + row_h - 6), 8, fill=fill)
+        seen = list(dict.fromkeys(apps))
+        for j, app in enumerate(seen[:4]):
+            accent = APPS[app][1] if app in APPS else (160, 160, 165)
+            rr(d, (x + 7 + j * 19, y + 7, x + 7 + j * 19 + 16, y + 23), 4, fill=(*accent, 255))
+        if len(seen) > 4:
+            d.text((x + 7 + 4 * 19, y + 10), f"+{len(seen) - 4}", font=F9, fill=(210, 210, 215, 200))
+        d.text((RAIL - 22, y + 10), str(len(apps)), font=F9, fill=(230, 230, 235, 200) if on else (180, 180, 185, 190))
+        label = summarise(apps)
+        if label:
+            d.text((x + 7, y + 26), label, font=F9,
+                   fill=(235, 235, 240, 230) if on else (185, 185, 190, 200))
+    plus_y = y0 + len(workspaces) * row_h
+    rr(d, (6, plus_y, RAIL - 6, plus_y + row_h - 6), 8, fill=(255, 255, 255, 10))
+    d.text((14, plus_y + 10), "+  New", font=F11, fill=(180, 180, 185, 210))
+    # settings cog (primary display only), and the stacked clock above it
+    d.text((14, H - 56), "21", font=FCLK, fill=(230, 230, 235, 230))
+    d.text((14, H - 42), "14", font=FCLK, fill=(230, 230, 235, 230))
+    d.ellipse((14, H - 26, 28, H - 12), outline=(200, 200, 205, 180), width=2)
+    d.ellipse((18, H - 22, 24, H - 16), fill=(200, 200, 205, 180))
     # top bar
     bar = Image.new("RGBA", (W - RAIL, TOP), (44, 44, 48, 200))
     base.paste(bar, (RAIL, 0), bar)
@@ -185,7 +212,7 @@ def frame(workspaces, active, layout, tabs, focused, glow=1.0):
         if box and i != focused: draw_win(im, names[i], box, 0)
     if focused < len(vis) and vis[focused]:
         draw_win(im, names[focused], vis[focused], glow)
-    draw_chrome(im, [(w[0], "") for w in workspaces], active, layout, tabs, focused)
+    draw_chrome(im, workspaces, active, layout, tabs, focused)
     return im.convert("RGB")
 
 def tween(a, b, n):
