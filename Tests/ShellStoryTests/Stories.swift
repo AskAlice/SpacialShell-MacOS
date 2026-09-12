@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Foundation
 import SpacialShellKit
+import SpacialShellProtocol
 @testable import SpacialShellUI
 
 /// The story catalog — Storybook for the shell. One entry per interesting state of each view,
@@ -49,7 +50,7 @@ enum Stories {
         WorkspaceRailItem(id: UUID(), index: i, name: name, symbol: symbol, windowCount: count,
                           isActive: active, isPinned: pinned, isTrailingEmpty: trailing)
     }
-    static func tabs(_ items: [WindowTabItem], layout: Layout = .split) -> ScreenShellState {
+    static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.Layout = .split) -> ScreenShellState {
         ScreenShellState(display: "D1", isFocusedScreen: true,
                          rail: [railItem(0, name: "Web", symbol: "globe", count: items.count, active: true)],
                          tabs: items, layout: layout)

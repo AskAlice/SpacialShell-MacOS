@@ -1,11 +1,12 @@
 import AppKit
 import SwiftUI
 import SpacialShellKit
+import SpacialShellProtocol
 
 /// One open window anywhere in the world, as the overview lists it.
 struct OverviewWindowItem: Identifiable {
-    var id: WindowRef { ref }
-    let ref: WindowRef
+    var id: SpacialShellProtocol.WindowRef { ref }
+    let ref: SpacialShellProtocol.WindowRef
     let name: String            // app name (window titles are a follow-up, same as the tab bar)
     let detail: String          // "workspace · screen n" or "visitor" for ephemeral windows
     let icon: NSImage?
@@ -25,7 +26,7 @@ struct OverviewAppItem: Identifiable {
 struct OverviewView: View {
     let windows: [OverviewWindowItem]
     let apps: [OverviewAppItem]
-    let onSelectWindow: (WindowRef) -> Void
+    let onSelectWindow: (SpacialShellProtocol.WindowRef) -> Void
     let onLaunchApp: (URL) -> Void
 
     @State private var query = ""

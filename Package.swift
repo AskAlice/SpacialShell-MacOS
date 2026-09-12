@@ -33,7 +33,7 @@ let package = Package(
         .testTarget(name: "PlatformIntegrationTests", dependencies: ["SpacialShellPlatform", "SpacialShellKit"]),
         .testTarget(
             name: "ShellStoryTests",
-            dependencies: ["SpacialShellUI", .product(name: "SnapshotTesting", package: "swift-snapshot-testing")],
+            dependencies: ["SpacialShellUI", "SpacialShellProtocol", .product(name: "SnapshotTesting", package: "swift-snapshot-testing")],
             exclude: ["__Snapshots__"]
         ),
     ]

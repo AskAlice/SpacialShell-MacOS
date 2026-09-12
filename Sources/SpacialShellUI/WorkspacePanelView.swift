@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import SpacialShellKit
+import SpacialShellProtocol
 
 /// The window tab bar + layout switcher: material-shell's `WorkspacePanel`. Tabs are the active
 /// workspace's row, left→right in row order — the same order `Fn+A`/`Fn+D` walk, so the bar is a
@@ -92,7 +93,7 @@ struct WorkspacePanelView: View {
         }
     }
 
-    static func symbol(for layout: Layout) -> String {
+    static func symbol(for layout: SpacialShellProtocol.Layout) -> String {
         switch layout {
         case .maximize: "rectangle"
         case .split: "rectangle.split.2x1"
