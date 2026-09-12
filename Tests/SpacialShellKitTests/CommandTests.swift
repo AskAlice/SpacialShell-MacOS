@@ -44,6 +44,36 @@ import Foundation
         (w, _) = run(w, .moveWindow(.right)); (w, _) = run(w, .moveWindow(.right))
         #expect(w.screens["D1"]!.active.windows == [b, c, a] && w.focus.window == a)
     }
+    /// Under `maximize` only the focused window is painted, and the focus travels with the window
+    /// as it moves — so the move was real in the model (the tab row reorders) and invisible on
+    /// screen, which reads as "move doesn't work". The verb means "put this beside that", so it
+    /// promotes the workspace to `split`, the narrowest layout that can show the pair.
+    @Test func moveWindowUnderMaximizePromotesToSplit() {
+        var w = base()
+        #expect(w.screens["D1"]!.active.layout == .maximize)
+        (w, _) = run(w, .moveWindow(.right))
+        #expect(w.screens["D1"]!.active.layout == .split)
+        #expect(w.screens["D1"]!.active.windows == [b, a, c])
+    }
+
+    /// A layout that already shows more than one window is the user's choice and is left alone.
+    @Test func moveWindowLeavesOtherLayoutsAlone() {
+        var w = base()
+        let ws = w.screens["D1"]!.active.id
+        (w, _) = run(w, .setWorkspaceLayout(ws, .grid))
+        (w, _) = run(w, .moveWindow(.right))
+        #expect(w.screens["D1"]!.active.layout == .grid)
+    }
+
+    /// A move that cannot happen changes nothing at all — including the layout. Promoting on a
+    /// refused move would turn "nudge the leftmost window further left" into a layout change.
+    @Test func refusedMoveDoesNotPromoteTheLayout() {
+        var w = base()
+        (w, _) = run(w, .moveWindow(.left))          // `a` is already leftmost
+        #expect(w.screens["D1"]!.active.layout == .maximize)
+        #expect(w.screens["D1"]!.active.windows == [a, b, c])
+    }
+
     @Test func moveWindowDownCreatesWorkspaceAndFollows() {
         var w = base()
         (w, _) = run(w, .moveWindowToWorkspace(.down))

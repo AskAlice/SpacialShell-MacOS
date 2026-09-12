@@ -42,6 +42,13 @@ public enum CommandRunner {
             let j = dir == .right ? i + 1 : i - 1
             guard (0..<ws.windows.count).contains(j) else { return (w, []) }
             ws.windows.swapAt(i, j)
+            // `maximize` paints only the focused window (LayoutEngine), and the focus travels with
+            // the window as it moves — so the same window stays on screen at the same rect and the
+            // move is invisible, however real it is in the row. The verb means "put this beside
+            // that", so it promotes to `split`, the narrowest layout that can show the pair.
+            // Layouts that already show more than one window are the user's choice; leave them.
+            // Placed after the bounds guard: a refused move must change nothing, layout included.
+            if ws.layout == .maximize { ws.layout = .split }
             w.screens[sid]!.workspaces[screen.activeIndex] = ws
             effects.append(.relayout)
 
