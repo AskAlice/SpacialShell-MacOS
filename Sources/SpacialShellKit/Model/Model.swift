@@ -21,10 +21,17 @@ public struct Workspace: Codable, Equatable, Sendable {
     public var floating: Set<WindowRef>
     public var anchor: WindowRef?         // last focused window here; maximize/split anchor
     public var pinned: Bool               // never reaped when empty (config seed / user-named)
+    /// Held open while empty because the state file says windows belong here — set by
+    /// `PersistedState.restore` for a workspace some app was in when we quit, cleared by
+    /// `normalize()` as soon as a window lands. Without it the reaper would delete the workspace
+    /// between restore and the first snapshot, and the apps would have nowhere to return to.
+    public var reserved: Bool
     public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: Layout,
-                windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil, pinned: Bool = false) {
+                windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil,
+                pinned: Bool = false, reserved: Bool = false) {
         self.id = id; self.name = name; self.symbol = symbol; self.layout = layout
-        self.windows = windows; self.floating = floating; self.anchor = anchor; self.pinned = pinned
+        self.windows = windows; self.floating = floating; self.anchor = anchor
+        self.pinned = pinned; self.reserved = reserved
     }
     public var isEmpty: Bool { windows.isEmpty }
 }

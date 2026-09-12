@@ -37,7 +37,12 @@ extension World {
 
     // MARK: mutations
 
-    public mutating func adopt(_ w: WindowRef, kind: WindowKind, on screen: DisplayID, parent: WindowRef? = nil) {
+    /// `workspace` is the remembered placement for this window's app (`PersistedState.placements`),
+    /// and applies only while that workspace still exists — a placement naming a workspace that is
+    /// gone never resurrects it, the window just lands by the ordinary rules. A parent still wins:
+    /// a dialog belongs with its owner, wherever the owner ended up.
+    public mutating func adopt(_ w: WindowRef, kind: WindowKind, on screen: DisplayID, parent: WindowRef? = nil,
+                               workspace: UUID? = nil) {
         guard location(of: w) == nil, !ephemeral.contains(w), !ignored.contains(w) else { return }
         switch kind {
         case .ignore: ignored.insert(w); return
@@ -46,6 +51,7 @@ extension World {
         }
         var target = screens[screen] != nil ? screen : focus.screen
         var index: Int? = nil
+        if let id = workspace, let loc = location(ofWorkspace: id) { target = loc.screen; index = loc.index }
         if let p = parent, let loc = location(of: p) {
             target = loc.screen; index = loc.index; parents[w] = p
         }
@@ -131,7 +137,9 @@ extension World {
             var kept: [Workspace] = []
             for (i, ws) in s.workspaces.enumerated() {
                 let last = i == s.workspaces.count - 1
-                if ws.isEmpty && !last && ws.id != activeId && !ws.pinned { continue }
+                if ws.isEmpty && !last && ws.id != activeId && !ws.pinned && !ws.reserved { continue }
+                var ws = ws
+                if !ws.isEmpty { ws.reserved = false }   // its windows are back; stop holding it open
                 kept.append(ws)
             }
             if kept.isEmpty || !kept.last!.isEmpty || kept.last!.pinned { kept.append(newWorkspace()) }

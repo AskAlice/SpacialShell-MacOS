@@ -17,6 +17,10 @@ public actor WorldStore {
     private var stranded: [WindowRef: CGRect] = [:]
     private var parked: Set<WindowRef> = []
     private var bundleIDs: [WindowRef: String] = [:]
+    /// Where each app's windows belong: bundle id → workspace id. Seeded from the state file at
+    /// boot so a relaunch puts windows back, then kept current by every reconcile, so an app that
+    /// is quit and reopened mid-session also comes back to where the user last had it.
+    private var placements: [String: UUID]
     private var fullscreen: Set<WindowRef> = []
     private var intents = IntentSet()
     private var failures: [WindowRef: Int] = [:]
@@ -32,8 +36,10 @@ public actor WorldStore {
     private var eventTask: Task<Void, Never>?
     private var started = false
 
-    public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>, onChange: @escaping @Sendable (World) -> Void) {
+    public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
+                placements: [String: UUID] = [:], onChange: @escaping @Sendable (World) -> Void) {
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
+        self.placements = placements
         self.world = world ?? World.seeded(screens: [], config: config)
     }
 
@@ -55,9 +61,11 @@ public actor WorldStore {
     /// `parked` is what the restore actually acts on. §7.4 is about not stranding windows in a
     /// parking corner, and only parked windows are in one — a tiled window is already somewhere
     /// the user can reach, and centring it on the way out just scrambles their screen.
-    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>) {
-        (world, displays, observed, stranded, parked)
+    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID]) {
+        (world, displays, observed, stranded, parked, placements)
     }
+    /// The placement memory to persist — see `PersistedState.placements`.
+    public func currentPlacements() -> [String: UUID] { placements }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
     public func run(_ command: Command) async {
@@ -126,7 +134,10 @@ public actor WorldStore {
             }
             if !known || (!fullscreen.contains(w.ref) && world.location(of: w.ref) == nil && !world.ephemeral.contains(w.ref) && !world.ignored.contains(w.ref)) {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
-                world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent)
+                // The app's remembered workspace, if it still exists — `adopt` falls back to the
+                // active workspace when it does not, and never creates one.
+                world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent,
+                            workspace: w.bundleID.flatMap { placements[$0] })
                 if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
             }
             world.setHidden(w.ref, w.isMinimized || hiddenApps.contains(w.ref.pid))
@@ -176,6 +187,9 @@ public actor WorldStore {
     // MARK: reconcile
 
     private func reconcile() async {
+        // Placement memory follows the model: whatever the last command or snapshot did, the
+        // windows on screen now define where their apps belong.
+        placements.merge(PersistedState.placements(world: world, bundleIDs: bundleIDs)) { _, live in live }
         generation += 1
         let gen = generation
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
