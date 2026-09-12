@@ -249,7 +249,7 @@ final class AXApp: @unchecked Sendable {
                 onEvent(.focusChanged)
             case kAXMovedNotification, kAXResizedNotification:
                 // movedObs/resizedObs fall back to a full refresh when the id doesn't resolve.
-                guard let id = element.containingWindowId(),
+                guard let id = element.windowIdentity(),
                       let origin = element.get(Ax.topLeftCornerAttr),
                       let size = element.get(Ax.sizeAttr)
                 else {
@@ -288,18 +288,17 @@ final class AXApp: @unchecked Sendable {
             stateLock.withLock {
                 for id in refresh.dead { pendingFrameJobs.removeValue(forKey: id)?.cancel() }
             }
+            // Ids are minted now, so the element→id table is ours to keep tidy: a dead window's
+            // entry would otherwise live until the process does.
+            let dead = refresh.dead
+            for id in dead { WindowIdentities.forget(id) }
+            await MainActor.run { for id in dead { forgetWindowLevel(id) } }
         }
         guard refresh.conclusive else { return cachedSnapshots() }
         var levels: [WindowID: MacOsWindowLevel] = [:]
         if !refresh.needLevels.isEmpty {
             let ids = refresh.needLevels
-            levels = await MainActor.run {
-                var levels: [WindowID: MacOsWindowLevel] = [:]
-                for id in ids {
-                    if let level = getWindowLevel(for: id) { levels[id] = level }
-                }
-                return levels
-            }
+            levels = await MainActor.run { getWindowLevels(for: ids) }
         }
         let ids = refresh.ids
         let fresh = levels
@@ -342,7 +341,7 @@ final class AXApp: @unchecked Sendable {
         // other native macOS Spaces (spec §7.2), which are alive and must keep their ids.
         for (id, window) in previous where !enumeratedIds.contains(id) {
             if job.isCancelled { return .inconclusive }
-            if window.ax.containingWindowId() == nil {
+            if window.ax.windowIdentity() == nil {
                 dead.append(id)
                 alive.removeValue(forKey: id)
             }
@@ -414,10 +413,10 @@ final class AXApp: @unchecked Sendable {
     }
 
     /// Spec §7.2 / ruling 5. `AXParent` of a plain window is the application element, whose
-    /// `containingWindowId()` is nil; for a sheet or attached dialog it is the owner window.
+    /// `windowIdentity()` is nil; for a sheet or attached dialog it is the owner window.
     private func parentRef(of ax: AXUIElement, ownId: WindowID) -> WindowRef? {
         guard let parent = ax.get(Ax.parentAttr),
-              let parentId = parent.containingWindowId(),
+              let parentId = parent.windowIdentity(),
               parentId != ownId
         else { return nil }
         return WindowRef(id: parentId, pid: pid)

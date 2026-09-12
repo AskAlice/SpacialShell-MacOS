@@ -1,31 +1,50 @@
 // Adapted from AeroSpace (MIT) — Sources/AppBundle/windowLevelCache.swift @ c548c7f
+import SpacialShellProtocol
 import CoreGraphics
 import Foundation
 
 @MainActor
-private var cache: [UInt32: MacOsWindowLevel] = [:]
+private var cache: [WindowID: MacOsWindowLevel] = [:]
+
+/// Levels for many windows in one `CGWindowList` pass.
+///
+/// Our ids are minted (`WindowIdentities`) and are not window-server handles any more, so each one
+/// is resolved to a real `CGWindowID` first. That resolution is the weak public match the spike
+/// measured, and it is allowed to fail: an unresolved window simply has no level, which is exactly
+/// what this function already returned for a window the list did not mention. The classifier
+/// treats a nil level as "not known to be always-on-top" and falls back to its other rules, so the
+/// failure mode is a floating panel occasionally classified as a normal window — visible and
+/// recoverable, never a mis-addressed write.
+@MainActor
+func getWindowLevels(for ids: [WindowID]) -> [WindowID: MacOsWindowLevel] {
+    var out: [WindowID: MacOsWindowLevel] = [:]
+    let uncached = ids.filter { id in
+        if let existing = cache[id] { out[id] = existing; return false }
+        return true
+    }
+    guard !uncached.isEmpty else { return out }
+
+    var levelByCGID: [CGWindowID: MacOsWindowLevel] = [:]
+    for listed in WindowIdentities.onScreenList() {
+        levelByCGID[listed.id] = .new(windowLevel: listed.layer)
+    }
+    for (id, cgID) in WindowIdentities.captureIDs(for: uncached) {
+        guard let level = levelByCGID[cgID] else { continue }
+        // A window's level does not change while the window lives, so this is cached for good.
+        cache[id] = level
+        out[id] = level
+    }
+    return out
+}
 
 @MainActor
-func getWindowLevel(for windowId: UInt32) -> MacOsWindowLevel? {
-    if let existing = cache[windowId] { return existing }
-
-    var result: [UInt32: MacOsWindowLevel] = [:]
-    let options = CGWindowListOption(arrayLiteral: .excludeDesktopElements, .optionOnScreenOnly)
-    guard let cfArray = CGWindowListCopyWindowInfo(options, CGWindowID(0)) as? [CFDictionary] else { return nil }
-    for elem in cfArray {
-        let dict = elem as NSDictionary
-
-        guard let _windowLayer = dict[kCGWindowLayer] else { continue }
-        let windowLayer = ((_windowLayer as! CFNumber) as NSNumber).intValue
-
-        guard let _windowId = dict[kCGWindowNumber] else { continue }
-        let windowId = ((_windowId as! CFNumber) as NSNumber).uint32Value
-
-        result[windowId] = .new(windowLevel: windowLayer)
-    }
-    cache = result
-    return result[windowId]
+func getWindowLevel(for windowId: WindowID) -> MacOsWindowLevel? {
+    getWindowLevels(for: [windowId])[windowId]
 }
+
+/// A closed window's id must not keep a level alive for a future id to collide with.
+@MainActor
+func forgetWindowLevel(_ id: WindowID) { cache.removeValue(forKey: id) }
 
 enum MacOsWindowLevel: Sendable, Equatable {
     case normalWindow

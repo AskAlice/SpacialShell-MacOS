@@ -62,6 +62,20 @@ struct TextEditTests {
         let te = w.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }.filter { $0.pid == app.processIdentifier }
         #expect(te.count >= 2)
 
+        // #18: identity is minted by SpacialShell now, not read from `_AXUIElementGetWindow`. The
+        // property the private call used to give us — a key that stays put for the life of the
+        // window — has to hold against a real app or nothing above it works. Two enumerations in
+        // a row must agree, and the two windows must not collide.
+        // Guarded, not just asserted: every check below is a set comparison, and on an empty set
+        // they would all pass vacuously and report success while proving nothing.
+        try #require(te.count >= 2)
+        let firstIDs = Set(te.map(\.id))
+        #expect(firstIDs.count == te.count, "two TextEdit windows minted the same id")
+        let reSnapshot = await backend.currentSnapshot()
+        let secondIDs = Set(reSnapshot.windows.filter { $0.ref.pid == app.processIdentifier }.map(\.ref.id))
+        #expect(firstIDs == secondIDs, "window ids changed between two enumerations")
+        #expect(firstIDs.allSatisfy { $0 >= 1_000_000 }, "ids should be minted, not window-server ids")
+
         // Default layout is `.maximize` (Config() default): one window fills the screen, the rest
         // are parked in the corner sliver (spec §5, §7.4).
         await store.run(.focusWindow(.right))
@@ -82,5 +96,11 @@ struct TextEditTests {
         let snap2 = await backend.currentSnapshot()
         let both = snap2.windows.filter { $0.ref.pid == app.processIdentifier && display.visibleFrame.insetBy(dx: -2, dy: -2).contains($0.frame) }
         #expect(both.count == 2)
+
+        // And identity survives being moved and resized — the case where a frame/title match would
+        // have had to guess, and the reason a minted key is the right answer rather than a derived
+        // one. Same ids after two relayouts and a focus change as before any of them.
+        let afterLayout = Set(snap2.windows.filter { $0.ref.pid == app.processIdentifier }.map(\.ref.id))
+        #expect(afterLayout == firstIDs, "window ids changed across parking, focus and a relayout")
     }
 }

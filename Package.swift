@@ -14,13 +14,12 @@ let package = Package(
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
     ],
     targets: [
-        .target(name: "PrivateApi", path: "Sources/PrivateApi"),
         .target(name: "SpacialShellProtocol"),
         .target(
             name: "SpacialShellKit",
             dependencies: ["SpacialShellProtocol", .product(name: "TOMLDecoder", package: "TOMLDecoder")]
         ),
-        .target(name: "SpacialShellPlatform", dependencies: ["SpacialShellKit", "SpacialShellProtocol", "PrivateApi"]),
+        .target(name: "SpacialShellPlatform", dependencies: ["SpacialShellKit", "SpacialShellProtocol"]),
         // M2 T15: the drawn shell as a library so the story/snapshot tests can render it. Depends
         // on Platform only for DisplayTopology.uuid; drops to Kit-only when the T8 snapshot feed
         // carries display identity.
