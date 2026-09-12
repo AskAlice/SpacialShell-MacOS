@@ -16,12 +16,15 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var file: Config
     private let onChange: (SettingsOverrides) -> Void
     private let openConfigFile: () -> Void
+    private let configPath: String
 
     public init(file: Config, overrides: SettingsOverrides,
+                configPath: String,
                 openConfigFile: @escaping () -> Void,
                 onChange: @escaping (SettingsOverrides) -> Void) {
         self.file = file
         self.overrides = overrides
+        self.configPath = configPath
         self.openConfigFile = openConfigFile
         self.onChange = onChange
     }
@@ -65,6 +68,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
                                    self.overrides = new
                                    self.onChange(new)
                                }),
+            configPath: configPath,
             openConfigFile: openConfigFile)
         if let host = window.contentView as? NSHostingView<SettingsView> {
             host.rootView = view

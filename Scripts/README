@@ -17,9 +17,14 @@ is an .app.
   path. Move the checkout, rename the directory, or switch to a different build
   configuration and the grant no longer applies — you have to remove the stale entry in
   System Settings → Privacy & Security → Accessibility (select it, press "−") and grant
-  the new path. `Permissions.waitForAccessibility` runs `tccutil reset Accessibility
-  sh.emu.SpacialShell` once on the first retry, which clears the stale entry for
-  you in the bundled case, but a loose binary at a *new* path is simply a new subject.
+  the new path. Nothing in the app does this for you: `Permissions.waitForAccessibility`
+  used to shell out to `tccutil reset Accessibility sh.emu.SpacialShell` on its first
+  retry, and no longer does (#19 — a sandboxed process cannot launch executables, the
+  stable Developer ID below removed the reason, and the reset deleted the row outright,
+  which dropped the app off the Accessibility list with no route back but "+"). It never
+  helped here anyway: a loose binary at a *new* path is a new subject, not a stale row.
+  What the app does now is say so — after 20 s with no grant it logs the remedy at
+  `.error` under category `permissions`, which is the same two clicks described below.
 * `Scripts/bundle.sh` produces `build/SpacialShell.app` with a stable bundle id, so its
   grant survives rebuilds in place. Re-granting is still needed if you move the .app.
 * Rebuilding changes the ad-hoc signature. macOS keeps the old TCC row and silently
@@ -88,6 +93,30 @@ is an .app.
   `cdhash H"..."`, which is the code hash and changes every build. A certificate gives
   `certificate leaf = H"..."`, which is byte-identical across rebuilds — verified by
   bundling twice and diffing `codesign -d -r-`.
+
+Where the config lives, sandboxed and not
+-----------------------------------------
+`Paths.swift` derives every path from `FileManager.default.homeDirectoryForCurrentUser`.
+Under the App Sandbox that accessor returns the app's **container**, not the real home —
+probed on macOS 26.5 with an ad-hoc-signed bundle carrying only
+`com.apple.security.app-sandbox`:
+
+    NSHomeDirectory()                        /Users/<you>/Library/Containers/<bundleid>/Data
+    FileManager.homeDirectoryForCurrentUser  /Users/<you>/Library/Containers/<bundleid>/Data
+    getpwuid(getuid()).pw_dir                /Users/<you>
+
+Only `getpwuid` reports the real home; both Foundation accessors are redirected, and so
+is `("~" as NSString).expandingTildeInPath`. So the config path follows the container with
+no code change and no `isSandboxed` check, and the unsandboxed build is untouched:
+
+    unsandboxed  ~/.config/spacial-shell/config.toml
+    sandboxed    ~/Library/Containers/sh.emu.SpacialShell/Data/.config/spacial-shell/config.toml
+
+Also probed inside the container: writes to `.config/spacial-shell` and to
+`Library/Application Support`, the `O_EVTONLY` directory watch the live config reload
+depends on, and `NSWorkspace.open` on the app's own config file — all succeed. Reading the
+real `~/.config/spacial-shell` from inside the sandbox fails, which is the accepted cost:
+see docs/config.md.
 
 Debugging keys
 --------------
