@@ -73,6 +73,11 @@ public struct Config: Codable, Equatable, Sendable {
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
     public var highlightColor: String = "system"
+    /// Both panels' material tint and how opaque they are. "system" means the stock vibrancy
+    /// material; a hex colour replaces it. One pair for both surfaces — split them only if the
+    /// rail and bar ever need to differ.
+    public var panelColor: String = "system"
+    public var panelOpacity: Double = 1
     public var workspaces: [WorkspaceSeed] = []
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
@@ -92,7 +97,8 @@ public struct Config: Codable, Equatable, Sendable {
              ephemeral, float, ignore, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
              highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
-             highlightColor = "highlight-color", appCategories = "app-categories"
+             highlightColor = "highlight-color", appCategories = "app-categories",
+             panelColor = "panel-color", panelOpacity = "panel-opacity"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -115,6 +121,15 @@ public struct Config: Codable, Equatable, Sendable {
             }
             highlightColor = n
         } else { highlightColor = "system" }
+        if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
+            guard let n = HighlightColor.normalize(raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
+            }
+            panelColor = n
+        } else { panelColor = "system" }
+        // Clamped rather than refused: an out-of-range opacity is a typo, not a reason to reject
+        // the whole config and fall back to defaults the user never asked for.
+        panelOpacity = min(1, max(0, try c.decodeIfPresent(Double.self, forKey: .panelOpacity) ?? 1))
         appCategories = try c.decodeIfPresent([String: AppCategory].self, forKey: .appCategories) ?? [:]
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
