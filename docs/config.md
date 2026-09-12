@@ -5,6 +5,12 @@ reloaded live; an invalid config is rejected (the previous one keeps running) an
 logged. Every key is optional — an empty or missing file gives you `Config()`'s defaults, shown
 below.
 
+> **Sandboxed builds read the same path inside the app's container**, i.e.
+> `~/Library/Containers/sh.emu.SpacialShell/Data/.config/spacial-shell/config.toml`. See
+> [Where the file lives](#where-the-file-lives) — it changes where you hand-edit, and the
+> settings window's **Open config.toml…** button is the route you should use rather than typing
+> that path.
+
 ## Full example
 
 ```toml
@@ -161,6 +167,49 @@ Home/End/Page Up/Page Down before the hotkey tap ever sees a `left`/`right`/`up`
 see `docs/platform-notes.md` check #2. The arrow keys only work meaningfully under the `ctrl-alt`
 (or another non-`fn`) modifier combination, which is why they ship pre-bound to `⌃⌥` in both
 presets rather than left for you to configure.
+
+## Where the file lives
+
+The config file *is* the interface — it is why `Fn+,` opens it and why the settings window layers
+over it instead of writing it (see `docs/superpowers/specs/2026-09-12-toml-writeback-research.md`).
+That position is unchanged. What changes under the App Sandbox is only the directory it lives in.
+
+| Build | Config | State |
+|---|---|---|
+| Direct distribution (ships today, unsandboxed) | `~/.config/spacial-shell/config.toml` | `~/Library/Application Support/SpacialShell/` |
+| Sandboxed (App Store) | `~/Library/Containers/sh.emu.SpacialShell/Data/.config/spacial-shell/config.toml` | `…/Data/Library/Application Support/SpacialShell/` |
+
+This is one code path, not two: `Paths.swift` derives everything from
+`FileManager.default.homeDirectoryForCurrentUser`, and macOS redirects that accessor to the
+container when the process is sandboxed — verified by probe on macOS 26.5, tabulated in
+`Scripts/README`. Nothing branches on a sandbox check, and the unsandboxed build resolves exactly
+the paths it always has.
+
+**The decision, and the position it re-opens.** Issue #19 chose to let the config move into the
+container, rather than keep the dotfile behind a security-scoped bookmark the user grants once, or
+ship two builds with different config locations. The bookmark option keeps `~/.config` but makes
+first launch a file-picker the user has to satisfy before the window manager works at all, and
+leaves the config unreadable if the bookmark ever goes stale; two builds means two documented
+paths and two support stories. Moving into the container keeps one path per build, keeps the file
+hand-editable, and pays for it in discoverability.
+
+**What it costs a hand-editing user, stated rather than glossed:**
+
+- Hand-editing still works, and still round-trips live — the file is a real file in a real
+  directory, writable, and the directory watch that drives live reload works inside the container
+  (probed). Your editor, your comments, your key order: unchanged.
+- The path is no longer guessable, and `~/.config/spacial-shell/` is where you will look first and
+  find nothing. **Use the settings window's "Open config.toml…" button** (or `Fn+,`), which opens
+  whichever file the running build actually reads. That button is the discoverable route and is
+  the reason the loss is survivable rather than fatal.
+- Shell tooling that assumed `~/.config/spacial-shell` — dotfile repos, symlinks, `$EDITOR`
+  aliases — needs repointing for a sandboxed build. A symlink from `~/.config/spacial-shell` into
+  the container works from outside; the app cannot follow one pointing the other way.
+- **An existing `~/.config/spacial-shell/config.toml` is unreachable to a sandboxed build**, and
+  cannot be migrated automatically: the sandbox refuses to read the real home, so the app cannot
+  even see the old file to copy it. A sandboxed build starts at defaults and writes a fresh empty
+  config. Moving your settings across is a manual copy, once, into the container path above. No
+  import flow exists and #19 deliberately does not add one.
 
 ## State
 

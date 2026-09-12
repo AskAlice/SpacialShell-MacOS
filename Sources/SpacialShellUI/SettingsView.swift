@@ -24,6 +24,10 @@ struct SettingsView: View {
     /// What `config.toml` says, before any override — the baseline a "Reset" returns you to.
     let file: Config
     @Binding var overrides: SettingsOverrides
+    /// Where the running build actually reads the file from. Worth showing, not just opening: a
+    /// sandboxed build reads it inside its container, where nobody would think to look and no
+    /// dotfile symlink points — see docs/config.md.
+    let configPath: String
     let openConfigFile: () -> Void
 
     @State private var pane: Pane = .general
@@ -76,6 +80,10 @@ struct SettingsView: View {
                 Text("config.toml").font(.system(size: 12, weight: .semibold))
                 Text("The file is the source of truth for everything this window does not override, and it is the only place to set keybindings, workspace seeds and app rules.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(configPath)
+                    .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.secondary)
+                    .textSelection(.enabled).lineLimit(2).truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button("Open config.toml…", action: openConfigFile)
             }
         }

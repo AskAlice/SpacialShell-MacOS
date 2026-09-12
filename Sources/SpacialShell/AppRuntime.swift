@@ -104,6 +104,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // actor to persist and re-layer, which is the only thing that needs the runtime at all.
         let settings = SettingsWindowController(
             file: fileConfig, overrides: overrides,
+            configPath: Paths.configFile.path,
             openConfigFile: {
                 let url = Paths.configFile
                 if !FileManager.default.fileExists(atPath: url.path) {
