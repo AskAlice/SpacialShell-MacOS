@@ -60,7 +60,7 @@ public struct Config: Codable, Equatable, Sendable {
     public var axTimeoutMs: Int = 1000
     public var refreshIntervalMs: Int = 2000
     public var startAtLogin: Bool = false
-    public var panelWidth: Double = 48
+    public var panelWidth: Double = 140
     public var panelHeight: Double = 34
     public var railSide: RailSide = .left
     public var highlightMs: Int = 600
@@ -72,6 +72,9 @@ public struct Config: Codable, Equatable, Sendable {
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
     public var keybindings: [String: String] = [:]
+    /// bundle-id → category, for the apps the built-in table and `LSApplicationCategoryType`
+    /// both get wrong. Any table of this kind is permanently incomplete; this is the knob.
+    public var appCategories: [String: AppCategory] = [:]
 
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.systempreferences"), AppRule(bundleId: "com.apple.calculator")]
 
@@ -83,7 +86,7 @@ public struct Config: Codable, Equatable, Sendable {
              ephemeral, float, ignore, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side",
              highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
-             highlightColor = "highlight-color"
+             highlightColor = "highlight-color", appCategories = "app-categories"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -93,7 +96,7 @@ public struct Config: Codable, Equatable, Sendable {
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
-        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 48
+        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 140
         panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
         highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
@@ -105,6 +108,7 @@ public struct Config: Codable, Equatable, Sendable {
             }
             highlightColor = n
         } else { highlightColor = "system" }
+        appCategories = try c.decodeIfPresent([String: AppCategory].self, forKey: .appCategories) ?? [:]
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []

@@ -14,7 +14,7 @@ default-layout = "maximize"       # maximize | split | column | half | grid
 ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
-panel-width = 48
+panel-width = 140
 panel-height = 34
 rail-side = "left"                # or "right"
 highlight-ms = 600
@@ -50,10 +50,11 @@ title-regex = "^Picture in Picture$"
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
 | `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
-| `panel-width` | number (pt) | `48` | Width of the workspace rail. Windows are inset by this on the rail side. |
+| `panel-width` | number (pt) | `140` | Width of the workspace rail. Windows are inset by this on the rail side. |
 | `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
 | `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
 | `highlight-ms` | integer | `600` | Duration of the focus-highlight flash, in milliseconds. `0` skips the animation. **Parsed but not yet wired** — the focus glow lands with M3b (T20); until then the key is accepted and nothing reads it (same for `highlight-color`). |
+| `app-categories` | table of bundle-id → category | `{}` | Overrides the rail's category label per app. Values: `web`, `coding`, `terminal`, `communication`, `media`, `design`, `productivity`, `utilities`. See below — this exists because macOS cannot answer the question. |
 | `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 
@@ -163,3 +164,31 @@ presets rather than left for you to configure.
 Separately from config, `~/Library/Application Support/SpacialShell/state.json` holds the pinned
 workspace shells (name, symbol, layout, id) per screen, written debounced on every model change.
 It is machine-owned — not meant for hand editing — and is not covered by this reference.
+
+
+## Why `app-categories` exists
+
+The rail labels each workspace with the kind of work it is for. macOS has one piece of metadata
+that could answer this, `LSApplicationCategoryType` in each app's `Info.plist`, and it is not good
+enough. Measured over a real `/Applications` folder:
+
+- **103 of 190 apps declare it at all.** Chrome and Brave declare nothing.
+- **Every browser that does declare it says `productivity`** — Safari, Firefox and Tor alike. So
+  "web browsing" cannot be derived from it, at all, ever.
+- **It is wrong often enough to matter.** ChatGPT, Claude and a crypto wallet all claim
+  `developer-tools`. There is no terminal category in Apple's vocabulary.
+
+So SpacialShell resolves a category in four tiers, first match winning:
+
+1. `app-categories` from this file — your overrides.
+2. A curated bundle-id table in `SpacialShellKit` — browsers, terminals, editors, chat clients.
+3. `LSApplicationCategoryType`, mapped coarsely — for apps tiers 1 and 2 have never heard of.
+4. Nothing. An unlabelled workspace beats a confidently wrong label.
+
+Tier 2 is permanently incomplete by construction, which is what tier 1 is for:
+
+```toml
+[app-categories]
+"com.example.MyEditor" = "coding"
+"com.example.Chatterbox" = "communication"
+```
