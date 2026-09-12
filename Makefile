@@ -5,9 +5,15 @@ hooks:            ## enable repo git hooks (pre-commit: build + fast tests + ins
 	git config core.hooksPath .githooks
 	@echo "hooks enabled; SPACIAL_SKIP_INSTALL=1 or --no-verify to bypass"
 
-install: bundle   ## bundle + install to /Applications (same as the pre-commit hook)
+install: bundle   ## bundle + install to /Applications, restarting the app
+	@killall SpacialShell 2>/dev/null && echo "stopped the running instance" || true
+	@# Both SIGINT and SIGTERM are trapped (AppRuntime), and quitting restores every managed
+	@# window before it exits (spec 7.4) — so wait for it to actually go before replacing the
+	@# bundle underneath it. Copying over a live .app is how you get a half-signed one.
+	@for i in $$(seq 1 50); do pgrep -x SpacialShell >/dev/null || break; sleep 0.1; done
 	rm -rf /Applications/SpacialShell.app
 	cp -R build/SpacialShell.app /Applications/SpacialShell.app
+	open /Applications/SpacialShell.app
 
 build:            ## debug build
 	swift build
