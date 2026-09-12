@@ -26,6 +26,14 @@ is an .app.
   treats the new binary as untrusted; the symptom is a checkbox that is ticked while
   `AXIsProcessTrusted()` returns false. Untick and re-tick it, or remove the row.
 
+  **Fix this once and it stops happening.** TCC keys the grant to the signature, so a
+  *stable* signature survives rebuilds where an ad-hoc one cannot. Create a self-signed
+  code-signing certificate — Keychain Access > Certificate Assistant > Create a
+  Certificate, name `SpacialShell Dev`, Identity Type "Self Signed Root", Certificate
+  Type **Code Signing** — and `bundle.sh` picks it up automatically (override with
+  `SPACIAL_SIGN_IDENTITY`). It warns on stderr when it falls back to ad-hoc. You still
+  have to grant Accessibility one more time after switching; it sticks from then on.
+
 Debugging keys
 --------------
 `SPACIAL_LOG_KEYS=1 Scripts/dev.sh` logs every keyDown's keycode and flags at .info under
