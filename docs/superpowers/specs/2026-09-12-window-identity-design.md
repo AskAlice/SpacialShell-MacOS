@@ -1,9 +1,11 @@
 # Window identity without the private AX call
 
 Date: 2026-09-12
-Status: accepted (Alice, 2026-09-12 — App Store distribution confirmed as the goal, option (a))
-Implemented: `bd6751f` on `prototype/window-identity`, alongside this document rather than gated
-behind it, at Alice's direction
+Status: **direction approved, document not reviewed.** Alice chose option (a) — App Store
+distribution is the goal, so the private call goes entirely — and directed that it be built rather
+than gated behind a spec review. So the *decision* here carries her authority; the *reasoning and
+detail* below have not been read by her. Anyone relying on a specific claim should verify it.
+Implemented: `bd6751f`, merged to `main`.
 Supersedes: M1 §7.2 ("`WindowRef.id` comes from `_AXUIElementGetWindow`")
 Issues: #17 (spike; its first verdict of "not viable" was withdrawn in a follow-up comment — see
 "History" at the end), #18 (this change), unblocks #19, #20
