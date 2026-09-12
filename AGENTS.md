@@ -63,7 +63,7 @@ or attach via the PR upload widget; either way the PR body must show everything 
   main's shows main's. Never hardcode `blob/main/…` in the README — on a feature branch it renders
   main's stale media, and any file the branch adds is a broken image until it merges.
 - **PR and issue bodies** (no ref context): use
-  `https://github.com/AskAlice/alice-material/blob/<branch>/docs/media/<file>?raw=true` — GitHub
+  `https://github.com/AskAlice/SpacialShell-MacOS/blob/<branch>/docs/media/<file>?raw=true` — GitHub
   serves it with the viewer's session. Point it at the **PR's branch**, not main.
 
 Never use `raw.githubusercontent.com` URLs (proxied anonymously → broken), never `data:` URIs
@@ -86,3 +86,14 @@ Other PR expectations:
   exactly like a hotkey.
 - The reconciler owns geometry; panels/insets are data (`ShellInsets`), not layout logic.
 - Harvested AeroSpace files keep their attribution headers; new borrowings go through `NOTICE`.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `AskAlice/SpacialShell-MacOS`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` and `docs/adr/` at the repo root, both created lazily by
+`/domain-modeling` rather than scaffolded upfront. See `docs/agents/domain.md`.

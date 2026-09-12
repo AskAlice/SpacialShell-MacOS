@@ -111,7 +111,7 @@ Loops are served as animated **webp** (and **gif** next to them) from
 
 ## Install
 
-1. Grab a DMG from [Releases](https://github.com/AskAlice/alice-material/releases), or build the
+1. Grab a DMG from [Releases](https://github.com/AskAlice/SpacialShell-MacOS/releases), or build the
    app bundle: `Scripts/bundle.sh`. That produces `build/SpacialShell.app`, ad-hoc signed with a
    stable bundle id (`sh.emu.SpacialShell`) so the Accessibility grant survives rebuilds.
    Tag `v*` (or run **Release** from Actions) to rebuild, run unit tests, and publish a DMG.
