@@ -271,6 +271,41 @@ import Foundation
             if !v.isEmpty { return }
         }
     }
+
+    /// Clicking the rail's "+" activates the trailing empty workspace. Nothing focuses there — an
+    /// empty workspace has no window — so native focus legitimately stays where it was. The
+    /// click's own mouse-up then schedules a refresh (`AXWindowBackend` global monitor), and the
+    /// snapshot it produces reports that *unchanged* focus. `applyNativeFocus` used to treat the
+    /// echo as news and re-activate the old workspace, so the new one bounced away before the
+    /// user could put anything in it. An unchanged focus is news about nothing.
+    @Test func activatingAnEmptyWorkspaceSurvivesAnEchoSnapshot() async {
+        let (store, _) = await make(snap([win(a), win(b)], focused: a))
+        let trailing = await store.world.screens["D1"]!.workspaces.last!.id
+        await store.run(.focusWorkspaceID(trailing))
+        #expect(await store.world.screens["D1"]!.activeIndex == 1)   // the empty workspace
+        #expect(await store.world.focus.window == nil)               // nothing there to focus
+
+        // The echo: same windows, same focused window — nothing actually changed.
+        await store.apply(.snapshot(snap([win(a), win(b)], focused: a)))
+        #expect(await store.world.screens["D1"]!.activeIndex == 1)   // still there
+    }
+
+    /// The other half of the same rule: a focus change that is *real* must still pull the active
+    /// workspace across, or clicking a window in another workspace would stop switching to it.
+    @Test func aRealFocusChangeStillMovesTheActiveWorkspace() async {
+        let (store, _) = await make(snap([win(a), win(b)], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))                // a → ws1, which goes active
+        let ws0 = await store.world.screens["D1"]!.workspaces[0].id
+        await store.run(.focusWorkspaceID(ws0))                       // back to ws0, where b lives
+        await store.apply(.snapshot(snap([win(a), win(b)], focused: b)))   // world settles on b
+        #expect(await store.world.screens["D1"]!.activeIndex == 0)
+
+        // User clicks `a`, which lives on ws1. Genuinely new focus, so the world follows it.
+        await store.apply(.snapshot(snap([win(a), win(b)], focused: a)))
+        #expect(await store.world.screens["D1"]!.activeIndex == 1)
+        #expect(await store.world.focus.window == a)
+    }
+
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {

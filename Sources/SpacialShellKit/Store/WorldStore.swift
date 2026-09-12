@@ -21,6 +21,9 @@ public actor WorldStore {
     private var intents = IntentSet()
     private var failures: [WindowRef: Int] = [:]
     private var lastRaised: WindowRef?
+    /// What the last snapshot said macOS had focused. Focus that has not moved since is an echo,
+    /// not news — see `applyNativeFocus`. Same idea as `intents`, which does this for frames.
+    private var lastNativeFocus: WindowRef?
     private var locked = false
     /// Bumped by every `reconcile()`; an in-flight pass abandons itself once a newer pass has started.
     /// Only a *newer reconcile* invalidates a plan — early-return event paths (intent echoes, locked,
@@ -133,7 +136,7 @@ public actor WorldStore {
             for gone in all.subtracting(present) {
                 world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; fullscreen.remove(gone); intents.forget(gone)
                 stranded[gone] = nil
-                failures[gone] = nil; if lastRaised == gone { lastRaised = nil }
+                failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
             }
         }
         applyNativeFocus(s.focused)
@@ -141,8 +144,17 @@ public actor WorldStore {
 
     private func applyNativeFocus(_ r: WindowRef?) {
         guard let r else { return }
+        let isEcho = r == lastNativeFocus
+        lastNativeFocus = r
         if world.ephemeral.contains(r) { world.focus.window = r; return }
         guard let loc = world.location(of: r), !world.hidden.contains(r) else { return }
+        // An unchanged native focus is news about nothing, and must never drag the active
+        // workspace back to where it was. Activating an *empty* workspace (the rail's "+", or any
+        // empty row) focuses nothing — there is nothing there to focus — so macOS legitimately
+        // keeps the previous window focused, and the very click that activated it schedules a
+        // refresh via the global mouse-up monitor. Honouring that echo bounced the user straight
+        // back out of the workspace they had just opened.
+        if isEcho && world.screens[loc.screen]!.activeIndex != loc.index { return }
         if world.screens[loc.screen]!.activeIndex != loc.index { world.activate(index: loc.index, on: loc.screen) }
         world.focus = Focus(screen: loc.screen, window: r)
         world.screens[loc.screen]!.workspaces[loc.index].anchor = r
