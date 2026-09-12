@@ -34,6 +34,11 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
 public enum KeybindingPreset: String, Codable, Sendable { case fn, ctrlAlt = "ctrl-alt" }
 public enum RailSide: String, Codable, Sendable { case left, right }
 
+/// How the tab bar spends its width.
+/// - `fit`: each tab is as wide as its content, packed left. One tab sits at the left edge.
+/// - `equal`: every tab takes 1/n of the bar and centres its content, the way Safari does.
+public enum TabSizing: String, Codable, Sendable { case fit, equal }
+
 public enum HighlightColor {
     public static func normalize(_ s: String) -> String? {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,9 +65,10 @@ public struct Config: Codable, Equatable, Sendable {
     public var axTimeoutMs: Int = 1000
     public var refreshIntervalMs: Int = 2000
     public var startAtLogin: Bool = false
-    public var panelWidth: Double = 140
+    public var panelWidth: Double = 48
     public var panelHeight: Double = 34
     public var railSide: RailSide = .left
+    public var tabSizing: TabSizing = .fit
     public var highlightMs: Int = 600
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
@@ -84,7 +90,7 @@ public struct Config: Codable, Equatable, Sendable {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, keybindings,
-             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side",
+             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
              highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
              highlightColor = "highlight-color", appCategories = "app-categories"
     }
@@ -96,9 +102,10 @@ public struct Config: Codable, Equatable, Sendable {
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
-        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 140
+        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 48
         panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
+        tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
         highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true

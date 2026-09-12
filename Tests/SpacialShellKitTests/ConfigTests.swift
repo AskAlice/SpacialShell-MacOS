@@ -6,7 +6,7 @@ import Foundation
     @Test func emptyTomlGivesDefaults() throws {
         let c = try Config.parse(toml: "")
         #expect(c.keybindingPreset == .fn && c.gap == 8 && c.defaultLayout == .maximize && c.axTimeoutMs == 1000 && c.refreshIntervalMs == 2000)
-        #expect(c.panelWidth == 140 && c.panelHeight == 34 && c.railSide == .left && c.highlightMs == 600 && c.launcherURL == "raycast://" && c.showPanels)
+        #expect(c.panelWidth == 48 && c.panelHeight == 34 && c.railSide == .left && c.highlightMs == 600 && c.launcherURL == "raycast://" && c.showPanels)
         #expect(c.ephemeral.map(\.bundleId) == ["com.apple.systempreferences", "com.apple.calculator"])
         #expect(c.workspaces.isEmpty)
     }

@@ -14,9 +14,10 @@ default-layout = "maximize"       # maximize | split | column | half | grid
 ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
-panel-width = 140
+panel-width = 48
 panel-height = 34
 rail-side = "left"                # or "right"
+tab-sizing = "fit"                # or "equal"
 highlight-ms = 600
 launcher-url = "raycast://"
 show-panels = true
@@ -50,8 +51,9 @@ title-regex = "^Picture in Picture$"
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
 | `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
-| `panel-width` | number (pt) | `140` | Width of the workspace rail. Windows are inset by this on the rail side. |
+| `panel-width` | number (pt) | `48` | Width of the workspace rail. Windows are inset by this on the rail side. |
 | `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
+| `tab-sizing` | `"fit"` \| `"equal"` | `"fit"` | How the tab bar spends its width. `fit`: each tab is as wide as its content and they pack left, so a single tab sits at the left edge. `equal`: every tab takes 1/n of the bar and centres its content. |
 | `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
 | `highlight-ms` | integer | `600` | Duration of the focus-highlight flash, in milliseconds. `0` skips the animation. **Parsed but not yet wired** — the focus glow lands with M3b (T20); until then the key is accepted and nothing reads it (same for `highlight-color`). |
 | `app-categories` | table of bundle-id → category | `{}` | Overrides the rail's category label per app. Values: `web`, `coding`, `terminal`, `communication`, `media`, `design`, `productivity`, `utilities`. See below — this exists because macOS cannot answer the question. |

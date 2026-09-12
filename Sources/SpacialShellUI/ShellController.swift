@@ -82,7 +82,7 @@ public final class ShellController: NSObject {
                                                   metaFor: appMeta.meta(for:),
                                                   isPrimaryScreen: nsScreen == NSScreen.screens.first,
                                                   send: forward)
-            p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), send: forward)
+            p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward)
 
             if visible {
                 p.rail.orderFrontRegardless()
@@ -105,7 +105,7 @@ public final class ShellController: NSObject {
         let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL,
                                                                metaFor: appMeta.meta(for:),
                                                                isPrimaryScreen: false, send: forward))
-        let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), send: forward))
+        let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost
         return Panels(rail: rail, railHost: railHost, bar: bar, barHost: barHost)

@@ -19,7 +19,7 @@ enum LayoutLint {
     }
 
     /// All the issues found in `root` (hosted in a window); empty means clean.
-    static func issues(in root: NSView, story: String) -> [String] {
+    static func issues(in root: NSView, story: String, truncates: Bool = false) -> [String] {
         var out: [String] = []
 
         // 1. The view must not want more space than the story gave it — a container that can only
@@ -31,7 +31,7 @@ enum LayoutLint {
         //    sideways out of a vertical scroller is a wrap bug like any other.
         let fitting = root.fittingSize
         let scrolls = containsScrollView(root)
-        if fitting.width > root.bounds.width + 0.5 {
+        if !truncates, fitting.width > root.bounds.width + 0.5 {
             out.append("\(story): content wants \(Int(fitting.width))pt of width in a \(Int(root.bounds.width))pt container")
         }
         if !scrolls, fitting.height > root.bounds.height + 0.5 {

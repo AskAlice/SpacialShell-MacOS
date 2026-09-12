@@ -10,6 +10,7 @@ import SpacialShellProtocol
 struct WorkspacePanelView: View {
     let state: ScreenShellState
     let metaFor: (Int32) -> AppMeta
+    let sizing: TabSizing
     let send: (Command) -> Void
 
     /// Where a dragged tab would land, while it is being dragged.
@@ -52,6 +53,7 @@ struct WorkspacePanelView: View {
     private func tabView(_ tab: WindowTabItem) -> some View {
         let meta = metaFor(tab.ref.pid)
         return HStack(spacing: 5) {
+            if sizing == .equal { Spacer(minLength: 0) }
             if let icon = meta.icon {
                 Image(nsImage: icon).resizable().frame(width: 16, height: 16)
             }
@@ -70,6 +72,7 @@ struct WorkspacePanelView: View {
                 .buttonStyle(.plain)
                 .help("Close window")
             }
+            if sizing == .equal { Spacer(minLength: 0) }
         }
         .padding(.horizontal, 9)
         .frame(maxHeight: .infinity)
@@ -85,7 +88,9 @@ struct WorkspacePanelView: View {
         }
         .foregroundStyle(tab.isFocused ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
         .opacity(tab.isHidden ? 0.45 : 1)
-        .frame(maxWidth: 220)
+        // `fit` leaves the tab at its content width, so one tab sits against the left edge
+        // instead of stretching across the bar. `equal` lets every tab claim 1/n and centre.
+        .frame(maxWidth: sizing == .equal ? .infinity : nil)
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
         .help(meta.name)

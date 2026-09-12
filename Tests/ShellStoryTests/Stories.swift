@@ -18,6 +18,11 @@ struct Story {
     /// before T19's "+N" badge). Their lint runs under `withKnownIssue` so the gap is recorded
     /// without a red suite; remove the flag when the handling lands.
     var knownOverflow: Bool = false
+    /// The story's ideal width legitimately exceeds its container because its text truncates —
+    /// which is handling, not a gap, and the opposite of `knownOverflow`. `fittingSize` reports
+    /// the untruncated ideal, so LayoutLint's must-fit check cannot tell the two apart; this says
+    /// which one it is. The escape check still runs, so real clipping is still caught.
+    var truncates: Bool = false
 }
 
 @MainActor
@@ -73,15 +78,17 @@ enum Stories {
                       isFocused: focused, isFloating: floating, isHidden: hidden)
     }
 
-    static let railGeometry = CGSize(width: 140, height: 800)
+    static let railGeometry = CGSize(width: 48, height: 800)
     static let barGeometry = CGSize(width: 1200, height: 34)
 
     // MARK: catalog
 
     static var all: [Story] {
         var out: [Story] = []
-        func add(_ name: String, _ size: CGSize?, _ v: some View, knownOverflow: Bool = false) {
-            out.append(Story(name: name, size: size, view: AnyView(v), knownOverflow: knownOverflow))
+        func add(_ name: String, _ size: CGSize?, _ v: some View,
+                 knownOverflow: Bool = false, truncates: Bool = false) {
+            out.append(Story(name: name, size: size, view: AnyView(v),
+                             knownOverflow: knownOverflow, truncates: truncates))
         }
         let send: (Command) -> Void = { _ in }
 
@@ -117,17 +124,17 @@ enum Stories {
 
         // Tab bar
         add("bar-one-tab", barGeometry, WorkspacePanelView(
-            state: tabs([tab(1, focused: true)], layout: .maximize), metaFor: meta, send: send))
+            state: tabs([tab(1, focused: true)], layout: .maximize), metaFor: meta, sizing: .fit, send: send))
         add("bar-five-tabs", barGeometry, WorkspacePanelView(
-            state: tabs([tab(1, focused: true), tab(2), tab(3), tab(4), tab(6)]), metaFor: meta, send: send))
+            state: tabs([tab(1, focused: true), tab(2), tab(3), tab(4), tab(6)]), metaFor: meta, sizing: .fit, send: send))
         add("bar-long-names", barGeometry, WorkspacePanelView(
-            state: tabs([tab(5, focused: true), tab(5), tab(5), tab(5)]), metaFor: meta, send: send))
+            state: tabs([tab(5, focused: true), tab(5), tab(5), tab(5)]), metaFor: meta, sizing: .fit, send: send), truncates: true)
         add("bar-floating-hidden", barGeometry, WorkspacePanelView(
             state: tabs([tab(1, focused: true), tab(2, floating: true), tab(3, hidden: true), tab(4)]),
-            metaFor: meta, send: send))
+            metaFor: meta, sizing: .fit, send: send))
         add("bar-twenty-tabs", CGSize(width: 800, height: 34), WorkspacePanelView(
             state: tabs((1...20).map { tab(Int32(($0 % 6) + 1), focused: $0 == 1) }, layout: .column),
-            metaFor: meta, send: send),
+            metaFor: meta, sizing: .fit, send: send),
             knownOverflow: true)   // no "+N" badge yet (T19); the squeeze is the point of the story
 
         // Overview

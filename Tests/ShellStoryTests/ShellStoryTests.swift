@@ -39,7 +39,7 @@ import SnapshotTesting
         for story in Stories.all {
             let view = host(story, appearance: appearance)
             assertSnapshot(of: view, as: .image, named: "\(story.name)-\(mode)", record: Self.record)
-            let lint = { LayoutLint.issues(in: view, story: "\(story.name)-\(mode)") }
+            let lint = { LayoutLint.issues(in: view, story: "\(story.name)-\(mode)", truncates: story.truncates) }
             if story.knownOverflow {
                 withKnownIssue("\(story.name): overflow handling not built yet (T18/T19)", isIntermittent: true) {
                     let issues = lint()

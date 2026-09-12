@@ -11,7 +11,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 W, H = 960, 600
-RAIL, TOP, GAP, R = 140, 34, 8, 10
+RAIL, TOP, GAP, R = 48, 34, 8, 10
 ACCENT = (10, 132, 255)
 OUT = Path(__file__).resolve().parents[1] / "docs" / "media"
 FPS = 14

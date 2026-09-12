@@ -7,9 +7,9 @@ import SpacialShellProtocol
 /// bar). One row per workspace, top→bottom in stack order; the trailing empty workspace is
 /// drawn as "+" — activating it *is* creating one, that's invariant 4 doing the work.
 ///
-/// Each row shows the apps that are actually in that workspace (one icon per distinct app, in row
-/// order) and what kind of work it is for, so the rail answers "where is my terminal?" without
-/// visiting every workspace to find out.
+/// A tile shows up to four of the apps actually in that workspace, as a 2x2 icon grid, plus its
+/// window count. Names, category and window previews live in the hover popover rather than on the
+/// tile: the rail is furniture and stays narrow, and the detail is one hover away.
 struct ScreenPanelView: View {
     let state: ScreenShellState
     let launcherURL: String
@@ -23,7 +23,7 @@ struct ScreenPanelView: View {
     /// re-enters through `Command` like every other interaction.
     @State private var dropTarget: UUID?
 
-    /// Enough icons to tell workspaces apart at a glance; past this the count carries the load.
+    /// A 2x2 grid inside a 32 pt tile; past four, the count carries the load.
     private static let maxIcons = 4
 
     var body: some View {
@@ -95,60 +95,57 @@ struct ScreenPanelView: View {
     @ViewBuilder
     private func row(_ item: WorkspaceRailItem) -> some View {
         let apps = distinctApps(item)
-        VStack(alignment: .leading, spacing: 3) {
+        ZStack {
             if item.isTrailingEmpty {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus").font(.system(size: 13, weight: .medium))
-                    Text("New").font(.system(size: 11))
-                    Spacer(minLength: 0)
-                }
+                Image(systemName: "plus").font(.system(size: 15, weight: .medium))
+            } else if apps.isEmpty {
+                Image(systemName: item.symbol).font(.system(size: 15, weight: .medium))
             } else {
-                HStack(spacing: 3) {
-                    if apps.isEmpty {
-                        Image(systemName: item.symbol).font(.system(size: 12, weight: .medium)).opacity(0.7)
-                    } else {
-                        ForEach(Array(apps.prefix(Self.maxIcons).enumerated()), id: \.offset) { _, meta in
-                            if let icon = meta.icon {
-                                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
-                            } else {
-                                Image(systemName: "app.dashed").font(.system(size: 12)).frame(width: 16, height: 16)
-                            }
-                        }
-                        if apps.count > Self.maxIcons {
-                            Text("+\(apps.count - Self.maxIcons)")
-                                .font(.system(size: 9, weight: .semibold)).opacity(0.7)
-                        }
-                    }
-                    Spacer(minLength: 0)
-                    Text(item.windowCount > 0 ? "\(item.windowCount)" : "–")
-                        .font(.system(size: 9, weight: .semibold)).opacity(0.6)
-                }
-                if let label = categoryLabel(apps) {
-                    Text(label)
-                        .font(.system(size: 9.5))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .opacity(0.75)
-                }
+                icons(apps)
+            }
+            if !item.isTrailingEmpty && item.windowCount > 0 {
+                Text("\(item.windowCount)")
+                    .font(.system(size: 8, weight: .bold))
+                    .padding(.horizontal, 3)
+                    .background(Capsule().fill(Color.black.opacity(0.45)))
+                    .foregroundStyle(.white)
+                    .offset(x: 13, y: 13)
             }
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: 32, height: 32)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(item.isActive ? AnyShapeStyle(Color.accentColor.opacity(0.85))
                                     : AnyShapeStyle(Color.primary.opacity(0.001)))
         )
-        // The drop target has to read at a glance while the pointer is moving and the cursor is
-        // carrying a drag image, so it is a stroke rather than a fill — it reads over both the
-        // active row's accent and an inactive row's transparency.
+        // Reads over both the active tile's accent and an inactive tile's transparency, which a
+        // fill would not while the cursor is carrying a drag image.
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
                 .opacity(dropTarget == item.id ? 1 : 0)
         )
         .foregroundStyle(item.isActive ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+    }
+
+    /// One icon fills the tile; two to four share it as a 2x2 grid. Enough to recognise a
+    /// workspace by shape and colour without reading anything.
+    @ViewBuilder
+    private func icons(_ apps: [AppMeta]) -> some View {
+        let shown = Array(apps.prefix(Self.maxIcons))
+        let side: CGFloat = shown.count == 1 ? 22 : 11
+        let columns = shown.count == 1 ? 1 : 2
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: 1), count: columns), spacing: 1) {
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, meta in
+                if let icon = meta.icon {
+                    Image(nsImage: icon).resizable().frame(width: side, height: side)
+                } else {
+                    Image(systemName: "app.dashed").font(.system(size: side * 0.7))
+                        .frame(width: side, height: side)
+                }
+            }
+        }
+        .frame(width: shown.count == 1 ? 22 : 23)
     }
 
     /// One entry per app, in the order the row first mentions it — two Safari windows are one
@@ -162,10 +159,12 @@ struct ScreenPanelView: View {
         AppCategories.summarise(apps.map(\.category))?.label
     }
 
+    /// The tile has no room for words, so everything the old inline label said lives here.
     private func tooltip(_ item: WorkspaceRailItem) -> String {
         let apps = distinctApps(item)
+        var head = "\(item.name) (\(item.index + 1))"
+        if let label = categoryLabel(apps) { head += " · \(label)" }
         let names = apps.map(\.name).joined(separator: ", ")
-        let head = "\(item.name) (\(item.index + 1))"
-        return names.isEmpty ? head : "\(head) — \(names)"
+        return names.isEmpty ? head : "\(head)\n\(names)"
     }
 }
