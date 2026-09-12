@@ -17,7 +17,11 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 #   name "SpacialShell Dev", Identity Type "Self Signed Root", Certificate Type "Code Signing".
 # Override with SPACIAL_SIGN_IDENTITY=... to use a different one.
 IDENTITY="${SPACIAL_SIGN_IDENTITY:-SpacialShell Dev}"
-if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$IDENTITY"; then
+# Deliberately not `find-identity -v`: a self-signed root reports CSSMERR_TP_NOT_TRUSTED and is
+# filtered out by -v, but it signs perfectly well. Trust governs Gatekeeper verification, not
+# signing, and TCC keys the grant to the designated requirement — which for a certificate is
+# `certificate leaf = H"..."`, stable across rebuilds, where ad-hoc gives a per-build cdhash.
+if security find-identity -p codesigning 2>/dev/null | grep -qF "$IDENTITY"; then
     SIGN="$IDENTITY"
 else
     SIGN="-"

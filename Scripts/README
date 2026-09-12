@@ -34,6 +34,29 @@ is an .app.
   `SPACIAL_SIGN_IDENTITY`). It warns on stderr when it falls back to ad-hoc. You still
   have to grant Accessibility one more time after switching; it sticks from then on.
 
+  Or without the GUI, in one go:
+
+      openssl req -x509 -newkey rsa:2048 -keyout k.pem -out c.pem -days 3650 -nodes \
+        -subj "/CN=SpacialShell Dev" \
+        -addext "basicConstraints=critical,CA:false" \
+        -addext "keyUsage=critical,digitalSignature" \
+        -addext "extendedKeyUsage=critical,codeSigning"
+      openssl pkcs12 -export -legacy -out i.p12 -inkey k.pem -in c.pem \
+        -name "SpacialShell Dev" -passout pass:tmp
+      security import i.p12 -k ~/Library/Keychains/login.keychain-db -P tmp -T /usr/bin/codesign
+
+  `-legacy` is required: macOS's Security framework cannot parse OpenSSL 3's default
+  AES-256/SHA-256 PKCS#12 MAC, and the import fails with "MAC verification failed".
+
+  The identity reports `CSSMERR_TP_NOT_TRUSTED` and `security find-identity -v` will not
+  list it, because a self-signed root is not trusted. That does not matter: trust governs
+  Gatekeeper *verification*, not signing. `bundle.sh` deliberately queries without `-v`.
+
+  What actually fixes the problem is the designated requirement. Ad-hoc gives
+  `cdhash H"..."`, which is the code hash and changes every build. A certificate gives
+  `certificate leaf = H"..."`, which is byte-identical across rebuilds — verified by
+  bundling twice and diffing `codesign -d -r-`.
+
 Debugging keys
 --------------
 `SPACIAL_LOG_KEYS=1 Scripts/dev.sh` logs every keyDown's keycode and flags at .info under
