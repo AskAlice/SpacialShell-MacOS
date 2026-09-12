@@ -87,7 +87,8 @@ public final class ShellController: NSObject {
                                                       self?.hoverChanged(item, inside: inside, tile: tile,
                                                                          display: id, screen: nsScreen)
                                                   })
-            p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward)
+            p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
+                                                   chrome: PanelChrome(config: config), send: forward)
 
             if visible {
                 p.rail.orderFrontRegardless()

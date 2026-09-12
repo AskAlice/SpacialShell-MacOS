@@ -173,6 +173,18 @@ enum Stories {
             content: .message("Opens a new workspace — or drop a tab here to move its window into one."),
             onGrantAccess: {}))
 
+        // panel-color / panel-opacity actually reaching the panels. These existed as config keys,
+        // as persisted values and as settings-window controls while nothing read them, so the
+        // point of these two stories is that a tinted panel is *visibly* tinted.
+        add("rail-tinted", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 2, pids: [5, 3], active: true),
+                         railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta,
+            chrome: PanelChrome(color: "#9D0B7F", opacity: 0.9), send: send))
+        add("bar-tinted", barGeometry, WorkspacePanelView(
+            state: tabs([tab(1, focused: true), tab(3)]), metaFor: meta, sizing: .fit,
+            chrome: PanelChrome(color: "#9D0B7F", opacity: 0.9), send: send))
+
         // Tab bar
         add("bar-one-tab", barGeometry, WorkspacePanelView(
             state: tabs([tab(1, focused: true)], layout: .maximize), metaFor: meta, sizing: .fit, send: send))

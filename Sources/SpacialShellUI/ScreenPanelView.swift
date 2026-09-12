@@ -14,6 +14,7 @@ struct ScreenPanelView: View {
     let state: ScreenShellState
     let launcherURL: String
     let metaFor: (Int32) -> AppMeta
+    var chrome: PanelChrome = PanelChrome(color: "system", opacity: 1)
     let send: (Command) -> Void
     /// Pointer entered or left a tile. The rect is the tile's frame in the hosting view's
     /// coordinate space; the controller owns the conversion to screen coordinates and the card
@@ -105,7 +106,7 @@ struct ScreenPanelView: View {
         .padding(.top, 8)
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.thinMaterial)
+        .background(chrome)
         .overlay(alignment: .trailing) { Rectangle().fill(.separator).frame(width: 1).opacity(0.6) }
     }
 

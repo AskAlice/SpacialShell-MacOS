@@ -11,6 +11,7 @@ struct WorkspacePanelView: View {
     let state: ScreenShellState
     let metaFor: (Int32) -> AppMeta
     let sizing: TabSizing
+    var chrome: PanelChrome = PanelChrome(color: "system", opacity: 1)
     let send: (Command) -> Void
 
     /// Where a dragged tab would land, while it is being dragged.
@@ -56,7 +57,7 @@ struct WorkspacePanelView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.thinMaterial)
+        .background(chrome)
         .overlay(alignment: .bottom) { Rectangle().fill(.separator).frame(height: 1).opacity(0.6) }
     }
 
