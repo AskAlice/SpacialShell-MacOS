@@ -5,11 +5,20 @@ import Foundation
 @Suite struct PropertyTests {
     enum Op { case adopt(WindowKind, DisplayID), remove, hide, unhide, cmd(Command), screens([DisplayID]) }
 
-    func randomOp(_ rng: inout TestRNG, screens: [DisplayID]) -> Op {
-        let cmds: [Command] = [.focusWindow(.left), .focusWindow(.right), .focusWorkspace(.up), .focusWorkspace(.down),
+    func randomOp(_ rng: inout TestRNG, world: World, live: [WindowRef]) -> Op {
+        let screens = world.screenOrder
+        var cmds: [Command] = [.focusWindow(.left), .focusWindow(.right), .focusWorkspace(.up), .focusWorkspace(.down),
             .focusWorkspaceIndex(Int.random(in: 1...4, using: &rng)), .moveWindow(.left), .moveWindow(.right),
             .moveWindowToWorkspace(.up), .moveWindowToWorkspace(.down), .cycleLayout, .focusScreen(.next),
             .focusScreen(.prev), .moveWindowToScreen(.next), .moveWindowToScreen(.prev), .toggleFloat]
+        // The drag verbs name a window and a destination outright, so they can only be built
+        // against a live world — including the destinations a real drag can never produce
+        // (a dead window, another screen's workspace), which is exactly what should be fuzzed.
+        if let r = live.randomElement(using: &rng) {
+            let workspaces = screens.flatMap { world.screens[$0]!.workspaces.map(\.id) }
+            if let ws = workspaces.randomElement(using: &rng) { cmds.append(.moveWindowRefToWorkspace(r, ws)) }
+            cmds.append(.moveWindowRefBefore(r, Bool.random(using: &rng) ? live.randomElement(using: &rng) : nil))
+        }
         switch Int.random(in: 0..<10, using: &rng) {
         case 0...2: return .adopt([.tile, .tile, .tile, .float, .ephemeral, .ignore].randomElement(using: &rng)!, screens.randomElement(using: &rng)!)
         case 3: return .remove
@@ -27,7 +36,7 @@ import Foundation
         var next: WindowID = 1
         var live: [WindowRef] = []
         for step in 0..<60 {
-            let op = randomOp(&rng, screens: w.screenOrder)
+            let op = randomOp(&rng, world: w, live: live)
             switch op {
             case .adopt(let k, let s):
                 let r = WindowRef(id: next, pid: 1); next += 1; live.append(r)

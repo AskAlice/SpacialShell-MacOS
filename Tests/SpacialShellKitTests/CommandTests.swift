@@ -74,6 +74,88 @@ import Foundation
         #expect(w.screens["D1"]!.active.windows == [a, b, c])
     }
 
+    // MARK: drag targets — a dragged tab names its window and its destination outright, unlike
+    // the keyboard verbs which are relative to whatever is focused.
+
+    @Test func dragToWorkspaceMovesAnyWindowNotJustTheFocusedOne() {
+        var w = base()                                    // [a*, b, c] on D1[0]
+        let target = w.screens["D1"]!.workspaces[1].id     // the trailing empty
+        (w, _) = run(w, .moveWindowRefToWorkspace(c, target))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[a, b], [c], []])
+        // Focus follows the dragged window, as the keyboard move does.
+        #expect(w.focus.window == c && w.screens["D1"]!.activeIndex == 1)
+    }
+
+    /// Dropping on "+" needs no special case: the trailing empty workspace is a workspace, and
+    /// normalize() grows a fresh "+" underneath the moment this one stops being empty (I4).
+    @Test func dragToTheTrailingEmptyGrowsANewOne() {
+        var w = base()
+        #expect(w.screens["D1"]!.workspaces.count == 2)
+        let plus = w.screens["D1"]!.workspaces.last!.id
+        (w, _) = run(w, .moveWindowRefToWorkspace(a, plus))
+        #expect(w.screens["D1"]!.workspaces.count == 3)
+        #expect(w.screens["D1"]!.workspaces.last!.isEmpty)
+    }
+
+    @Test func dragToTheWorkspaceItIsAlreadyInChangesNothing() {
+        let w = base()
+        let here = w.screens["D1"]!.workspaces[0].id
+        let (out, effects) = CommandRunner.apply(.moveWindowRefToWorkspace(a, here), to: w)
+        #expect(out == w && effects.isEmpty)
+    }
+
+    @Test func dragToAnUnknownWorkspaceIsARefusal() {
+        let w = base()
+        let (out, effects) = CommandRunner.apply(.moveWindowRefToWorkspace(a, UUID()), to: w)
+        #expect(out == w && effects.isEmpty)
+    }
+
+    /// A floating window keeps floating when it is dragged somewhere else — the pin travels with
+    /// the window, exactly as the keyboard move already guarantees.
+    @Test func dragKeepsAWindowFloating() {
+        var w = base()
+        (w, _) = run(w, .focusWindowRef(b)); (w, _) = run(w, .toggleFloat)
+        #expect(w.screens["D1"]!.workspaces[0].floating.contains(b))
+        let target = w.screens["D1"]!.workspaces.last!.id
+        (w, _) = run(w, .moveWindowRefToWorkspace(b, target))
+        #expect(w.screens["D1"]!.workspaces[1].floating.contains(b))
+    }
+
+    @Test func dragToReorderInsertsBeforeTheNamedTab() {
+        var w = base()                                    // [a, b, c]
+        (w, _) = run(w, .moveWindowRefBefore(c, a))
+        #expect(w.screens["D1"]!.active.windows == [c, a, b])
+        (w, _) = run(w, .moveWindowRefBefore(c, nil))     // nil = past the end
+        #expect(w.screens["D1"]!.active.windows == [a, b, c])
+    }
+
+    /// Dropping a tab onto itself, or where it already sits, must not shuffle the row.
+    @Test func dragToReorderOntoItselfChangesNothing() {
+        let w = base()
+        for cmd: Command in [.moveWindowRefBefore(a, a), .moveWindowRefBefore(a, b)] {
+            let (out, effects) = CommandRunner.apply(cmd, to: w)
+            #expect(out == w && effects.isEmpty, "\(cmd) should be a no-op")
+        }
+    }
+
+    /// Reordering is a row operation, not a focus one: dragging a tab does not steal focus from
+    /// the window you were working in.
+    @Test func dragToReorderLeavesFocusAlone() {
+        var w = base()
+        #expect(w.focus.window == a)
+        (w, _) = run(w, .moveWindowRefBefore(c, a))
+        #expect(w.focus.window == a)
+    }
+
+    /// Two windows in different workspaces have no row in common, so there is nothing to reorder.
+    @Test func dragToReorderAcrossWorkspacesIsARefusal() {
+        var w = base()
+        let target = w.screens["D1"]!.workspaces.last!.id
+        (w, _) = run(w, .moveWindowRefToWorkspace(c, target))
+        let (out, effects) = CommandRunner.apply(.moveWindowRefBefore(c, a), to: w)
+        #expect(out == w && effects.isEmpty)
+    }
+
     @Test func moveWindowDownCreatesWorkspaceAndFollows() {
         var w = base()
         (w, _) = run(w, .moveWindowToWorkspace(.down))

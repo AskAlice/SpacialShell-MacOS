@@ -12,12 +12,32 @@ struct WorkspacePanelView: View {
     let metaFor: (Int32) -> AppMeta
     let send: (Command) -> Void
 
+    /// Where a dragged tab would land, while it is being dragged.
+    private enum DropSlot: Equatable {
+        case before(SpacialShellProtocol.WindowRef)
+        case endOfRow
+    }
+
+    @State private var dropSlot: DropSlot?
+
     var body: some View {
         HStack(spacing: 3) {
             ForEach(state.tabs) { tab in
                 tabView(tab)
             }
+            // The gap after the last tab is itself a drop target: dropping there appends, which is
+            // the only way to move a tab to the end of the row without a tab to aim before.
             Spacer(minLength: 8)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .overlay(alignment: .leading) { caret(visible: dropSlot == .endOfRow) }
+                .dropDestination(for: DraggedWindow.self) { items, _ in
+                    guard let dropped = items.first else { return false }
+                    send(.moveWindowRefBefore(dropped.ref, nil))
+                    return true
+                } isTargeted: { over in
+                    dropSlot = over ? .endOfRow : nil
+                }
             layoutSwitcher
         }
         .padding(.horizontal, 6)
@@ -69,6 +89,27 @@ struct WorkspacePanelView: View {
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
         .help(meta.name)
+        // Drag the tab to send its window somewhere: onto a rail row to move it to that
+        // workspace, or onto another tab to reorder the row.
+        .draggable(DraggedWindow(ref: tab.ref))
+        .overlay(alignment: .leading) { caret(visible: dropSlot == .before(tab.ref)) }
+        .dropDestination(for: DraggedWindow.self) { items, _ in
+            guard let dropped = items.first else { return false }
+            send(.moveWindowRefBefore(dropped.ref, tab.ref))
+            return true
+        } isTargeted: { over in
+            dropSlot = over ? .before(tab.ref) : nil
+        }
+    }
+
+    /// Where the dragged tab would land. An insertion caret rather than a highlight on the target
+    /// tab: the drag inserts *between* tabs, and a highlighted tab would suggest replacing it.
+    private func caret(visible: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(Color.accentColor)
+            .frame(width: 2)
+            .padding(.vertical, 3)
+            .opacity(visible ? 1 : 0)
     }
 
     private var layoutSwitcher: some View {

@@ -26,6 +26,13 @@ public enum Command: Sendable, Hashable {
     case setWorkspaceLayout(UUID, Layout)  // layout switcher; targets that workspace directly
     case closeWindowRef(WindowRef)         // tab close button
     case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
+    /// Tab dragged onto a rail row. Absolute where `moveWindowToWorkspace(Vertical)` is relative:
+    /// a drag names both the window and the destination, and neither need be the focused one.
+    case moveWindowRefToWorkspace(WindowRef, UUID)
+    /// Tab dragged within the bar: put the first window immediately before the second, or at the
+    /// end of the row when the second is nil. Reference-based rather than index-based because an
+    /// index means something different before and after the removal — a classic off-by-one.
+    case moveWindowRefBefore(WindowRef, WindowRef?)
 }
 
 public enum Effect: Sendable, Equatable {

@@ -19,6 +19,10 @@ struct ScreenPanelView: View {
     let isPrimaryScreen: Bool
     let send: (Command) -> Void
 
+    /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
+    /// re-enters through `Command` like every other interaction.
+    @State private var dropTarget: UUID?
+
     /// Enough icons to tell workspaces apart at a glance; past this the count carries the load.
     private static let maxIcons = 4
 
@@ -54,6 +58,15 @@ struct ScreenPanelView: View {
                 }
                 .buttonStyle(.plain)
                 .help(item.isTrailingEmpty ? "New workspace" : tooltip(item))
+                // Dropping a tab here sends its window to this workspace. The trailing "+" row is
+                // not special-cased: it is a workspace, and moving into it grows a new one.
+                .dropDestination(for: DraggedWindow.self) { items, _ in
+                    guard let dropped = items.first else { return false }
+                    send(.moveWindowRefToWorkspace(dropped.ref, item.id))
+                    return true
+                } isTargeted: { over in
+                    dropTarget = over ? item.id : (dropTarget == item.id ? nil : dropTarget)
+                }
             }
             Spacer(minLength: 0)
 
@@ -126,6 +139,14 @@ struct ScreenPanelView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(item.isActive ? AnyShapeStyle(Color.accentColor.opacity(0.85))
                                     : AnyShapeStyle(Color.primary.opacity(0.001)))
+        )
+        // The drop target has to read at a glance while the pointer is moving and the cursor is
+        // carrying a drag image, so it is a stroke rather than a fill — it reads over both the
+        // active row's accent and an inactive row's transparency.
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .opacity(dropTarget == item.id ? 1 : 0)
         )
         .foregroundStyle(item.isActive ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
     }

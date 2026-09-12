@@ -7,6 +7,24 @@ public enum CommandRunner {
         let sid = w.focus.screen
         guard let screen = w.screens[sid] else { return (w, []) }
 
+        /// Move one window out of the workspace it is in and onto the end of `to`, carrying its
+        /// pin, and follow it. The keyboard verb and a dragged tab differ only in how they name
+        /// the destination, so they share this outright rather than drifting apart.
+        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int)) -> Bool {
+            guard let from = w.location(of: ref) else { return false }
+            guard from.screen != dest.screen || from.index != dest.index else { return false }
+            let wasFloating = w.screens[from.screen]!.workspaces[from.index].floating.contains(ref)
+            w.screens[from.screen]!.workspaces[from.index].windows.removeAll { $0 == ref }
+            w.screens[from.screen]!.workspaces[from.index].floating.remove(ref)
+            w.screens[dest.screen]!.workspaces[dest.index].windows.append(ref)
+            if wasFloating { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
+            w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
+            w.screens[dest.screen]!.activeIndex = dest.index
+            w.focus = Focus(screen: dest.screen, window: ref)
+            w.normalize()
+            return true
+        }
+
         func setFocus(_ ref: WindowRef?) {
             w.focus.window = ref
             if let ref { w.screens[w.focus.screen]!.workspaces[w.screens[w.focus.screen]!.activeIndex].anchor = ref; effects.append(.focus(ref)) }
@@ -56,16 +74,37 @@ public enum CommandRunner {
             guard let f = w.focus.window, screen.active.windows.contains(f) else { return (w, []) }
             let target = screen.activeIndex + (dir == .down ? 1 : -1)
             guard (0..<screen.workspaces.count).contains(target) else { return (w, []) }
-            let wasFloating = screen.active.floating.contains(f)
-            w.screens[sid]!.workspaces[screen.activeIndex].windows.removeAll { $0 == f }
-            w.screens[sid]!.workspaces[screen.activeIndex].floating.remove(f)
-            w.screens[sid]!.workspaces[target].windows.append(f)
-            if wasFloating { w.screens[sid]!.workspaces[target].floating.insert(f) }
-            w.screens[sid]!.workspaces[target].anchor = f
-            w.screens[sid]!.activeIndex = target
-            w.focus.window = f
-            w.normalize()
+            guard move(f, to: (sid, target)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
+
+        case .moveWindowRefToWorkspace(let ref, let workspace):
+            // Dropping on the rail's "+" needs no special case: the trailing empty workspace is a
+            // workspace like any other, and normalize() grows a fresh "+" underneath it the moment
+            // it stops being empty (invariant 4) — the same thing that makes clicking "+" work.
+            guard let dest = w.location(ofWorkspace: workspace) else { return (w, []) }
+            guard move(ref, to: dest) else { return (w, []) }
+            effects.append(.focus(ref)); effects.append(.relayout)
+
+        case .moveWindowRefBefore(let ref, let before):
+            // A row operation, not a focus one: dragging a tab into a new position must not take
+            // focus away from whatever the user was actually working in.
+            guard let from = w.location(of: ref) else { return (w, []) }
+            var row = w.screens[from.screen]!.workspaces[from.index].windows
+            guard let i = row.firstIndex(of: ref) else { return (w, []) }
+            // Resolve the destination before removing, so `before` is still findable; then convert
+            // to a post-removal index so the insert cannot be off by one.
+            let target: Int
+            if let before {
+                guard before != ref, let j = row.firstIndex(of: before) else { return (w, []) }
+                target = j > i ? j - 1 : j
+            } else {
+                target = row.count - 1
+            }
+            guard target != i else { return (w, []) }
+            row.remove(at: i)
+            row.insert(ref, at: target)
+            w.screens[from.screen]!.workspaces[from.index].windows = row
+            effects.append(.relayout)
 
         case .cycleLayout:
             w.screens[sid]!.workspaces[screen.activeIndex].layout = screen.active.layout.next
