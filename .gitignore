@@ -9,3 +9,6 @@ build/
 node_modules/
 raycast/dist/
 raycast/raycast-env.d.ts
+
+# Agent worktrees (git worktrees live here; never part of the tree itself)
+.claude/worktrees/
