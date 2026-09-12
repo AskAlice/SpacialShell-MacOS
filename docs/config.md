@@ -57,6 +57,7 @@ title-regex = "^Picture in Picture$"
 | `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
 | `highlight-ms` | integer | `600` | Duration of the focus-highlight flash, in milliseconds. `0` skips the animation. **Parsed but not yet wired** — the focus glow lands with M3b (T20); until then the key is accepted and nothing reads it (same for `highlight-color`). |
 | `app-categories` | table of bundle-id → category | `{}` | Overrides the rail's category label per app. Values: `web`, `coding`, `terminal`, `communication`, `media`, `design`, `productivity`, `utilities`. See below — this exists because macOS cannot answer the question. |
+| `keybinding-overrides` | table of command \u2192 chord | `{}` | Rebinds a command, *replacing* its default chord. This is what the settings window writes. Distinct from `keybindings` below, which is chord \u2192 command and only ever *adds* a chord \u2014 useful in a hand-edited file, useless for rebinding, since the old chord keeps working. |
 | `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 

@@ -14,6 +14,11 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var panelOpacity: Double?
     public var railSide: RailSide?
     public var tabSizing: TabSizing?
+    public var keybindingPreset: KeybindingPreset?
+    /// command -> chord. Merged over the file's own overrides per command rather than replacing
+    /// the map wholesale, so rebinding one command in the settings window cannot silently discard
+    /// a rebind the file made to a different one.
+    public var keybindingOverrides: [String: String]?
 
     public init() {}
 }
@@ -29,6 +34,8 @@ public enum Settings {
         if let v = overrides.panelOpacity { c.panelOpacity = v }
         if let v = overrides.railSide { c.railSide = v }
         if let v = overrides.tabSizing { c.tabSizing = v }
+        if let v = overrides.keybindingPreset { c.keybindingPreset = v }
+        if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }
         return c
     }
 }

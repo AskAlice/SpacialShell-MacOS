@@ -29,6 +29,18 @@ import Foundation
         #expect(Settings.effective(config: file, overrides: gui).panelWidth == 48)
     }
 
+    /// The preset is the escape hatch for a keyboard that cannot emit the `fn` modifier at all —
+    /// Karabiner's virtual keyboard is one, since Apple handles `fn` in hardware and a virtual HID
+    /// device cannot reproduce it. Someone in that position cannot use the app until they change
+    /// this, so it has to be reachable without hand-editing a file.
+    @Test func theKeybindingPresetIsOverridable() {
+        var file = Config(); file.keybindingPreset = .fn
+        var gui = SettingsOverrides(); gui.keybindingPreset = .ctrlAlt
+        #expect(Settings.effective(config: file, overrides: gui).keybindingPreset == .ctrlAlt)
+        gui.keybindingPreset = nil
+        #expect(Settings.effective(config: file, overrides: gui).keybindingPreset == .fn)
+    }
+
     @Test func appearanceKnobsAreOverridable() {
         var file = Config(); file.panelOpacity = 1
         var gui = SettingsOverrides()
@@ -61,5 +73,22 @@ import Foundation
         let json = Data(#"{"panelWidth":64,"somethingFromTheFuture":true}"#.utf8)
         let gui = try JSONDecoder().decode(SettingsOverrides.self, from: json)
         #expect(gui.panelWidth == 64)
+    }
+
+    /// Per-command merge, not wholesale replacement: rebinding one command in the window must not
+    /// discard a rebind the config file made to a different one.
+    @Test func keybindingOverridesMergePerCommand() {
+        var file = Config(); file.keybindingOverrides = ["cycle-layout": "fn-shift-l"]
+        var gui = SettingsOverrides(); gui.keybindingOverrides = ["toggle-float": "fn-shift-f"]
+        let out = Settings.effective(config: file, overrides: gui)
+        #expect(out.keybindingOverrides["cycle-layout"] == "fn-shift-l")
+        #expect(out.keybindingOverrides["toggle-float"] == "fn-shift-f")
+    }
+
+    /// And where both name the same command, the window wins — it is the more recent intent.
+    @Test func theWindowWinsOnTheSameCommand() {
+        var file = Config(); file.keybindingOverrides = ["cycle-layout": "fn-shift-l"]
+        var gui = SettingsOverrides(); gui.keybindingOverrides = ["cycle-layout": "fn-shift-k"]
+        #expect(Settings.effective(config: file, overrides: gui).keybindingOverrides["cycle-layout"] == "fn-shift-k")
     }
 }

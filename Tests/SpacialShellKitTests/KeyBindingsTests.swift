@@ -29,4 +29,48 @@ import Testing
         #expect(t[KeyBindings.parse("fn-w")!] == nil)
         #expect(t[KeyBindings.parse("ctrl-alt-x")!] == .toggleFloat)
     }
+
+    // MARK: rebinding (settings window)
+
+    /// `keybindings` in config.toml is chord -> command and is applied *after* the defaults, so it
+    /// can only ever add a chord. That is fine for a file you hand-edit, and useless for a
+    /// settings window: picking a new chord for "cycle layout" has to stop the old one working,
+    /// or every rebind silently leaves a second way in.
+    @Test func anOverrideReplacesTheDefaultChordForThatCommand() {
+        var c = Config()
+        c.keybindingOverrides = ["cycle-layout": "fn-shift-l"]
+        let t = KeyBindings.table(for: c)
+        #expect(t[KeyBindings.parse("fn-shift-l")!] == .cycleLayout)
+        #expect(t[KeyBindings.parse("fn-space")!] == nil, "the default chord must stop working")
+    }
+
+    /// Rebinding one command must not disturb any other.
+    @Test func anOverrideLeavesOtherCommandsAlone() {
+        var c = Config()
+        c.keybindingOverrides = ["cycle-layout": "fn-shift-l"]
+        let t = KeyBindings.table(for: c)
+        #expect(t[KeyBindings.parse("fn-w")!] == .focusWorkspace(.up))
+        #expect(t[KeyBindings.parse("fn-q")!] == .closeFocusedWindow)
+    }
+
+    /// An override that names a command or a chord we cannot parse is ignored rather than fatal —
+    /// a settings file is ours, but a config file is the user's and may say anything.
+    @Test func anUnparseableOverrideIsIgnored() {
+        var c = Config()
+        c.keybindingOverrides = ["cycle-layout": "fn-nonsense", "not-a-command": "fn-shift-p"]
+        let t = KeyBindings.table(for: c)
+        #expect(t[KeyBindings.parse("fn-space")!] == .cycleLayout, "an unusable override leaves the default alone")
+        #expect(t[KeyBindings.parse("fn-shift-p")!] == nil)
+    }
+
+    /// The arrow bindings are a second way into the same commands and are not the preset's job,
+    /// so an override of a command also clears its arrow chord — otherwise the old binding lives on.
+    @Test func anOverrideAlsoClearsTheArrowChord() {
+        var c = Config()
+        c.keybindingOverrides = ["focus-workspace-up": "fn-shift-u"]
+        let t = KeyBindings.table(for: c)
+        #expect(t[KeyBindings.parse("fn-shift-u")!] == .focusWorkspace(.up))
+        #expect(t[KeyBindings.parse("ctrl-alt-up")!] == nil)
+        #expect(t[KeyBindings.parse("fn-w")!] == nil)
+    }
 }

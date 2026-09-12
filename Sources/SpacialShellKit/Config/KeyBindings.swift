@@ -77,8 +77,26 @@ public enum KeyBindings {
     public static func table(for config: Config) -> [Chord: Command] {
         var t: [Chord: Command] = [:]
         let prefix = config.keybindingPreset == .fn ? "fn-" : "ctrl-alt-"
-        for (k, name) in core { if let ch = parse(prefix + k), let cmd = commandNames[name] { t[ch] = cmd } }
-        for (k, name) in arrows { if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd } }
+
+        // A rebind is only usable if the chord it replaced stops working, so the commands that
+        // have an override contribute no default at all — neither the preset chord nor the arrow
+        // chord, which is a second way into the same command and would otherwise survive.
+        // An override that names an unknown command, or a chord that will not parse, is dropped
+        // here rather than later: it must not take the default away and leave nothing behind.
+        let rebound = Set(config.keybindingOverrides.compactMap { name, chord in
+            commandNames[name] != nil && parse(chord) != nil ? name : nil
+        })
+
+        for (k, name) in core where !rebound.contains(name) {
+            if let ch = parse(prefix + k), let cmd = commandNames[name] { t[ch] = cmd }
+        }
+        for (k, name) in arrows where !rebound.contains(name) {
+            if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd }
+        }
+        for name in rebound {
+            if let ch = parse(config.keybindingOverrides[name]!), let cmd = commandNames[name] { t[ch] = cmd }
+        }
+        // Hand-written `keybindings` last: the file is the user's, and it wins over everything.
         for (k, name) in config.keybindings { if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd } }
         return t
     }

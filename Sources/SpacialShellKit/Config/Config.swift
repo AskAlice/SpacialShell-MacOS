@@ -82,7 +82,12 @@ public struct Config: Codable, Equatable, Sendable {
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
+    /// chord -> command, *added* to the defaults. Hand-edited, additive, and cannot unbind.
     public var keybindings: [String: String] = [:]
+    /// command -> chord, *replacing* the default for that command. This is what the settings
+    /// window writes: picking a new chord has to stop the old one working, or every rebind
+    /// silently leaves a second way in.
+    public var keybindingOverrides: [String: String] = [:]
     /// bundle-id → category, for the apps the built-in table and `LSApplicationCategoryType`
     /// both get wrong. Any table of this kind is permanently incomplete; this is the knob.
     public var appCategories: [String: AppCategory] = [:]
@@ -98,7 +103,8 @@ public struct Config: Codable, Equatable, Sendable {
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
              highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
              highlightColor = "highlight-color", appCategories = "app-categories",
-             panelColor = "panel-color", panelOpacity = "panel-opacity"
+             panelColor = "panel-color", panelOpacity = "panel-opacity",
+             keybindingOverrides = "keybinding-overrides"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -136,6 +142,7 @@ public struct Config: Codable, Equatable, Sendable {
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
         ignore = try c.decodeIfPresent([AppRule].self, forKey: .ignore) ?? []
         keybindings = try c.decodeIfPresent([String: String].self, forKey: .keybindings) ?? [:]
+        keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides) ?? [:]
     }
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }

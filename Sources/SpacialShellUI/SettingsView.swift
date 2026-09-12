@@ -9,13 +9,14 @@ import SpacialShellKit
 /// the window has overridden says so, and offers the way back.
 struct SettingsView: View {
     enum Pane: String, CaseIterable, Identifiable {
-        case general = "General", appearance = "Appearance", layout = "Layout"
+        case general = "General", appearance = "Appearance", layout = "Layout", keys = "Keybindings"
         var id: String { rawValue }
         var symbol: String {
             switch self {
             case .general: "gearshape"
             case .appearance: "paintpalette"
             case .layout: "square.grid.2x2"
+            case .keys: "keyboard"
             }
         }
     }
@@ -26,6 +27,9 @@ struct SettingsView: View {
     let openConfigFile: () -> Void
 
     @State private var pane: Pane = .general
+    /// The command currently listening for a chord, if any. One at a time: two recorders would
+    /// both swallow the same keystroke.
+    @State private var recording: String?
 
     var body: some View {
         NavigationSplitView {
@@ -40,6 +44,7 @@ struct SettingsView: View {
                     case .general: general
                     case .appearance: appearance
                     case .layout: layout
+                    case .keys: keys
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -54,6 +59,12 @@ struct SettingsView: View {
     private var general: some View {
         VStack(alignment: .leading, spacing: 18) {
             header("General", "Anything set here wins over config.toml. The file is never written.")
+            row("Modifier", overridden: overrides.keybindingPreset != nil) {
+                Picker("", selection: binding(\.keybindingPreset, default: file.keybindingPreset)) {
+                    Text("fn").tag(KeybindingPreset.fn); Text("\u{2303}\u{2325}").tag(KeybindingPreset.ctrlAlt)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
+            } reset: { overrides.keybindingPreset = nil }
+
             row("Rail side", overridden: overrides.railSide != nil) {
                 Picker("", selection: binding(\.railSide, default: file.railSide)) {
                     Text("Left").tag(RailSide.left); Text("Right").tag(RailSide.right)
@@ -114,6 +125,77 @@ struct SettingsView: View {
             } reset: { overrides.tabSizing = nil }
         }
     }
+
+    private var keys: some View {
+        let effective = Settings.effective(config: file, overrides: overrides)
+        return VStack(alignment: .leading, spacing: 14) {
+            header("Keybindings", "Click a chord and press the keys you want. Escape cancels. A chord needs at least one of fn, \u{2303}, \u{2325} or \u{2318} \u{2014} a bare key would be swallowed everywhere.")
+            if effective.keybindingPreset == .fn {
+                Text("Note: some keyboards cannot produce the fn modifier at all \u{2014} a virtual HID device such as Karabiner's re-emits your keys without it, because Apple handles fn in hardware. If fn chords never fire, switch the modifier to \u{2303}\u{2325} under General.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 2)
+            }
+            ForEach(Self.commandOrder, id: \.0) { name, label in
+                keyRow(name: name, label: label, config: effective)
+            }
+        }
+    }
+
+    private func keyRow(name: String, label: String, config: Config) -> some View {
+        let bound = KeyBindings.commandNames[name].flatMap { CheatSheet.primaryDisplay(for: $0, config: config) }
+        let isOverridden = (overrides.keybindingOverrides?[name] ?? nil) != nil
+        return HStack(spacing: 12) {
+            Text(label).font(.system(size: 12)).frame(width: 190, alignment: .leading)
+            Button {
+                recording = recording == name ? nil : name
+            } label: {
+                Text(recording == name ? "Press keys\u{2026}" : (bound ?? "unbound"))
+                    .font(.system(size: 11).monospacedDigit())
+                    .frame(width: 120)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 5)
+                        .fill(recording == name ? AnyShapeStyle(Color.accentColor.opacity(0.25))
+                                                : AnyShapeStyle(.quaternary.opacity(0.5))))
+            }
+            .buttonStyle(.plain)
+            .overlay {
+                if recording == name {
+                    ChordRecorder(onCapture: { chord in
+                        var m = overrides.keybindingOverrides ?? [:]
+                        m[name] = KeyBindings.serialize(chord)
+                        overrides.keybindingOverrides = m
+                        recording = nil
+                    }, onCancel: { recording = nil })
+                    .frame(width: 0, height: 0)
+                }
+            }
+            if isOverridden {
+                Button("Use file") {
+                    var m = overrides.keybindingOverrides ?? [:]
+                    m.removeValue(forKey: name)
+                    overrides.keybindingOverrides = m.isEmpty ? nil : m
+                }
+                .font(.system(size: 11))
+                .help("Stop overriding this and use whatever config.toml and the preset say")
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Grouped the way the cheat sheet groups them, so the two surfaces read the same.
+    static let commandOrder: [(String, String)] = [
+        ("focus-workspace-up", "Focus workspace up"), ("focus-workspace-down", "Focus workspace down"),
+        ("focus-window-left", "Focus window left"), ("focus-window-right", "Focus window right"),
+        ("move-window-left", "Move window left"), ("move-window-right", "Move window right"),
+        ("move-window-up", "Move window to workspace up"), ("move-window-down", "Move window to workspace down"),
+        ("focus-screen-prev", "Focus previous screen"), ("focus-screen-next", "Focus next screen"),
+        ("move-window-to-screen-prev", "Move window to previous screen"),
+        ("move-window-to-screen-next", "Move window to next screen"),
+        ("cycle-layout", "Cycle layout"), ("toggle-float", "Toggle float"),
+        ("close-window", "Close window"), ("toggle-shell-ui", "Toggle Zen mode"),
+        ("toggle-overview", "Open overview"), ("open-settings", "Open settings"),
+    ]
 
     // MARK: pieces
 

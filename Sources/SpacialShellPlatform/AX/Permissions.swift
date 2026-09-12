@@ -31,6 +31,12 @@ public enum Permissions {
             if !didReset, start.duration(to: clock.now) >= resetAfter {
                 didReset = true
                 _ = try? Process.run(URL(filePath: "/usr/bin/tccutil"), arguments: ["reset", "Accessibility", bundleID])
+                // The reset removes the row outright — that is what clears a stale one. But an app
+                // with no row is also an app that is not in the list at all, and the initial
+                // prompt has already been shown and will not fire again on its own. Without this,
+                // the reset leaves the user staring at a Accessibility pane their app has just
+                // disappeared from, with no way back except the "+" button.
+                _ = AXIsProcessTrustedWithOptions([axTrustedCheckOptionPrompt: true] as CFDictionary)
             }
             try? await Task.sleep(for: .seconds(1))
         }
