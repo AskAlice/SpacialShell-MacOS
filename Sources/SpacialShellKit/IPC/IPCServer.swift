@@ -8,10 +8,10 @@ import os
 /// ponytail: blocking write(2), unconditional stale unlink, no subscribe/back-pressure —
 /// replaced by the full M2 IPCServer (SnapshotHub, NWListener) when Tasks 9–13 land.
 public final class IPCServer: @unchecked Sendable {
-    private static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "ipc")
+    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "ipc")
     private let path: String
     private let handle: @Sendable (IPCRequest) async -> IPCResponse
-    private let queue = DispatchQueue(label: "me.askalice.SpacialShell.ipc")
+    private let queue = DispatchQueue(label: "sh.emu.SpacialShell.ipc")
     private var listenFD: Int32 = -1
     private var acceptSource: (any DispatchSourceRead)?
     private var readers: [Int32: (source: any DispatchSourceRead, framer: LineFramer)] = [:]

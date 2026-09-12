@@ -68,7 +68,7 @@ final class AXApp: @unchecked Sendable {
     private static let maxObserverAttempts = 6
     private static let observerRetryBaseDelay: TimeInterval = 0.2
 
-    private static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "AXApp")
+    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "AXApp")
 
     private init(
         _ nsApp: NSRunningApplication,

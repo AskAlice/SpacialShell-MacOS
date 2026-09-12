@@ -7,7 +7,7 @@ import os
 /// geometry everything else (AX, `Layout`, `World`) speaks. Rebuilt on every access: NSScreen
 /// caches nothing useful across a hot-plug, and a stale topology places windows off-screen.
 public enum DisplayTopology {
-    private static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "DisplayTopology")
+    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "DisplayTopology")
 
     /// NSScreen (bottom-left, y-up) → AX (top-left, y-down). `mainHeight` is the height of the
     /// screen whose frame origin is (0,0) — the origin both coordinate systems share.

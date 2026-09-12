@@ -25,12 +25,19 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     /// A world change per keystroke would mean a write per keystroke.
     private static let saveDebounce = Duration.milliseconds(500)
 
+    /// What `config.toml` says, untouched. The settings window shows this as the baseline every
+    /// "Use file" returns to, and it is never written back — see `Settings`.
+    private var fileConfig = Config()
+    /// What the settings window has set on top. App-owned, written to `Paths.settingsFile`.
+    private var overrides = SettingsOverrides()
+    /// The two layered together: what the shell actually runs on.
     private var config = Config()
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     private var tap: HotkeyTap?
     private var shell: ShellController?
     private var overview: OverviewController?
+    private var settingsWindow: SettingsWindowController?
     private var cheatSheet: CheatSheetController?
     private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
@@ -53,6 +60,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         await Permissions.waitForAccessibility(bundleID: Paths.bundleID)
 
         log.info("stage 2/8: loading config")
+        loadOverrides()
         loadConfig()
 
         log.info("stage 3/8: constructing the AX backend")
@@ -91,6 +99,23 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
         self.overview = overview
 
+        // Same rule: captured directly, never through `self`. `onChange` hops back onto the main
+        // actor to persist and re-layer, which is the only thing that needs the runtime at all.
+        let settings = SettingsWindowController(
+            file: fileConfig, overrides: overrides,
+            openConfigFile: {
+                let url = Paths.configFile
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    try? FileManager.default.createDirectory(at: Paths.configDir, withIntermediateDirectories: true)
+                    try? Data().write(to: url)
+                }
+                NSWorkspace.shared.open(url)
+            },
+            onChange: { [weak self] new in
+                Task { @MainActor in self?.applyOverrides(new) }
+            })
+        self.settingsWindow = settings
+
         // One dispatch path for every command source — hotkey tap, panel clicks, and whatever
         // comes next. App-layer surfaces route to their controllers; everything else is a model
         // command for the store. Without this, a panel's `.toggleOverview` (the search glyph's
@@ -100,17 +125,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             case .toggleOverview:
                 Task { @MainActor in overview.toggle() }
             case .openSettings:
-                // No settings UI exists (and none is pretended): Fn+, opens the config file the
-                // whole app is actually driven by. A missing file is created empty — an empty
-                // config is the documented "all defaults".
-                Task { @MainActor in
-                    let url = Paths.configFile
-                    if !FileManager.default.fileExists(atPath: url.path) {
-                        try? FileManager.default.createDirectory(at: Paths.configDir, withIntermediateDirectories: true)
-                        try? Data().write(to: url)
-                    }
-                    NSWorkspace.shared.open(url)
-                }
+                Task { @MainActor in settings.toggle() }
             default:
                 Task { await store.run(command) }
             }
@@ -179,14 +194,44 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     /// manager. A *missing* config is not an error — it means "all defaults".
     private func loadConfig() {
         do {
-            config = try Config.load(from: Paths.configFile)
+            fileConfig = try Config.load(from: Paths.configFile)
             log.info("config loaded from \(Paths.configFile.path, privacy: .public)")
         } catch CocoaError.fileReadNoSuchFile {
-            config = Config()
+            fileConfig = Config()
             log.info("no config file; using defaults")
         } catch {
             log.error("config invalid, keeping previous: \(String(describing: error), privacy: .public)")
         }
+        config = Settings.effective(config: fileConfig, overrides: overrides)
+    }
+
+    /// A missing or unreadable settings file means "nothing overridden" — the file is ours, so a
+    /// corrupt one is our problem to shrug off, not the user's config to reject.
+    private func loadOverrides() {
+        guard let data = try? Data(contentsOf: Paths.settingsFile) else { return }
+        guard let decoded = try? JSONDecoder().decode(SettingsOverrides.self, from: data) else {
+            log.error("settings.json unreadable; ignoring it")
+            return
+        }
+        overrides = decoded
+    }
+
+    private func saveOverrides() {
+        do {
+            try FileManager.default.createDirectory(at: Paths.stateDir, withIntermediateDirectories: true)
+            let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try e.encode(overrides).write(to: Paths.settingsFile, options: .atomic)
+        } catch {
+            log.error("could not write settings.json: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// The settings window changed something: persist it, re-layer, and push it through the same
+    /// path a config-file edit takes.
+    private func applyOverrides(_ new: SettingsOverrides) {
+        overrides = new
+        saveOverrides()
+        applyEffectiveConfig()
     }
 
     /// Watches the *directory*, not the file: editors replace configs by rename, which leaves the
@@ -222,6 +267,20 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private func reloadConfig() {
         let previous = config
         loadConfig()
+        settingsWindow?.update(file: fileConfig)   // the baseline "Use file" returns to has moved
+        push(previous: previous)
+    }
+
+    /// Re-layer the settings window's overrides over the file and push the result.
+    private func applyEffectiveConfig() {
+        let previous = config
+        config = Settings.effective(config: fileConfig, overrides: overrides)
+        push(previous: previous)
+    }
+
+    /// One path for both doors into a config change — a file edit and a settings-window edit end
+    /// up in exactly the same place, so neither can quietly skip a step the other does.
+    private func push(previous: Config) {
         guard config != previous else { return }
         log.info("config changed; re-binding keys and re-laying out")
         if config.axTimeoutMs != previous.axTimeoutMs || config.refreshIntervalMs != previous.refreshIntervalMs {

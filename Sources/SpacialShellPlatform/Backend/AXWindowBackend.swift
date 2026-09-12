@@ -56,7 +56,7 @@ public final class AXWindowBackend: WindowBackend {
     private var started = false
     private var stopped = false
 
-    private nonisolated static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "AXWindowBackend")
+    private nonisolated static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "AXWindowBackend")
 
     /// Ruling 4/5. Display topology is transient across wake and hot-plug: `NSScreen.screens` can
     /// report a half-built (or empty) arrangement for a few hundred milliseconds, and laying out

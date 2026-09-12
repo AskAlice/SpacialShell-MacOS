@@ -8,5 +8,8 @@ enum Paths {
     static let configFile = configDir.appendingPathComponent("config.toml")
     static let stateDir = home.appendingPathComponent("Library/Application Support/SpacialShell", isDirectory: true)
     static let stateFile = stateDir.appendingPathComponent("state.json")
-    static let bundleID = "me.askalice.SpacialShell"
+    /// What the settings window has set. App-owned and app-written, unlike `configFile`, which
+    /// belongs to the user and is only ever read — see `Settings`.
+    static let settingsFile = stateDir.appendingPathComponent("settings.json")
+    static let bundleID = "sh.emu.SpacialShell"
 }

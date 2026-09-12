@@ -113,7 +113,7 @@ Loops are served as animated **webp** (and **gif** next to them) from
 
 1. Grab a DMG from [Releases](https://github.com/AskAlice/alice-material/releases), or build the
    app bundle: `Scripts/bundle.sh`. That produces `build/SpacialShell.app`, ad-hoc signed with a
-   stable bundle id (`me.askalice.SpacialShell`) so the Accessibility grant survives rebuilds.
+   stable bundle id (`sh.emu.SpacialShell`) so the Accessibility grant survives rebuilds.
    Tag `v*` (or run **Release** from Actions) to rebuild, run unit tests, and publish a DMG.
 2. Move `build/SpacialShell.app` to `/Applications` (or anywhere you like — just keep it in place
    afterwards; moving it invalidates the grant, see below).

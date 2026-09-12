@@ -73,7 +73,7 @@ import UniformTypeIdentifiers
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 140, height: 800),
                          styleMask: [.titled], backing: .buffered, defer: false)
         let host = mount(ScreenPanelView(state: railState(), launcherURL: "raycast://",
-                                         metaFor: meta, isPrimaryScreen: true, send: { _ in }),
+                                         metaFor: meta, send: { _ in }),
                          in: w, size: CGSize(width: 140, height: 800))
         #expect(acceptsTabDrags(host), "an ordinary window registers: \(registeredTypes(in: host))")
     }
@@ -83,7 +83,7 @@ import UniformTypeIdentifiers
         let panel = PanelWindow()
         panel.setFrame(NSRect(x: 0, y: 0, width: 140, height: 800), display: false)
         let host = mount(ScreenPanelView(state: railState(), launcherURL: "raycast://",
-                                         metaFor: meta, isPrimaryScreen: true, send: { _ in }),
+                                         metaFor: meta, send: { _ in }),
                          in: panel, size: CGSize(width: 140, height: 800))
         #expect(acceptsTabDrags(host), "PanelWindow registers: \(registeredTypes(in: host))")
     }

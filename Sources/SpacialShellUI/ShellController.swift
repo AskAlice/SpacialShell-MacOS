@@ -80,7 +80,6 @@ public final class ShellController: NSObject {
 
             p.railHost.rootView = ScreenPanelView(state: state, launcherURL: config.launcherURL,
                                                   metaFor: appMeta.meta(for:),
-                                                  isPrimaryScreen: nsScreen == NSScreen.screens.first,
                                                   send: forward)
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward)
 
@@ -103,8 +102,7 @@ public final class ShellController: NSObject {
     private func makePanels(for id: DisplayID) -> Panels {
         let placeholder = ScreenShellState(display: id, isFocusedScreen: false, rail: [], tabs: [], layout: .maximize)
         let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL,
-                                                               metaFor: appMeta.meta(for:),
-                                                               isPrimaryScreen: false, send: forward))
+                                                               metaFor: appMeta.meta(for:), send: forward))
         let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost

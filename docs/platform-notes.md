@@ -16,7 +16,7 @@ Spec references: §6.2 (bindings), §13.2 (research findings), §13.5 (this chec
 SPACIAL_LOG_KEYS=1 Scripts/dev.sh
 
 # 2. In a second terminal, watch what the tap sees (keycode + flags for every keyDown):
-log stream --predicate 'subsystem == "me.askalice.SpacialShell"' --info
+log stream --predicate 'subsystem == "sh.emu.SpacialShell"' --info
 
 # 3. Open TextEdit with two documents (⌘N twice) and press each chord below in TextEdit.
 #    For each one record three things:

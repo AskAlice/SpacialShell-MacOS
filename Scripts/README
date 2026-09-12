@@ -18,7 +18,7 @@ is an .app.
   configuration and the grant no longer applies — you have to remove the stale entry in
   System Settings → Privacy & Security → Accessibility (select it, press "−") and grant
   the new path. `Permissions.waitForAccessibility` runs `tccutil reset Accessibility
-  me.askalice.SpacialShell` once on the first retry, which clears the stale entry for
+  sh.emu.SpacialShell` once on the first retry, which clears the stale entry for
   you in the bundled case, but a loose binary at a *new* path is simply a new subject.
 * `Scripts/bundle.sh` produces `build/SpacialShell.app` with a stable bundle id, so its
   grant survives rebuilds in place. Re-granting is still needed if you move the .app.
@@ -29,8 +29,8 @@ is an .app.
 Debugging keys
 --------------
 `SPACIAL_LOG_KEYS=1 Scripts/dev.sh` logs every keyDown's keycode and flags at .info under
-subsystem `me.askalice.SpacialShell`, category `hotkeys`. Read it live with:
+subsystem `sh.emu.SpacialShell`, category `hotkeys`. Read it live with:
 
-    log stream --predicate 'subsystem == "me.askalice.SpacialShell"' --info
+    log stream --predicate 'subsystem == "sh.emu.SpacialShell"' --info
 
 That is the instrument for the checklist in docs/platform-notes.md.

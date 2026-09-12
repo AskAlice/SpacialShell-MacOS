@@ -5,7 +5,7 @@ import AppKit
 import Foundation
 import os
 
-let signposter = OSSignposter(subsystem: "me.askalice.SpacialShell", category: .pointsOfInterest)
+let signposter = OSSignposter(subsystem: "sh.emu.SpacialShell", category: .pointsOfInterest)
 
 #if DEBUG
     let isDebug = true

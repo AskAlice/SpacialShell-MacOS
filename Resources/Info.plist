@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>me.askalice.SpacialShell</string>
+	<string>sh.emu.SpacialShell</string>
 	<key>CFBundleName</key>
 	<string>SpacialShell</string>
 	<key>CFBundleExecutable</key>

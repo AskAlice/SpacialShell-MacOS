@@ -14,9 +14,6 @@ struct ScreenPanelView: View {
     let state: ScreenShellState
     let launcherURL: String
     let metaFor: (Int32) -> AppMeta
-    /// The settings cog lives on one screen only — it is a way into the app, not per-display
-    /// furniture, and one cog per monitor is clutter.
-    let isPrimaryScreen: Bool
     let send: (Command) -> Void
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
@@ -70,8 +67,8 @@ struct ScreenPanelView: View {
             }
             Spacer(minLength: 0)
 
-            if isPrimaryScreen {
-                // Opens the config file — there is no settings window yet and none is pretended.
+            do {
+                // Every display: reaching for settings should not mean finding the right monitor.
                 Button { send(.openSettings) } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 13, weight: .medium))

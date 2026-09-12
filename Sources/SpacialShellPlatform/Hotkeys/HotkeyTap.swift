@@ -33,7 +33,7 @@ import os
 public final class HotkeyTap: @unchecked Sendable {
     public enum TapError: Error { case creationFailed }
 
-    private static let log = Logger(subsystem: "me.askalice.SpacialShell", category: "hotkeys")
+    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "hotkeys")
 
     /// Health poll interval; also how long a tap can stay dead before we notice.
     private static let healthIntervalSeconds: CFTimeInterval = 5
@@ -215,7 +215,7 @@ public final class HotkeyTap: @unchecked Sendable {
     private func spawnThread(exitIfCreationFails: Bool) -> Bool {
         let ready = DispatchSemaphore(value: 0)
         let thread = Thread { [self] in threadMain(ready: ready, exitIfCreationFails: exitIfCreationFails) }
-        thread.name = "me.askalice.SpacialShell.hotkeys"
+        thread.name = "sh.emu.SpacialShell.hotkeys"
         thread.qualityOfService = .userInteractive
         lock.lock(); self.thread = thread; lock.unlock()
         thread.start()

@@ -97,29 +97,29 @@ enum Stories {
             state: rail([railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
                          railItem(1, name: "Web", symbol: "globe", count: 2, pids: [1, 1], active: true),
                          railItem(2, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send))
+            launcherURL: "raycast://", metaFor: meta, send: send))
         add("rail-pinned-empty", railGeometry, ScreenPanelView(
             state: rail([railItem(0, name: "Chat", symbol: "bubble.left.and.bubble.right", count: 0, pinned: true),
                          railItem(1, name: "Web", symbol: "globe", count: 1, pids: [1], active: true),
                          railItem(2, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send))
+            launcherURL: "raycast://", metaFor: meta, send: send))
         // Five distinct apps in one row: four icons then "+1", and a category label that has to
         // pick one answer out of a mixed row.
         add("rail-many-apps", railGeometry, ScreenPanelView(
             state: rail([railItem(0, name: "Everything", symbol: "square.grid.2x2", count: 6,
                                   pids: [5, 3, 1, 6, 4, 2], active: true),
                          railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send))
+            launcherURL: "raycast://", metaFor: meta, send: send))
         // No cog on a secondary display — one way into settings, not one per monitor.
         add("rail-secondary-screen", railGeometry, ScreenPanelView(
             state: rail([railItem(0, name: "Code", symbol: "terminal", count: 1, pids: [5], active: true),
                          railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: false, send: send))
+            launcherURL: "raycast://", metaFor: meta, send: send))
         add("rail-twelve-workspaces", railGeometry, ScreenPanelView(
             state: rail((0..<11).map { railItem($0, name: "Workspace \($0 + 1)", symbol: "square.grid.2x2",
                                                count: ($0 * 3) % 7, pids: [Int32($0 % 6) + 1], active: $0 == 4) }
                         + [railItem(11, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send),
+            launcherURL: "raycast://", metaFor: meta, send: send),
             knownOverflow: true)   // 12 rows can exceed a short rail; overflow handling is unbuilt
 
         // Tab bar

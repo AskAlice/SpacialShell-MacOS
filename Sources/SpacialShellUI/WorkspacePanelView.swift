@@ -40,6 +40,18 @@ struct WorkspacePanelView: View {
                     dropSlot = over ? .endOfRow : nil
                 }
             layoutSwitcher
+            // Right of the grid glyph and flush to the trailing edge: the layouts on the bar are
+            // the five built-in ones, and this is the way to everything else about them.
+            Button { send(.openSettings) } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12))
+                    .frame(width: 24, height: 22)
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Layout settings")
+            .padding(.leading, 2)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

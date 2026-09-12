@@ -5,7 +5,7 @@ import SpacialShellProtocol
 /// What a dragged tab carries: the window it stands for, and nothing else.
 ///
 /// The content type is the standard `public.data` rather than a private
-/// `me.askalice.SpacialShell.window`, and that is not laziness — a private one does not work.
+/// `sh.emu.SpacialShell.window`, and that is not laziness — a private one does not work.
 /// A UTI invented at runtime has conformance only if the bundle *declares* it in
 /// `UTExportedTypeDeclarations`; `UTType(exportedAs:conformingTo:)` does not register one on its
 /// own, and neither does `importedAs` (both yield `supertypes == []`, verified on macOS 26).
