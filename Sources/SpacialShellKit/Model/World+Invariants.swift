@@ -12,7 +12,7 @@ extension World {
             if !s.workspaces.last!.isEmpty { v.append("\(id): last workspace not empty") }
             for (i, ws) in s.workspaces.enumerated() {
                 let last = i == s.workspaces.count - 1
-                if ws.isEmpty && !last && i != s.activeIndex && !ws.pinned { v.append("\(id)[\(i)]: empty, unpinned, non-trailing, non-active") }
+                if ws.isEmpty && !last && i != s.activeIndex && !ws.pinned && !ws.reserved { v.append("\(id)[\(i)]: empty, unpinned, unreserved, non-trailing, non-active") }
                 if Set(ws.windows).count != ws.windows.count { v.append("\(id)[\(i)]: duplicate windows") }
                 for w in ws.windows {
                     if let prev = seen[w] { v.append("\(w) in \(prev) and \(id)[\(i)]") }

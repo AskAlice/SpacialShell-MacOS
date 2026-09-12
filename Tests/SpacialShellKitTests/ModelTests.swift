@@ -102,4 +102,43 @@ import Foundation
         #expect(w == before)
         #expect(w.invariantViolations().isEmpty)
     }
+
+    // MARK: remembered placement (issue #5)
+
+    @Test func adoptHonoursARememberedWorkspace() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1")
+        let trailing = w.screens["D1"]!.workspaces[1].id
+        w.adopt(b, kind: .tile, on: "D1", workspace: trailing)
+        #expect(w.screens["D1"]!.workspaces[0].windows == [a])
+        #expect(w.screens["D1"]!.workspaces[1].windows == [b])
+        #expect(w.invariantViolations().isEmpty)
+    }
+    @Test func adoptIgnoresARememberedWorkspaceThatIsGone() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1")
+        let before = w.screens["D1"]!.workspaces.count
+        w.adopt(b, kind: .tile, on: "D1", workspace: UUID())      // nothing by that id exists
+        #expect(w.screens["D1"]!.workspaces.count == before)      // not resurrected
+        #expect(w.screens["D1"]!.active.windows == [a, b])        // today's rules
+        #expect(w.invariantViolations().isEmpty)
+    }
+    /// Placement is keyed by workspace, not by screen: the workspace a window belongs to may have
+    /// been restored onto a different display than the one the window happens to open on.
+    @Test func adoptFindsARememberedWorkspaceOnAnotherScreen() {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1")
+        let onD1 = w.screens["D1"]!.workspaces[0].id
+        w.adopt(b, kind: .tile, on: "D2", workspace: onD1)
+        #expect(w.screens["D1"]!.workspaces[0].windows == [a, b])
+        #expect(w.invariantViolations().isEmpty)
+    }
+    @Test func aParentBeatsARememberedWorkspace() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1")
+        let trailing = w.screens["D1"]!.workspaces[1].id
+        w.adopt(c, kind: .float, on: "D1", parent: a, workspace: trailing)   // a dialog follows its owner
+        #expect(w.screens["D1"]!.workspaces[0].windows == [a, c])
+        #expect(w.invariantViolations().isEmpty)
+    }
 }

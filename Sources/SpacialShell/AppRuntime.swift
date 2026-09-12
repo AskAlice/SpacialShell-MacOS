@@ -77,6 +77,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         let gate = termination
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
+            placements: restored?.placements ?? [:],
         ) { [weak self] world in
             gate.note(world: world)
             Task { @MainActor in
@@ -303,8 +304,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: Self.saveDebounce)
             guard !Task.isCancelled else { return }
+            let placements = await self?.store?.currentPlacements() ?? [:]
+            guard !Task.isCancelled else { return }
             do {
-                try PersistedState(world: world).save(to: Paths.stateFile)
+                try PersistedState(world: world, placements: placements).save(to: Paths.stateFile)
             } catch {
                 self?.log.error("state save failed: \(String(describing: error), privacy: .public)")
             }
@@ -411,7 +414,12 @@ final class TerminationGate: @unchecked Sendable {
             // the restore moves every window off its workspace, so a save after it would persist
             // a layout that no longer matches anything.
             do {
-                try PersistedState(world: e.world).save(to: Paths.stateFile)
+                var state = PersistedState(world: e.world, placements: e.placements)
+                // The fallback export (store timed out) carries no placement memory; the debounced
+                // save left a good one on disk moments ago, so keep that rather than forget where
+                // every app lived.
+                if state.placements.isEmpty { state.placements = ((try? PersistedState.load(from: Paths.stateFile)) ?? nil)?.placements ?? [:] }
+                try state.save(to: Paths.stateFile)
             } catch {
                 Self.log.error("final state save failed: \(String(describing: error), privacy: .public)")
             }
@@ -450,7 +458,7 @@ final class TerminationGate: @unchecked Sendable {
             return nil
         }
         let placed = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) })
-        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed)
+        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed, placements: [:])
     }
 
     /// `DisplayTopology.current()` is `@MainActor`. On the main thread we are already there; from
@@ -502,7 +510,7 @@ final class TerminationGate: @unchecked Sendable {
 /// What `WorldStore.exportForTermination()` hands back.
 private typealias TerminationExport = (
     world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect],
-    parked: Set<WindowRef>
+    parked: Set<WindowRef>, placements: [String: UUID]
 )
 
 /// A one-shot handoff out of a `Task` into a semaphore-blocked thread.

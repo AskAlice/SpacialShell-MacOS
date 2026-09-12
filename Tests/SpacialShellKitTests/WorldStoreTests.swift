@@ -14,9 +14,10 @@ import Foundation
     func snap(_ ws: [WindowSnapshot], focused: WindowRef? = nil, login: Bool = false) -> Snapshot {
         Snapshot(displays: [d1], apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false)], windows: ws, focused: focused, loginwindowFrontmost: login)
     }
-    func make(_ s: Snapshot) async -> (WorldStore, FakeBackend) {
+    func make(_ s: Snapshot, config: Config? = nil, world: World? = nil, placements: [String: UUID] = [:]) async -> (WorldStore, FakeBackend) {
         let be = FakeBackend(snapshot: s)
-        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
+        let store = WorldStore(backend: be, config: config ?? m1Config(), world: world, zeroSliverBundleIDs: ["us.zoom.xos"],
+                               placements: placements, onChange: { _ in })
         await store.start()
         return (store, be)
     }
@@ -306,10 +307,44 @@ import Foundation
         #expect(await store.world.focus.window == a)
     }
 
+    // MARK: placement memory (issue #5)
+
+    /// A relaunch: the state file's placements are handed to the store, and the first snapshot
+    /// adopts each app back into the workspace it was in — while an app the state has never seen
+    /// still lands by today's rules, in the active workspace.
+    @Test func rememberedAppsAreAdoptedBackIntoTheirWorkspace() async {
+        var c = m1Config(); c.workspaces = [WorkspaceSeed(name: "Code"), WorkspaceSeed(name: "Web")]
+        let seeded = World.seeded(screens: ["D1"], config: c)
+        let web = seeded.screens["D1"]!.workspaces[1].id
+        let (store, _) = await make(snap([win(a, bundle: "com.browser"), win(b, bundle: "com.stranger")], focused: b),
+                                    config: c, world: seeded, placements: ["com.browser": web])
+        let w = await store.world
+        #expect(w.screens["D1"]!.workspaces[1].windows == [a])   // remembered
+        #expect(w.screens["D1"]!.workspaces[0].windows == [b])   // never seen: active workspace, no error
+        #expect(w.invariantViolations().isEmpty)
+    }
+    /// A placement naming a workspace this world does not have must not resurrect it.
+    @Test func aRememberedWorkspaceThatIsGoneFallsBack() async {
+        let (store, _) = await make(snap([win(a, bundle: "com.x")], focused: a), placements: ["com.x": UUID()])
+        let w = await store.world
+        #expect(w.screens["D1"]!.workspaces.count == 2)          // the one it landed in + the trailing empty
+        #expect(w.screens["D1"]!.active.windows == [a])
+        #expect(w.invariantViolations().isEmpty)
+    }
+    /// The memory follows the model, so an app quit and reopened later in the session comes back
+    /// to where the user last put it — and the state file saved at quit is already current.
+    @Test func placementMemoryFollowsTheWindow() async {
+        let (store, _) = await make(snap([win(a, bundle: "com.x")], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))
+        let moved = await store.world.workspace(containing: a)!.id
+        #expect(await store.currentPlacements()["com.x"] == moved)
+        #expect(await store.exportForTermination().placements["com.x"] != nil)
+    }
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
     case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x): return x == r
     }
 }
-actor ChangeBox { var value: World?; func set(_ w: World) { value = w } }
+actor ChangeBox { var value: World?; func set(_ w: World) { value = w } 
+}
