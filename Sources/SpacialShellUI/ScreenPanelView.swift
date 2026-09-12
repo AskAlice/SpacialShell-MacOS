@@ -30,6 +30,12 @@ struct ScreenPanelView: View {
             ForEach(state.rail) { item in
                 Button {
                     send(.focusWorkspaceID(item.id))
+                    // "+" is "start a new workspace", and a workspace with nothing in it is a
+                    // dead end — so opening one opens the overview to put something in it. The
+                    // built-in overview, never `launcherURL`: the overview is our own
+                    // non-activating panel, while an external launcher would activate another
+                    // app, and that focus change is exactly what drags you back out again.
+                    if item.isTrailingEmpty { send(.toggleOverview) }
                 } label: {
                     VStack(spacing: 1) {
                         Image(systemName: item.isTrailingEmpty ? "plus" : item.symbol)
