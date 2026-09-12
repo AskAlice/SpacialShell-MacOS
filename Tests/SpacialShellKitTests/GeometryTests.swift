@@ -18,13 +18,15 @@ import Foundation
         #expect(Geometry.flip(Geometry.flip(below, mainHeight: 1080), mainHeight: 1080) == below)
     }
     @Test func leftRailInsets() {
-        var c = Config(); c.railSide = .left
+        // Pinned, not defaulted: this test is about the inset arithmetic, so it must not move
+        // when `panel-width`'s default does. ConfigTests owns the default.
+        var c = Config(); c.railSide = .left; c.panelWidth = 48; c.panelHeight = 34
         let i = ShellInsets(config: c, hidden: false)
         #expect(i.top == 34 && i.left == 48 && i.right == 0 && i.bottom == 0)
         #expect(i.apply(to: CGRect(x: 0, y: 0, width: 1000, height: 700)) == CGRect(x: 48, y: 34, width: 952, height: 666))
     }
     @Test func rightRailInsets() {
-        var c = Config(); c.railSide = .right
+        var c = Config(); c.railSide = .right; c.panelWidth = 48; c.panelHeight = 34
         let i = ShellInsets(config: c, hidden: false)
         #expect(i.top == 34 && i.left == 0 && i.right == 48 && i.bottom == 0)
         #expect(i.apply(to: CGRect(x: 0, y: 0, width: 1000, height: 700)) == CGRect(x: 0, y: 34, width: 952, height: 666))

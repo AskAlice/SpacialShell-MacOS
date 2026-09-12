@@ -133,7 +133,8 @@ import Foundation
     @Test func zenGivesTheEdgesBack() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         w.adopt(a, kind: .tile, on: "D1")
-        let cfg = Config()
+        // Pinned so the arithmetic below stays readable and does not move with the default.
+        var cfg = Config(); cfg.panelWidth = 48; cfg.panelHeight = 34
         func rect(_ world: World) -> Placement? {
             let insets = ["D1": ShellInsets(config: cfg, hidden: world.zen)]
             return Reconciler.desired(world: world, displays: [display], config: LayoutConfig(gap: 8),

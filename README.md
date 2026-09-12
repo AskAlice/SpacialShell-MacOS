@@ -69,8 +69,10 @@ change window. The screen is a viewport over a larger, always-sorted grid.
 
 Two panels, one job: show *where you are*.
 
-- **System panel** (left rail, 48 pt): search, workspace tiles, `+`, stacked clock. Click a tile
-  to go there.
+- **System panel** (left rail, 140 pt): search, one row per workspace, `+`, settings. Each row
+  shows the apps actually in that workspace (one icon per app, then `+N`), how many windows it
+  holds, and what kind of work it is for — "web browsing", "coding", "terminal". Click a row to go
+  there; `+` opens the overview so the new workspace starts with something in it.
 - **Workspace panel** (top bar, 34 pt): a tab per window on the active row, plus the layout
   switcher.
 - **Focus glow**: a 3 pt accent stroke at the window's *desired* frame — it arrives before the
@@ -91,8 +93,9 @@ invariants, all five tiling layouts, the full hotkey set under two presets, TOML
 reload, JSON state persistence for pinned workspaces, window classification (tiled / floating /
 ephemeral / ignored), and parking.
 
-**M2 — shell UI**, in progress. Landed so far: the `ScreenPanel` workspace rail (one button per
-workspace, the trailing empty one drawn as "+", search glyph opening the configured launcher), the
+**M2 — shell UI**, in progress. Landed so far: the `ScreenPanel` workspace rail (one row per
+workspace showing its apps and category, the trailing empty one drawn as "+", search glyph opening
+the configured launcher, a settings cog on the primary display), the
 `WorkspacePanel` tab bar + layout switcher (one tab per window in the active row, in `Fn+A`/`Fn+D`
 order), **Zen mode** on `Fn+Esc` (hides both panels and gives their edges back to the layout;
 survives relaunch), a built-in **overview** on `Fn+Tab` (search over open windows and installed

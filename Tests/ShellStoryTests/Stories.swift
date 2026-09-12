@@ -39,15 +39,28 @@ enum Stories {
             5: "A Very Long Application Name That Must Truncate", 6: "X",
         ]
         let colors: [NSColor] = [.systemBlue, .systemYellow, .systemGray, .systemTeal, .systemPink, .systemGreen]
-        return AppMeta(name: names[pid] ?? "App \(pid)", icon: swatch(colors[Int(pid - 1) % colors.count]))
+        // Real bundle ids, so the stories go through the same table the shell does: Safari is
+        // `web` only because the table overrules the `productivity` it declares about itself.
+        let bundles: [Int32: String] = [
+            1: "com.apple.Safari", 2: "com.apple.Notes", 3: "com.apple.Terminal",
+            4: "com.apple.mail", 5: "com.microsoft.VSCode", 6: "com.hnc.Discord",
+        ]
+        let bundle = bundles[pid]
+        return AppMeta(name: names[pid] ?? "App \(pid)", icon: swatch(colors[Int(pid - 1) % colors.count]),
+                       bundleID: bundle,
+                       category: AppCategories.category(bundleID: bundle,
+                                                        systemCategory: "public.app-category.productivity"))
     }
 
     static func rail(_ items: [WorkspaceRailItem]) -> ScreenShellState {
         ScreenShellState(display: "D1", isFocusedScreen: true, rail: items, tabs: [], layout: .split)
     }
-    static func railItem(_ i: Int, name: String, symbol: String, count: Int,
+    /// `pids` are the apps actually in the row — the rail draws one icon each and derives the
+    /// category label from them, so a story without pids is a workspace of unknown apps.
+    static func railItem(_ i: Int, name: String, symbol: String, count: Int, pids: [Int32] = [],
                          active: Bool = false, pinned: Bool = false, trailing: Bool = false) -> WorkspaceRailItem {
         WorkspaceRailItem(id: UUID(), index: i, name: name, symbol: symbol, windowCount: count,
+                          windows: pids.map { WindowRef(id: WindowID($0) * 10, pid: $0) },
                           isActive: active, isPinned: pinned, isTrailingEmpty: trailing)
     }
     static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.Layout = .split) -> ScreenShellState {
@@ -60,7 +73,7 @@ enum Stories {
                       isFocused: focused, isFloating: floating, isHidden: hidden)
     }
 
-    static let railGeometry = CGSize(width: 48, height: 800)
+    static let railGeometry = CGSize(width: 140, height: 800)
     static let barGeometry = CGSize(width: 1200, height: 34)
 
     // MARK: catalog
@@ -74,21 +87,33 @@ enum Stories {
 
         // Rail
         add("rail-default", railGeometry, ScreenPanelView(
-            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 3),
-                         railItem(1, name: "Web", symbol: "globe", count: 2, active: true),
+            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
+                         railItem(1, name: "Web", symbol: "globe", count: 2, pids: [1, 1], active: true),
                          railItem(2, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", send: send))
+            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send))
         add("rail-pinned-empty", railGeometry, ScreenPanelView(
             state: rail([railItem(0, name: "Chat", symbol: "bubble.left.and.bubble.right", count: 0, pinned: true),
-                         railItem(1, name: "Web", symbol: "globe", count: 1, active: true),
+                         railItem(1, name: "Web", symbol: "globe", count: 1, pids: [1], active: true),
                          railItem(2, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", send: send))
+            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send))
+        // Five distinct apps in one row: four icons then "+1", and a category label that has to
+        // pick one answer out of a mixed row.
+        add("rail-many-apps", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Everything", symbol: "square.grid.2x2", count: 6,
+                                  pids: [5, 3, 1, 6, 4, 2], active: true),
+                         railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send))
+        // No cog on a secondary display — one way into settings, not one per monitor.
+        add("rail-secondary-screen", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 1, pids: [5], active: true),
+                         railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: false, send: send))
         add("rail-twelve-workspaces", railGeometry, ScreenPanelView(
             state: rail((0..<11).map { railItem($0, name: "Workspace \($0 + 1)", symbol: "square.grid.2x2",
-                                               count: ($0 * 3) % 7, active: $0 == 4) }
+                                               count: ($0 * 3) % 7, pids: [Int32($0 % 6) + 1], active: $0 == 4) }
                         + [railItem(11, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
-            launcherURL: "raycast://", send: send),
-            knownOverflow: true)   // 12 tiles can exceed a short rail; overflow handling is unbuilt
+            launcherURL: "raycast://", metaFor: meta, isPrimaryScreen: true, send: send),
+            knownOverflow: true)   // 12 rows can exceed a short rail; overflow handling is unbuilt
 
         // Tab bar
         add("bar-one-tab", barGeometry, WorkspacePanelView(

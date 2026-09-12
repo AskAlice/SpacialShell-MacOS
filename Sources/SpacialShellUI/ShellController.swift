@@ -48,6 +48,7 @@ public final class ShellController: NSObject {
 
     public func update(config: Config) {
         self.config = config
+        appMeta.update(config: config)   // `app-categories` changes what a cached AppMeta resolves to
         render()
     }
 
@@ -77,7 +78,10 @@ public final class ShellController: NSObject {
             p.bar.setFrame(NSRect(x: barX, y: vf.maxY - barHeight,
                                   width: vf.width - railWidth, height: barHeight), display: true)
 
-            p.railHost.rootView = ScreenPanelView(state: state, launcherURL: config.launcherURL, send: forward)
+            p.railHost.rootView = ScreenPanelView(state: state, launcherURL: config.launcherURL,
+                                                  metaFor: appMeta.meta(for:),
+                                                  isPrimaryScreen: nsScreen == NSScreen.screens.first,
+                                                  send: forward)
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), send: forward)
 
             if visible {
@@ -98,7 +102,9 @@ public final class ShellController: NSObject {
 
     private func makePanels(for id: DisplayID) -> Panels {
         let placeholder = ScreenShellState(display: id, isFocusedScreen: false, rail: [], tabs: [], layout: .maximize)
-        let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL, send: forward))
+        let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL,
+                                                               metaFor: appMeta.meta(for:),
+                                                               isPrimaryScreen: false, send: forward))
         let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), send: forward))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost

@@ -11,13 +11,18 @@ public struct WorkspaceRailItem: Identifiable, Equatable, Sendable {
     public let name: String
     public let symbol: String        // SF Symbol name (config seed or default)
     public let windowCount: Int      // all windows in the row, hidden ones included
+    /// The row itself, in order. The rail draws one icon per distinct app and derives the
+    /// workspace's category from them; both need the apps, not just how many there are. Resolving
+    /// a `pid` to a name, an icon or a bundle id stays on the platform side, as it does for tabs.
+    public let windows: [WindowRef]
     public let isActive: Bool
     public let isPinned: Bool
     public let isTrailingEmpty: Bool // the always-there way down (invariant 4); drawn as "+"
     public init(id: UUID, index: Int, name: String, symbol: String, windowCount: Int,
-                isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool) {
+                windows: [WindowRef] = [], isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool) {
         self.id = id; self.index = index; self.name = name; self.symbol = symbol
-        self.windowCount = windowCount; self.isActive = isActive; self.isPinned = isPinned
+        self.windowCount = windowCount; self.windows = windows
+        self.isActive = isActive; self.isPinned = isPinned
         self.isTrailingEmpty = isTrailingEmpty
     }
 }
@@ -54,6 +59,7 @@ public enum ShellUI {
             WorkspaceRailItem(
                 id: ws.id, index: i, name: ws.name, symbol: ws.symbol,
                 windowCount: ws.windows.count,
+                windows: ws.windows,
                 isActive: i == screen.activeIndex,
                 isPinned: ws.pinned,
                 isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned)

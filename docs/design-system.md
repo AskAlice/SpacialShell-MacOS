@@ -35,8 +35,10 @@ nearest semantic above or reject it.
 9 pt semibold rounded "+N" badge · clock 11 pt medium **monospaced**, HH stacked over MM.
 No custom fonts, no font config key — deliberately (see §Config below).
 
-**Space: 8 pt grid.** Rail **48 pt** wide (`panel-width`): 32 pt tiles, radius 8, 8 pt gaps,
-16 pt between groups. Top bar **34 pt** tall (`panel-height`): 26 pt tabs, radius 6, 16 pt icons,
+**Space: 8 pt grid.** Rail **140 pt** wide (`panel-width`): full-width workspace rows, radius 8,
+4 pt gaps, 6 pt h-padding. Each row is an app-icon strip (16 pt icons, max 4, then `+N`), a window
+count, and the workspace's category label at 9.5 pt. Widened from the original 48 pt glyph rail in
+M2 — icons and a label do not fit in 48 pt, and a rail you have to visit to read is not a map. Top bar **34 pt** tall (`panel-height`): 26 pt tabs, radius 6, 16 pt icons,
 10 pt h-padding, tab width 88–220 pt; layout switcher 24 pt glyph, 12 pt from the trailing edge;
 badge offset (+7, −7). Panels sit flush to screen edges.
 
@@ -44,7 +46,7 @@ badge offset (+7, −7). Panels sit flush to screen edges.
 TOML, kebab-case:
 
 ```swift
-public var panelWidth: Double = 48      // panel-width
+public var panelWidth: Double = 140     // panel-width
 public var panelHeight: Double = 34     // panel-height
 public var railSide: RailSide = .left   // rail-side: left | right
 public var gap: Double = 8              // gap between tiled windows

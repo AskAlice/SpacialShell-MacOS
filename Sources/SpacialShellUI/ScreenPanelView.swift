@@ -1,14 +1,26 @@
 import AppKit
 import SwiftUI
 import SpacialShellKit
+import SpacialShellProtocol
 
 /// The workspace rail: material-shell's `ScreenPanel`, minus the system tray (macOS has a menu
-/// bar). One button per workspace, top→bottom in stack order; the trailing empty workspace is
+/// bar). One row per workspace, top→bottom in stack order; the trailing empty workspace is
 /// drawn as "+" — activating it *is* creating one, that's invariant 4 doing the work.
+///
+/// Each row shows the apps that are actually in that workspace (one icon per distinct app, in row
+/// order) and what kind of work it is for, so the rail answers "where is my terminal?" without
+/// visiting every workspace to find out.
 struct ScreenPanelView: View {
     let state: ScreenShellState
     let launcherURL: String
+    let metaFor: (Int32) -> AppMeta
+    /// The settings cog lives on one screen only — it is a way into the app, not per-display
+    /// furniture, and one cog per monitor is clutter.
+    let isPrimaryScreen: Bool
     let send: (Command) -> Void
+
+    /// Enough icons to tell workspaces apart at a glance; past this the count carries the load.
+    private static let maxIcons = 4
 
     var body: some View {
         VStack(spacing: 4) {
@@ -20,7 +32,8 @@ struct ScreenPanelView: View {
             } label: {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 14, weight: .medium))
-                    .frame(width: 36, height: 30)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 30)
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
             }
@@ -37,31 +50,101 @@ struct ScreenPanelView: View {
                     // app, and that focus change is exactly what drags you back out again.
                     if item.isTrailingEmpty { send(.toggleOverview) }
                 } label: {
-                    VStack(spacing: 1) {
-                        Image(systemName: item.isTrailingEmpty ? "plus" : item.symbol)
-                            .font(.system(size: 15, weight: .medium))
-                        if !item.isTrailingEmpty {
-                            Text(item.windowCount > 0 ? "\(item.windowCount)" : "–")
-                                .font(.system(size: 9, weight: .semibold))
-                                .opacity(0.7)
-                        }
-                    }
-                    .frame(width: 36, height: 36)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(item.isActive ? AnyShapeStyle(Color.accentColor.opacity(0.85))
-                                                : AnyShapeStyle(Color.primary.opacity(0.001)))
-                    )
-                    .foregroundStyle(item.isActive ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+                    row(item)
                 }
                 .buttonStyle(.plain)
-                .help(item.isTrailingEmpty ? "New workspace" : "\(item.name) (\(item.index + 1))")
+                .help(item.isTrailingEmpty ? "New workspace" : tooltip(item))
             }
             Spacer(minLength: 0)
+
+            if isPrimaryScreen {
+                // Opens the config file — there is no settings window yet and none is pretended.
+                Button { send(.openSettings) } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                        .foregroundStyle(.secondary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("SpacialShell settings")
+                .padding(.bottom, 6)
+            }
         }
         .padding(.top, 8)
+        .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.thinMaterial)
         .overlay(alignment: .trailing) { Rectangle().fill(.separator).frame(width: 1).opacity(0.6) }
+    }
+
+    @ViewBuilder
+    private func row(_ item: WorkspaceRailItem) -> some View {
+        let apps = distinctApps(item)
+        VStack(alignment: .leading, spacing: 3) {
+            if item.isTrailingEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus").font(.system(size: 13, weight: .medium))
+                    Text("New").font(.system(size: 11))
+                    Spacer(minLength: 0)
+                }
+            } else {
+                HStack(spacing: 3) {
+                    if apps.isEmpty {
+                        Image(systemName: item.symbol).font(.system(size: 12, weight: .medium)).opacity(0.7)
+                    } else {
+                        ForEach(Array(apps.prefix(Self.maxIcons).enumerated()), id: \.offset) { _, meta in
+                            if let icon = meta.icon {
+                                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                            } else {
+                                Image(systemName: "app.dashed").font(.system(size: 12)).frame(width: 16, height: 16)
+                            }
+                        }
+                        if apps.count > Self.maxIcons {
+                            Text("+\(apps.count - Self.maxIcons)")
+                                .font(.system(size: 9, weight: .semibold)).opacity(0.7)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Text(item.windowCount > 0 ? "\(item.windowCount)" : "–")
+                        .font(.system(size: 9, weight: .semibold)).opacity(0.6)
+                }
+                if let label = categoryLabel(apps) {
+                    Text(label)
+                        .font(.system(size: 9.5))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .opacity(0.75)
+                }
+            }
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(item.isActive ? AnyShapeStyle(Color.accentColor.opacity(0.85))
+                                    : AnyShapeStyle(Color.primary.opacity(0.001)))
+        )
+        .foregroundStyle(item.isActive ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+    }
+
+    /// One entry per app, in the order the row first mentions it — two Safari windows are one
+    /// Safari icon, and the icons read left→right in the same order the tab bar does.
+    private func distinctApps(_ item: WorkspaceRailItem) -> [AppMeta] {
+        var seen: Set<Int32> = []
+        return item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid) : nil }
+    }
+
+    private func categoryLabel(_ apps: [AppMeta]) -> String? {
+        AppCategories.summarise(apps.map(\.category))?.label
+    }
+
+    private func tooltip(_ item: WorkspaceRailItem) -> String {
+        let apps = distinctApps(item)
+        let names = apps.map(\.name).joined(separator: ", ")
+        let head = "\(item.name) (\(item.index + 1))"
+        return names.isEmpty ? head : "\(head) — \(names)"
     }
 }
