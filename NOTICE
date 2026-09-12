@@ -1,9 +1,6 @@
 SpacialShell includes code adapted from AeroSpace (https://github.com/nikitabobko/AeroSpace),
 Copyright (c) 2023 Nikita Bobko, MIT License — see legal/third-party/LICENSE-AeroSpace.txt.
 Adapted files carry an "Adapted from AeroSpace" header comment. Current list:
-  Sources/PrivateApi/include/private.h
-  Sources/PrivateApi/include/private.m
-  Sources/PrivateApi/include/module.modulemap
   Sources/SpacialShellPlatform/Lifted/Common/commonUtil.swift
   Sources/SpacialShellPlatform/Lifted/Common/AeroAny.swift
   Sources/SpacialShellPlatform/Lifted/Common/ConvenienceMutable.swift

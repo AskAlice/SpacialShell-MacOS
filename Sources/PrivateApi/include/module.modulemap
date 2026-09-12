@@ -1,5 +1,0 @@
-// Adapted from AeroSpace (MIT) — Sources/PrivateApi/include/module.modulemap @ c548c7f
-module PrivateApi {
-  header "private.h"
-  export *
-}

@@ -1,6 +1,7 @@
 // Adapted from AeroSpace (MIT) — Sources/AppBundle/util/accessibility.swift @ c548c7f
+import SpacialShellProtocol
 import AppKit
-import PrivateApi
+
 import os
 
 protocol ReadableAttr: Sendable {
@@ -318,7 +319,7 @@ private func windowOrNil(_ any: Any?) -> WindowIdAndAxUiElementMock? {
     guard let any else { return nil }
     let potentialWindow = castToAxUiElementMock(any as AnyObject)
     // Filter out non-window objects (e.g. Finder's desktop)
-    return switch potentialWindow.containingWindowId() {
+    return switch potentialWindow.windowIdentity() {
         case let windowId?: (windowId, potentialWindow)
         case nil: nil
     }
@@ -341,13 +342,22 @@ extension AXUIElement: AxUiElementMock {
         return AXUIElementSetAttributeValue(self, attr.key as CFString, value) == .success
     }
 
-    func containingWindowId() -> CGWindowID? {
+    /// Public replacement for `_AXUIElementGetWindow` (issue #18).
+    ///
+    /// The role read does the two jobs the private call used to do at once. It rejects non-window
+    /// elements — the only one the old filter ever dropped was Finder's desktop, and across 280
+    /// live windows every element the private call gave an id to had `AXRole == AXWindow`, while
+    /// the desktop is an `AXScrollArea`. And it is the liveness probe: a closed window's attribute
+    /// read fails with `kAXErrorInvalidUIElement` (-25202, measured), so a dead element returns nil
+    /// here rather than its cached id. Both behaviours the callers rely on, preserved exactly.
+    ///
+    /// Order matters: the role is read *before* the registry is consulted, or a dead element would
+    /// keep answering with the id it was minted.
+    func windowIdentity() -> WindowID? {
         let state = signposter.beginInterval(#function)
         defer { signposter.endInterval(#function, state) }
-        var cgWindowId = CGWindowID()
-        return _AXUIElementGetWindow(self, &cgWindowId) == .success && cgWindowId != kCGNullWindowID
-            ? cgWindowId
-            : nil
+        guard get(Ax.roleAttr) == kAXWindowRole else { return nil }
+        return WindowIdentities.id(for: self)
     }
 }
 

@@ -1,4 +1,5 @@
 // Adapted from AeroSpace (MIT) — Sources/AppBundleTests/AxUiElementWindowTypeTest.swift @ c548c7f
+import SpacialShellProtocol
 import AppKit
 import Foundation
 @testable import SpacialShellPlatform
@@ -18,9 +19,9 @@ extension [String: Json]: AxUiElementMock {
 
     private var isSynthetic: Bool { self[kAXAeroSynthetic] != nil }
 
-    public func containingWindowId() -> CGWindowID? { _containingWindowId() }
+    public func windowIdentity() -> WindowID? { _windowIdentity() }
 
-    private func _containingWindowId() -> CGWindowID {
+    private func _windowIdentity() -> WindowID {
         let windowId = self["Aero.axWindowId"]?.asInt64OrNil ?? dieT()
         return UInt32.init(exactly: windowId).orDie()
     }

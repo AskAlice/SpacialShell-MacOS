@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import ScreenCaptureKit
+import SpacialShellPlatform
 import SpacialShellProtocol
 
 /// One window as the rail's hover card draws it: what it is, and — once the capture lands — what
@@ -58,11 +59,16 @@ enum WindowPreviewCapture {
         for window in content.windows where window.owningApplication?.processID != ownPID {
             candidates[window.windowID] = window
         }
+        // Since #18 `ref.id` is minted by SpacialShell, not a window-server handle, so it cannot
+        // index `SCWindow.windowID` directly any more. `captureIDs` does the public match, and
+        // returns nothing for a window it cannot pin down — in which case the card falls back to
+        // the name and icon it already has. A missing thumbnail is the whole cost.
+        let captureIDs = WindowIdentities.captureIDs(for: refs.map(\.id))
 
         var out: [WindowID: NSImage] = [:]
         for ref in refs {
             if Task.isCancelled { break }
-            guard let window = candidates[CGWindowID(ref.id)] else { continue }
+            guard let cgID = captureIDs[ref.id], let window = candidates[cgID] else { continue }
             let size = window.frame.size
             guard size.width > 0, size.height > 0 else { continue }
 

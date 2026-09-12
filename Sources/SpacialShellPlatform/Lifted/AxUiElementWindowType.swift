@@ -25,7 +25,9 @@ extension AxUiElementMock {
     ) -> Bool {
         // Note: a lot of windows don't have title on startup. So please don't rely on the title
 
-        if id == ._1password && windowLevel != .normalWindow {
+        // `if let` for the same reason as `isWindowHeuristic`: an unresolved level must not turn
+        // every 1Password window into a dialog.
+        if id == ._1password, let windowLevel, windowLevel != .normalWindow {
             return true
         }
 
@@ -105,9 +107,14 @@ extension AxUiElementMock {
         _ activationPolicy: NSApplication.ActivationPolicy,
         _ windowLevel: MacOsWindowLevel?,
     ) -> Bool {
-        if windowLevel != .normalWindow &&
-            // Slowly roll out windowLevel for applications for which we have the appropriate dumps
-            (id == .slack || id == .chrome || id?.isFirefox == true || id == .braveBrowser || id == .screenstudio || id == .cleanshotx || id == .iterm2 || id == .outlook || id == .codex || id == .wisprFlow)
+        // `if let`, not `windowLevel != .normalWindow`: since #18 the level comes from a public
+        // match that is allowed to fail, and an unknown level must not decide anything. Read the
+        // old way, `nil != .normalWindow` is true, so a window we simply could not resolve would
+        // classify as "not a window" and never tile — for Chrome, Firefox, Brave, Slack and
+        // iTerm2, i.e. most of a real desktop. Unknown now takes the default path instead.
+        if let windowLevel, windowLevel != .normalWindow,
+           // Slowly roll out windowLevel for applications for which we have the appropriate dumps
+           id == .slack || id == .chrome || id?.isFirefox == true || id == .braveBrowser || id == .screenstudio || id == .cleanshotx || id == .iterm2 || id == .outlook || id == .codex || id == .wisprFlow
         {
             return false
         }
@@ -165,7 +172,7 @@ extension AxUiElementMock {
 
             get(Ax.isFocused) == true ||  // 3 different ways to detect if the window is focused
             get(Ax.isMainAttr) == true ||
-            axApp.get(Ax.focusedWindowAttr)?.windowId == self.containingWindowId() ||
+            axApp.get(Ax.focusedWindowAttr)?.windowId == self.windowIdentity() ||
 
             get(Ax.subroleAttr) == kAXStandardWindowSubrole
     }
@@ -186,7 +193,7 @@ extension AxUiElementMock {
 
             get(Ax.isFocused) == false &&  // Three different ways to detect if the window is not focused
             get(Ax.isMainAttr) == false &&
-            axApp.get(Ax.focusedWindowAttr)?.windowId != containingWindowId() &&
+            axApp.get(Ax.focusedWindowAttr)?.windowId != windowIdentity() &&
 
             subrole != kAXStandardWindowSubrole &&
             // Share window purple "pill" indicator has "Window" title https://github.com/nikitabobko/AeroSpace/issues/1101
