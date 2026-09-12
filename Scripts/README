@@ -26,13 +26,31 @@ is an .app.
   treats the new binary as untrusted; the symptom is a checkbox that is ticked while
   `AXIsProcessTrusted()` returns false. Untick and re-tick it, or remove the row.
 
-  **Fix this once and it stops happening.** TCC keys the grant to the signature, so a
-  *stable* signature survives rebuilds where an ad-hoc one cannot. Create a self-signed
+  **Fix this once and it stops happening.** TCC keys the grant to the *designated
+  requirement*, so a stable one survives rebuilds where an ad-hoc one cannot. `bundle.sh`
+  takes the best identity available, in order: `SPACIAL_SIGN_IDENTITY`, then
+  **Developer ID Application**, then **Apple Development**, then a self-signed
+  `SpacialShell Dev`, then ad-hoc with a warning.
+
+  A Developer ID is the best of these and not only because it is Apple-issued. Its
+  designated requirement keys on the *team* — `certificate leaf[subject.OU] = <TEAMID>`
+  — so the grant survives even a certificate renewal, where a self-signed one keys on
+  that certificate's own hash and would not.
+
+  Timestamps: an Apple identity asks Apple's timestamp server on every sign, which needs
+  the network and fails the build when it is unreachable ("A timestamp was expected but
+  was not found"). A timestamp only matters for notarised distribution, so `bundle.sh`
+  passes `--timestamp=none` unless `SPACIAL_TIMESTAMP` is set; `package-dmg.sh` sets it.
+
+  Signing is not notarising. `spctl -a` still reports `rejected / Unnotarized Developer
+  ID` — fine for a locally-built app, but a DMG handed to anyone else needs
+  `xcrun notarytool submit` and `xcrun stapler staple` first.
+
+  To create a self-signed
   code-signing certificate — Keychain Access > Certificate Assistant > Create a
   Certificate, name `SpacialShell Dev`, Identity Type "Self Signed Root", Certificate
-  Type **Code Signing** — and `bundle.sh` picks it up automatically (override with
-  `SPACIAL_SIGN_IDENTITY`). It warns on stderr when it falls back to ad-hoc. You still
-  have to grant Accessibility one more time after switching; it sticks from then on.
+  Type **Code Signing**. You have to grant Accessibility one more time after switching
+  identity — the signature changes once — and it sticks from then on.
 
   Or without the GUI, in one go:
 

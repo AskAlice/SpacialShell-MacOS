@@ -10,25 +10,48 @@ cp .build/release/SpacialShell "$APP/Contents/MacOS/SpacialShell"
 cp .build/release/spacialctl "$APP/Contents/MacOS/spacialctl"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 # Signing identity. Ad-hoc signatures change on every rebuild, and macOS keys the Accessibility
-# grant to the signature — so an ad-hoc rebuild silently revokes it, leaving a ticked checkbox and
-# an untrusted app (Scripts/README). A stable self-signed identity keeps the grant across rebuilds.
+# grant to the *designated requirement* — which for ad-hoc is `cdhash H"..."`, i.e. the code hash.
+# So an ad-hoc rebuild silently revokes the grant, leaving a ticked checkbox and an app that never
+# gets past Permissions.waitForAccessibility. Any certificate yields
+# `certificate leaf = H"..."` instead, which is identical across rebuilds.
 #
-# Create one once: Keychain Access > Certificate Assistant > Create a Certificate,
-#   name "SpacialShell Dev", Identity Type "Self Signed Root", Certificate Type "Code Signing".
-# Override with SPACIAL_SIGN_IDENTITY=... to use a different one.
-IDENTITY="${SPACIAL_SIGN_IDENTITY:-SpacialShell Dev}"
-# Deliberately not `find-identity -v`: a self-signed root reports CSSMERR_TP_NOT_TRUSTED and is
-# filtered out by -v, but it signs perfectly well. Trust governs Gatekeeper verification, not
-# signing, and TCC keys the grant to the designated requirement — which for a certificate is
-# `certificate leaf = H"..."`, stable across rebuilds, where ad-hoc gives a per-build cdhash.
-if security find-identity -p codesigning 2>/dev/null | grep -qF "$IDENTITY"; then
-    SIGN="$IDENTITY"
+# Best available wins, so this works on a maintainer's Mac and a fresh clone alike:
+#   1. SPACIAL_SIGN_IDENTITY, if set
+#   2. Developer ID Application — Apple-issued, and the only one other Macs will run
+#   3. Apple Development     — works with a free Apple ID, local only
+#   4. SpacialShell Dev      — self-signed; see Scripts/README for the one-liner that makes it
+#   5. ad-hoc, with a warning
+#
+# Queried without `find-identity -v`: a self-signed root reports CSSMERR_TP_NOT_TRUSTED and is
+# filtered out by -v, yet signs perfectly well. Trust governs Gatekeeper verification, not signing.
+identity_matching() {
+    security find-identity -p codesigning 2>/dev/null \
+        | sed -n 's/^ *[0-9]*) [0-9A-F]* "\(.*\)".*$/\1/p' \
+        | grep -F "$1" | head -1
+}
+
+if [ -n "${SPACIAL_SIGN_IDENTITY:-}" ]; then
+    SIGN="$SPACIAL_SIGN_IDENTITY"
 else
-    SIGN="-"
-    echo "bundle.sh: no '$IDENTITY' code-signing identity; signing ad-hoc." >&2
-    echo "bundle.sh: the Accessibility grant will not survive this rebuild — see Scripts/README." >&2
+    SIGN=""
+    for candidate in "Developer ID Application:" "Apple Development:" "SpacialShell Dev"; do
+        found=$(identity_matching "$candidate")
+        if [ -n "$found" ]; then SIGN="$found"; break; fi
+    done
+    if [ -z "$SIGN" ]; then
+        SIGN="-"
+        echo "bundle.sh: no code-signing identity found; signing ad-hoc." >&2
+        echo "bundle.sh: the Accessibility grant will not survive this rebuild — see Scripts/README." >&2
+    fi
 fi
 
-codesign --force --sign "$SIGN" "$APP/Contents/MacOS/spacialctl"
-codesign --force --sign "$SIGN" --identifier sh.emu.SpacialShell "$APP"
+# An Apple-issued identity fetches a secure timestamp from Apple by default, which needs the
+# network and fails the whole build when it is unreachable ("A timestamp was expected but was not
+# found"). A timestamp only matters for notarised distribution — it is what keeps a signature valid
+# after the certificate expires — so dev bundles skip it and package-dmg.sh turns it back on.
+TS="${SPACIAL_TIMESTAMP:-none}"
+if [ "$TS" = "none" ]; then TSFLAG="--timestamp=none"; else TSFLAG="--timestamp"; fi
+
+codesign --force --sign "$SIGN" $TSFLAG "$APP/Contents/MacOS/spacialctl"
+codesign --force --sign "$SIGN" $TSFLAG --identifier sh.emu.SpacialShell "$APP"
 echo "built $APP (signed: $SIGN)"
