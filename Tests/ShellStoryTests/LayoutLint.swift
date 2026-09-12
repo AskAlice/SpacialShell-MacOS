@@ -13,17 +13,28 @@ enum LayoutLint {
         let frame: CGRect   // screen coordinates
     }
 
+    /// SwiftUI's `ScrollView` is an `NSScrollView` in the hosted hierarchy.
+    static func containsScrollView(_ v: NSView) -> Bool {
+        v is NSScrollView || v.subviews.contains(where: containsScrollView)
+    }
+
     /// All the issues found in `root` (hosted in a window); empty means clean.
     static func issues(in root: NSView, story: String) -> [String] {
         var out: [String] = []
 
         // 1. The view must not want more space than the story gave it — a container that can only
         //    show its content by clipping it is a wrap/truncation bug at the layout level.
+        //
+        //    Unless it scrolls. A `ScrollView`'s ideal height *is* its content's height, so a
+        //    scrollable view legitimately "wants" more than it was given and answers the shortfall
+        //    by scrolling rather than by clipping. The width check still applies: content spilling
+        //    sideways out of a vertical scroller is a wrap bug like any other.
         let fitting = root.fittingSize
+        let scrolls = containsScrollView(root)
         if fitting.width > root.bounds.width + 0.5 {
             out.append("\(story): content wants \(Int(fitting.width))pt of width in a \(Int(root.bounds.width))pt container")
         }
-        if fitting.height > root.bounds.height + 0.5 {
+        if !scrolls, fitting.height > root.bounds.height + 0.5 {
             out.append("\(story): content wants \(Int(fitting.height))pt of height in a \(Int(root.bounds.height))pt container")
         }
 
