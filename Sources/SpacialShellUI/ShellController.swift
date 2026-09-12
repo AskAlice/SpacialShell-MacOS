@@ -26,6 +26,8 @@ public final class ShellController: NSObject {
     private var config: Config
     private let send: @Sendable (Command) -> Void
     private let appMeta: AppMetaCache
+    /// One card for the whole shell, not one per display: only one pointer exists.
+    private let hover = RailHoverController()
 
     public init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.config = config
@@ -80,7 +82,11 @@ public final class ShellController: NSObject {
 
             p.railHost.rootView = ScreenPanelView(state: state, launcherURL: config.launcherURL,
                                                   metaFor: appMeta.meta(for:),
-                                                  send: forward)
+                                                  send: forward,
+                                                  onHoverTile: { [weak self] item, inside, tile in
+                                                      self?.hoverChanged(item, inside: inside, tile: tile,
+                                                                         display: id, screen: nsScreen)
+                                                  })
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward)
 
             if visible {
@@ -89,6 +95,7 @@ public final class ShellController: NSObject {
             } else {
                 p.rail.orderOut(nil)
                 p.bar.orderOut(nil)
+                hover.hideNow()   // Zen hides the rail; a card about it must not outlive it
             }
         }
 
@@ -96,7 +103,22 @@ public final class ShellController: NSObject {
             p.rail.orderOut(nil); p.bar.orderOut(nil)
             p.rail.close(); p.bar.close()
             panels[id] = nil
+            hover.hideNow()
         }
+    }
+
+    /// SwiftUI hands us the tile's frame in the hosting view's space — top-left origin, y down.
+    /// The card is placed in screen coordinates, which are bottom-left origin, so the rail
+    /// panel's own frame is the only thing needed to translate between the two.
+    private func hoverChanged(_ item: WorkspaceRailItem, inside: Bool, tile: CGRect,
+                              display: DisplayID, screen: NSScreen) {
+        guard inside else { hover.hide(item.id); return }
+        guard let panel = panels[display]?.rail else { return }
+        let frame = panel.frame
+        let inScreen = CGRect(x: frame.minX + tile.minX, y: frame.maxY - tile.maxY,
+                              width: tile.width, height: tile.height)
+        hover.show(item: item, tile: inScreen, railSide: config.railSide,
+                   bounds: screen.visibleFrame, metaFor: appMeta.meta(for:))
     }
 
     private func makePanels(for id: DisplayID) -> Panels {

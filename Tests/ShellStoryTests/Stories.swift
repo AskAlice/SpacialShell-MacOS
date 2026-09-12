@@ -57,6 +57,19 @@ enum Stories {
                                                         systemCategory: "public.app-category.productivity"))
     }
 
+    /// A stand-in for a captured window: a landscape swatch, so the miniature has an aspect
+    /// ratio the card has to letterbox like a real screenshot.
+    static func shot(_ color: NSColor) -> NSImage {
+        let image = NSImage(size: NSSize(width: 320, height: 200))
+        image.lockFocus()
+        color.setFill()
+        NSRect(x: 0, y: 0, width: 320, height: 200).fill()
+        NSColor.white.withAlphaComponent(0.35).setFill()
+        NSRect(x: 0, y: 170, width: 320, height: 30).fill()
+        image.unlockFocus()
+        return image
+    }
+
     static func rail(_ items: [WorkspaceRailItem]) -> ScreenShellState {
         ScreenShellState(display: "D1", isFocusedScreen: true, rail: items, tabs: [], layout: .split)
     }
@@ -121,6 +134,44 @@ enum Stories {
                         + [railItem(11, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
             launcherURL: "raycast://", metaFor: meta, send: send),
             knownOverflow: true)   // 12 rows can exceed a short rail; overflow handling is unbuilt
+
+        // Rail hover card — what a tile says when you point at it. The fixtures stand in for
+        // ScreenCaptureKit frames: the card is a pure view, so the stories cover every state
+        // including the one no test machine can reach (a granted Screen Recording capture).
+        func preview(_ pid: Int32, image: NSImage?) -> WindowPreviewItem {
+            let m = meta(pid)
+            return WindowPreviewItem(ref: WindowRef(id: WindowID(pid) * 10, pid: pid),
+                                     name: m.name, icon: m.icon, image: image)
+        }
+        add("rail-hover-previews", nil, RailHoverCard(
+            title: "Code (1)", subtitle: "3 windows · coding",
+            content: .previews([preview(5, image: shot(.systemPink)),
+                                preview(3, image: shot(.systemGray)),
+                                preview(1, image: shot(.systemBlue))]),
+            onGrantAccess: {}), truncates: true)
+        // One window gets the big frame; the capture has not landed yet on the second tile, so
+        // this also covers the icon placeholder.
+        add("rail-hover-one-window", nil, RailHoverCard(
+            title: "Web (2)", subtitle: "1 window · web browsing",
+            content: .previews([preview(1, image: shot(.systemBlue))]),
+            onGrantAccess: {}))
+        // More than the card draws, plus a name that has to truncate under its miniature.
+        add("rail-hover-overflow", nil, RailHoverCard(
+            title: "Everything (1)", subtitle: "8 windows · coding",
+            content: .previews((0..<8).map { preview(Int32($0 % 6) + 1, image: $0 < 4 ? shot(.systemTeal) : nil) }),
+            onGrantAccess: {}), truncates: true)
+        // The state every Mac without the grant is in — never blank boxes.
+        add("rail-hover-needs-screen-recording", nil, RailHoverCard(
+            title: "Code (1)", subtitle: "3 windows · coding",
+            content: .needsScreenRecording, onGrantAccess: {}))
+        add("rail-hover-empty", nil, RailHoverCard(
+            title: "Chat (1)", subtitle: "0 windows",
+            content: .message("Nothing here yet. Drop a tab on this tile, or open something from the launcher."),
+            onGrantAccess: {}))
+        add("rail-hover-new-workspace", nil, RailHoverCard(
+            title: "New workspace", subtitle: nil,
+            content: .message("Opens a new workspace — or drop a tab here to move its window into one."),
+            onGrantAccess: {}))
 
         // Tab bar
         add("bar-one-tab", barGeometry, WorkspacePanelView(

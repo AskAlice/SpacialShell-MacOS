@@ -71,6 +71,9 @@ Config → views is the entire pipeline.
 | `CheatSheetOverlay.swift` | Fn-hold keybinding sheet (view + controller) |
 | `PanelWindow.swift` | The non-activating `NSPanel` all chrome lives in |
 | `ShellController.swift` / `OverviewController.swift` | AppKit owners: panel lifecycle, geometry, hosting |
+| `RailHoverCard.swift` | Rail hover popover: window miniatures, or why there are none |
+| `RailHoverController.swift` | Places the hover card beside the tile; owns its capture |
+| `WindowPreview.swift` | ScreenCaptureKit per-hover window shots + the Screen Recording grant |
 | `AppMetaCache.swift` | pid → app name + icon (`NSRunningApplication`) |
 
 Every view is a pure function of state: **props in, `Command` out.** The canonical shape
