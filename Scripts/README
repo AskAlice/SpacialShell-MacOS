@@ -42,6 +42,20 @@ is an .app.
   was not found"). A timestamp only matters for notarised distribution, so `bundle.sh`
   passes `--timestamp=none` unless `SPACIAL_TIMESTAMP` is set; `package-dmg.sh` sets it.
 
+  Apple issues intermediates in generations and does not backfill older ones, so a certificate
+  can be perfectly good and still refuse to sign with `errSecInternalComponent` and "unable to
+  build chain to self-signed root" — it means the issuing intermediate is missing, not that the
+  certificate is bad. `security find-identity -v` hides such an identity while plain
+  `find-identity` still lists it, which is the tell. Fetch the matching intermediate from
+  https://www.apple.com/certificateauthority/ and `security import` it. Seen here with WWDR G3
+  (Mac App Store certs) and Developer ID CA G2, on a machine that only had WWDR G5.
+
+  Renewing a certificate leaves two with the same common name, and `codesign --sign` on an
+  ambiguous name fails outright. `bundle.sh` therefore resolves the name to a SHA-1 hash and signs
+  by hash, warning when several match. The Accessibility grant does not care which you use: a
+  Developer ID's designated requirement keys on `certificate leaf[subject.OU] = <TEAMID>`, so it
+  survives a renewal.
+
   Signing is not notarising. `spctl -a` still reports `rejected / Unnotarized Developer
   ID` — fine for a locally-built app, but a DMG handed to anyone else needs
   `xcrun notarytool submit` and `xcrun stapler staple` first.

@@ -24,10 +24,13 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 #
 # Queried without `find-identity -v`: a self-signed root reports CSSMERR_TP_NOT_TRUSTED and is
 # filtered out by -v, yet signs perfectly well. Trust governs Gatekeeper verification, not signing.
-identity_matching() {
-    security find-identity -p codesigning 2>/dev/null \
-        | sed -n 's/^ *[0-9]*) [0-9A-F]* "\(.*\)".*$/\1/p' \
-        | grep -F "$1" | head -1
+# Resolves a name prefix to a SHA-1 hash, and signs by hash rather than by name. Two certificates
+# can share a common name — renewing a Developer ID gives you exactly that — and `codesign --sign`
+# on an ambiguous name fails outright, which is a confusing way to discover you renewed something.
+identity_hashes() {
+    security find-identity -v -p codesigning 2>/dev/null \
+        | sed -n 's/^ *[0-9]*) \([0-9A-F][0-9A-F]*\) "\(.*\)"$/\1 \2/p' \
+        | grep -F " $1" | cut -d" " -f1
 }
 
 if [ -n "${SPACIAL_SIGN_IDENTITY:-}" ]; then
@@ -35,8 +38,15 @@ if [ -n "${SPACIAL_SIGN_IDENTITY:-}" ]; then
 else
     SIGN=""
     for candidate in "Developer ID Application:" "Apple Development:" "SpacialShell Dev"; do
-        found=$(identity_matching "$candidate")
-        if [ -n "$found" ]; then SIGN="$found"; break; fi
+        found=$(identity_hashes "$candidate")
+        count=$(printf "%s\n" "$found" | grep -c . || true)
+        if [ "$count" -gt 1 ]; then
+            echo "bundle.sh: $count identities match \"$candidate\" — using the first." >&2
+            echo "bundle.sh: set SPACIAL_SIGN_IDENTITY to a SHA-1 hash to choose, or remove the stale one:" >&2
+            printf "%s\n" "$found" | sed 's/^/bundle.sh:   /' >&2
+        fi
+        first=$(printf "%s\n" "$found" | head -1)
+        if [ -n "$first" ]; then SIGN="$first"; break; fi
     done
     if [ -z "$SIGN" ]; then
         SIGN="-"
