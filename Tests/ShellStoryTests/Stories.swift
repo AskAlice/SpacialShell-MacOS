@@ -86,9 +86,10 @@ enum Stories {
                          rail: [railItem(0, name: "Web", symbol: "globe", count: items.count, active: true)],
                          tabs: items, layout: layout)
     }
-    static func tab(_ pid: Int32, focused: Bool = false, floating: Bool = false, hidden: Bool = false) -> WindowTabItem {
+    static func tab(_ pid: Int32, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
+                    fullscreen: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10, pid: pid),
-                      isFocused: focused, isFloating: floating, isHidden: hidden)
+                      isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen)
     }
 
     static let railGeometry = CGSize(width: 48, height: 800)
@@ -194,6 +195,9 @@ enum Stories {
             state: tabs([tab(5, focused: true), tab(5), tab(5), tab(5)]), metaFor: meta, sizing: .fit, send: send), truncates: true)
         add("bar-floating-hidden", barGeometry, WorkspacePanelView(
             state: tabs([tab(1, focused: true), tab(2, floating: true), tab(3, hidden: true), tab(4)]),
+            metaFor: meta, sizing: .fit, send: send))
+        add("bar-fullscreen", barGeometry, WorkspacePanelView(
+            state: tabs([tab(3, focused: true), tab(1, fullscreen: true), tab(4)]),
             metaFor: meta, sizing: .fit, send: send))
         add("bar-twenty-tabs", CGSize(width: 800, height: 34), WorkspacePanelView(
             state: tabs((1...20).map { tab(Int32(($0 % 6) + 1), focused: $0 == 1) }, layout: .column),

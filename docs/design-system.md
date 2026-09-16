@@ -133,6 +133,7 @@ deliberately). Binding assignments from the spec:
 | Layouts | `rectangle` · `rectangle.split.2x1` · `rectangle.split.3x1` · `sidebar.left` (half) · `square.grid.2x2` (grid) |
 | Workspace tile | the workspace's `symbol` (config seed / `WorkspaceRailItem.symbol`); first app's icon when symbol is the default and the workspace has windows |
 | Floating pin | `pin.fill` · close `xmark` |
+| Native-fullscreen tab | `arrow.up.left.and.arrow.down.right` |
 
 Window tabs and overview cells use real app icons via `AppMetaCache`
 (`NSRunningApplication(processIdentifier:).icon`), cached per pid. Exporting icons from Figma is

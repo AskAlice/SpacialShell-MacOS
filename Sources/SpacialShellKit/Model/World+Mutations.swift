@@ -29,8 +29,10 @@ extension World {
         return nil
     }
     public func screenContaining(_ w: WindowRef) -> DisplayID? { location(of: w)?.screen }
-    /// Windows the layout engine positions: not floating, not hidden.
-    public func tiled(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !ws.floating.contains($0) && !hidden.contains($0) } }
+    /// Windows the layout engine positions: not floating, not hidden, not fullscreen.
+    public func tiled(in ws: Workspace) -> [WindowRef] {
+        ws.windows.filter { !ws.floating.contains($0) && !hidden.contains($0) && !fullscreen.contains($0) }
+    }
     /// Windows reachable by left/right navigation: not hidden.
     public func visible(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !hidden.contains($0) } }
     public func newWorkspace() -> Workspace { Workspace(name: "Workspace", layout: defaultLayout) }
@@ -65,7 +67,7 @@ extension World {
     }
 
     public mutating func remove(_ w: WindowRef) {
-        ephemeral.remove(w); ignored.remove(w); hidden.remove(w); parents[w] = nil
+        ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); parents[w] = nil
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]
@@ -85,6 +87,11 @@ extension World {
         guard location(of: w) != nil else { return }
         if isHidden { hidden.insert(w) } else { hidden.remove(w) }
         normalize()
+    }
+
+    public mutating func setFullscreen(_ w: WindowRef, _ isFullscreen: Bool) {
+        guard location(of: w) != nil else { return }
+        if isFullscreen { fullscreen.insert(w) } else { fullscreen.remove(w) }
     }
 
     public mutating func setFloating(_ w: WindowRef, _ floating: Bool) {

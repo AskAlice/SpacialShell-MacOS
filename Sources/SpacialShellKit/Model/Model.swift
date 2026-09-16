@@ -61,8 +61,11 @@ public struct World: Codable, Equatable, Sendable {
     public var screenOrder: [DisplayID]        // left→right, top→bottom
     public var focus: Focus
     public var ephemeral: Set<WindowRef>       // visitors: no workspace, never parked
-    public var ignored: Set<WindowRef>         // popups / fullscreen / unmanageable
+    public var ignored: Set<WindowRef>         // popups / unmanageable
     public var hidden: Set<WindowRef>          // minimized or app-hidden; keep slot, skip layout+nav
+    /// Native fullscreen (spec §4.3, amended 2026-09-14): keeps its slot and its tab and stays
+    /// reachable by nav, but macOS owns its frame — skipped by layout and never parked.
+    public var fullscreen: Set<WindowRef> = []
     public var parents: [WindowRef: WindowRef] // dialog → owner
     public var defaultLayout: Layout
     /// Zen mode (M2 design ruling): true hides the shell panels and gives their edges back to the

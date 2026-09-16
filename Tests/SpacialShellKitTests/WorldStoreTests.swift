@@ -113,11 +113,30 @@ import Foundation
         await store.start()
         #expect(await store.world.screens["D1"]!.active.floating == [a])
     }
-    @Test func fullscreenIsIgnoredThenReadopted() async {
-        let (store, _) = await make(snap([win(a), win(b, fs: true)], focused: a))
-        #expect(await store.world.ignored == [b])
-        await store.apply(.snapshot(snap([win(a), win(b)], focused: a)))
-        #expect(await store.world.screens["D1"]!.active.windows == [a, b])
+    /// Spec §4.3 (amended 2026-09-14): a native-fullscreen window keeps its tab and stays reachable
+    /// — once something else takes focus, the tab is the way back to its fullscreen Space — but
+    /// macOS owns its frame, so it is never framed or parked. Leaving fullscreen retiles it in place.
+    @Test func fullscreenKeepsItsTabAndIsNeverWritten() async {
+        func wrote(_ r: WindowRef, _ calls: [FakeBackend.Call]) -> Bool {
+            calls.contains { switch $0 { case .setFrame(let w, _), .setPosition(let w, _): w == r; default: false } }
+        }
+        let (store, be) = await make(snap([win(a), win(b, fs: true)], focused: a))
+        var w = await store.world
+        #expect(w.screens["D1"]!.active.windows == [a, b] && w.fullscreen == [b] && w.ignored.isEmpty)
+        #expect(await !wrote(b, be.calls))
+
+        await store.run(.focusWindow(.right))                   // Fn+D reaches it, and raising it is the way back
+        #expect(await store.world.focus.window == b)
+        #expect(await be.calls.contains(.raise(b)))
+        await store.run(.moveWindowToWorkspace(.down))          // its workspace going inactive must not park it
+        #expect(await !wrote(b, be.calls))
+
+        await be.reset()
+        await store.apply(.snapshot(snap([win(a), win(b)], focused: b)))
+        w = await store.world
+        #expect(w.fullscreen.isEmpty && w.location(of: b) != nil)
+        #expect(await wrote(b, be.calls))
+        #expect(w.invariantViolations().isEmpty)
     }
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))

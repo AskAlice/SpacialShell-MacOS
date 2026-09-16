@@ -20,8 +20,9 @@ final class PanelWindow: NSPanel {
         // can never become key has to ask for pointer movement explicitly.
         acceptsMouseMovedEvents = true
         // One native Space per display (README): the panels simply stay put everywhere, and stay
-        // out of Mission Control's and ⌘Tab's way as far as macOS lets a window opt out.
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        // out of Mission Control's and ⌘Tab's way as far as macOS lets a window opt out. No
+        // `.fullScreenAuxiliary`: another app's native fullscreen Space gets the whole display.
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenNone]
     }
 
     // Never key, never main: the shell is furniture, not a window you are "in".

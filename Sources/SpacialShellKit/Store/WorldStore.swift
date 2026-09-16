@@ -1,6 +1,10 @@
 import Foundation
+import os
 
 public actor WorldStore {
+    /// Model membership changes only (adopt, fullscreen, retire, vanish): rare, and the one trail that
+    /// answers "where did that window go?" after the fact.
+    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "store")
     public private(set) var world: World
     private let backend: any WindowBackend
     private var config: Config
@@ -21,7 +25,6 @@ public actor WorldStore {
     /// boot so a relaunch puts windows back, then kept current by every reconcile, so an app that
     /// is quit and reopened mid-session also comes back to where the user last had it.
     private var placements: [String: UUID]
-    private var fullscreen: Set<WindowRef> = []
     private var intents = IntentSet()
     private var failures: [WindowRef: Int] = [:]
     private var lastRaised: WindowRef?
@@ -126,26 +129,26 @@ public actor WorldStore {
             observed[w.ref] = w.frame
             bundleIDs[w.ref] = w.bundleID
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
-            if w.isFullscreen {
-                if !fullscreen.contains(w.ref) { fullscreen.insert(w.ref); world.remove(w.ref); world.ignored.insert(w.ref) }
-                continue
-            } else if fullscreen.contains(w.ref) {
-                fullscreen.remove(w.ref); world.ignored.remove(w.ref)
-            }
-            if !known || (!fullscreen.contains(w.ref) && world.location(of: w.ref) == nil && !world.ephemeral.contains(w.ref) && !world.ignored.contains(w.ref)) {
+            if !known {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
                 // The app's remembered workspace, if it still exists — `adopt` falls back to the
                 // active workspace when it does not, and never creates one.
                 world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent,
                             workspace: w.bundleID.flatMap { placements[$0] })
+                Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
                 if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
             }
             world.setHidden(w.ref, w.isMinimized || hiddenApps.contains(w.ref.pid))
+            if w.isFullscreen != world.fullscreen.contains(w.ref), world.location(of: w.ref) != nil {
+                Self.log.notice("fullscreen \(w.isFullscreen ? "enter" : "exit", privacy: .public) \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public)")
+            }
+            world.setFullscreen(w.ref, w.isFullscreen)
         }
         if !s.loginwindowFrontmost {
             let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }).union(world.ephemeral).union(world.ignored)
             for gone in all.subtracting(present) {
-                world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; fullscreen.remove(gone); intents.forget(gone)
+                Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
+                world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; intents.forget(gone)
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
             }
@@ -255,6 +258,7 @@ public actor WorldStore {
             failures[r] = nil
             // Remember where it belongs before the side tables that know are cleared.
             if parked.contains(r), let frame = prePark[r] ?? observed[r] { stranded[r] = frame }
+            Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.bundleIDs[r] ?? "-", privacy: .public) after 3 failed writes")
             world.remove(r); world.ignored.insert(r)
             observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r)
             if lastRaised == r { lastRaised = nil }

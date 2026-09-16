@@ -44,7 +44,8 @@ public enum Reconciler {
                 let frames = active ? LayoutEngine.frames(ws.layout, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap) : []
                 for w in ws.windows {
                     if suspended.contains(w) { out[w] = .untouched; continue }
-                    if world.hidden.contains(w) { out[w] = .untouched; continue }
+                    // macOS owns a fullscreen window's frame and Space: never frame it, never park it.
+                    if world.hidden.contains(w) || world.fullscreen.contains(w) { out[w] = .untouched; continue }
                     if !active { out[w] = park(w); continue }
                     if ws.floating.contains(w) {
                         if parkedNow.contains(w) {

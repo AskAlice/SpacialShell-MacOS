@@ -26,6 +26,7 @@ extension World {
         }
         for w in ephemeral where ignored.contains(w) { v.append("\(w) both ephemeral and ignored") }
         for w in hidden where seen[w] == nil { v.append("\(w) hidden but not placed") }
+        for w in fullscreen where seen[w] == nil { v.append("\(w) fullscreen but not placed") }
         guard let fs = screens[focus.screen] else { v.append("focus.screen \(focus.screen) unknown"); return v }
         if let w = focus.window {
             if !fs.active.windows.contains(w) && !ephemeral.contains(w) { v.append("focus \(w) not in active workspace of \(focus.screen) nor ephemeral") }

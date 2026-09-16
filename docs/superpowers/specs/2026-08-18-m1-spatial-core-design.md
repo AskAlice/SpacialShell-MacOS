@@ -160,7 +160,8 @@ Invariant 4 is what makes "down" always meaningful without letting empty workspa
 - **Focus screen** is the screen containing the focused window, or, with no focused window, the last focused screen. Mouse position does not move focus in M1 (no focus-follows-mouse).
 - **Floating** windows (auto or `Fn+G`) belong to a workspace and are shown/parked with it, but are excluded from layout and keep their own frame. They sit at their index for `Fn+A/D` navigation but take no tiling slot.
 - **Ephemeral** windows (config list, e.g. System Settings, Calculator) belong to no workspace: they are centred on the focused screen when they appear, are never parked, and are not in any row. `Fn+A/D` never reaches them; `Fn+Q` closes them when focused. This is Veshell's "visitor" — the launcher UI for it is M2.
-- **Native fullscreen** windows are moved to `ignored` while fullscreen and re-adopted (appended to the active workspace) when they leave fullscreen. macOS owns fullscreen; we do not fight it.
+- **Native fullscreen** windows keep their workspace slot and their tab (`World.fullscreen`), stay reachable by `Fn+A/D` and a tab click (raising one is how the user gets back to its fullscreen Space), but are excluded from layout and never parked. Leaving fullscreen retiles them in place. macOS owns fullscreen; we do not fight it.
+  *Amended 2026-09-14 (user decision).* Originally they were moved to `ignored` and re-adopted on exit; that left nothing in the shell to return to a fullscreen window once another app took focus.
 - **Minimized** windows stay in their workspace at their index but are excluded from layout until deminiaturized. `Fn+A/D` skips them.
 - **Cmd+H hidden apps**: their windows stay in place in the model and are excluded from layout until the app unhides.
 

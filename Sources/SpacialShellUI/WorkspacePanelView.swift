@@ -76,6 +76,9 @@ struct WorkspacePanelView: View {
             if tab.isFloating {
                 Image(systemName: "pin.fill").font(.system(size: 8)).opacity(0.6)
             }
+            if tab.isFullscreen {
+                Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 8, weight: .semibold)).opacity(0.6)
+            }
             if tab.isFocused {
                 Button {
                     send(.closeWindowRef(tab.ref))
