@@ -31,6 +31,47 @@ here. See `AGENTS.md` for the full statement of both.
   transcript, a passing `swift test` run, a before/after of the tiling. Tickets should say so, so
   it is not discovered at review time.
 
+## Conversation tracking
+
+Nothing the user raises lives only in the conversation. Agreed with the user on 2026-09-14.
+
+**What gets an issue:** every bug the user reports, every feature or design proposal, every rule or
+invariant they state, and every bug you discover while working. A decision that changes a spec is a
+comment on the issue it belongs to (plus the spec edit), not a new issue. A question becomes an issue
+only once the user wants the work done.
+
+**When:** in the same reply the thing comes up, including work you are fixing right now; the PR closes
+it. Before ending a reply, check whether anything new was raised and file or update it.
+
+**Keeping it current:** the body is always the current summary: the user's words quoted verbatim
+under **Reported**, then cause, decisions, repro and acceptance criteria. Each new detail is a dated
+comment, and the body is revised to match. Search open issues first (`gh issue list --search`) and
+update rather than duplicate.
+
+**No confirmation before filing.** End every reply that touches the tracker with
+`Tracked: #n (new), #m (updated)`.
+
+**Hierarchy:**
+
+| Level | Representation |
+|---|---|
+| Milestone | GitHub milestone named after the M-series (`M2 — shell UI`, `M3a — trustworthy core`, …); its description states the goal |
+| Epic | issue labelled `epic`, in a milestone: one outcome |
+| Story | issue labelled `story`, "As a … I want … so that …" plus acceptance criteria; sub-issue of an epic |
+| Task | issue labelled `task`: non-user-facing work (investigation, PR media, harness, docs); sub-issue of a story or epic |
+| Bug | `bug`, sub-issue of the story or epic whose behaviour it breaks; directly in the milestone if none fits |
+
+Link children with **GitHub sub-issues** (`gh api --method POST repos/AskAlice/SpacialShell-MacOS/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>`, db id from `gh api repos/AskAlice/SpacialShell-MacOS/issues/<n> --jq .id`). Record ordering constraints with native dependencies (see Wayfinding → Blocking). Issue types are not available on this personal repo; the labels carry the level. Wayfinder maps stay as they are: `#26` is M4's planning epic.
+
+**Labels for the user's own reports:** `ready-for-agent` when fully specified; `needs-info` when the cause is
+unknown or design questions are open. `needs-triage` is only for requests from outside (see
+`triage-labels.md`). Every issue also carries one category label: `bug`, `enhancement` or `documentation`.
+
+**Working a milestone:** when several tickets in the current milestone are independent (no open
+`blocked_by` between them, disjoint files or modules), hand them to parallel subagents, one ticket
+each, in isolated worktrees, instead of working them one by one. Keep coupled tickets, and anything
+touching the same files, sequential.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
