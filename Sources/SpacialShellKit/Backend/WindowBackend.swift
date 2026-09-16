@@ -62,5 +62,9 @@ public protocol WindowBackend: Sendable {
     func setPosition(_ ref: WindowRef, _ origin: CGPoint) async -> Result<Void, BackendError>
     func raise(_ ref: WindowRef) async -> Result<Void, BackendError>
     func close(_ ref: WindowRef) async -> Result<Void, BackendError>
+    /// Bring a minimized or app-hidden window back (#48): clear `AXMinimized`, and unhide its app
+    /// if ⌘H put it away. The shell never hides windows itself; this only undoes what the user or
+    /// the app did, so that a tab click can deliver the window it names.
+    func unhide(_ ref: WindowRef) async -> Result<Void, BackendError>
     var events: AsyncStream<BackendEvent> { get }
 }

@@ -38,5 +38,9 @@ public enum Command: Sendable, Hashable {
 public enum Effect: Sendable, Equatable {
     case focus(WindowRef)
     case close(WindowRef)
+    /// Decision 2026-09-15 (#48): a tab is a promise that clicking it delivers the window, so a
+    /// minimized or app-hidden one is brought back rather than ignored. The backend clears
+    /// `AXMinimized` and unhides the app; the reconciler then places it by its row's layout.
+    case unhide(WindowRef)
     case relayout
 }

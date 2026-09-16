@@ -72,7 +72,15 @@ public actor WorldStore {
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
         let (next, effects) = CommandRunner.apply(command, to: world)
         world = next
-        for e in effects { if case .close(let r) = e { _ = await backend.close(r) } }
+        for e in effects {
+            switch e {
+            case .close(let r): _ = await backend.close(r)
+            // #48: the model already calls it visible, so make that true before the reconciler
+            // places it — otherwise the frame lands on a window macOS still has put away.
+            case .unhide(let r): _ = await backend.unhide(r)
+            case .focus, .relayout: break
+            }
+        }
         await reconcile()
     }
 

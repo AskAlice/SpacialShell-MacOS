@@ -332,6 +332,10 @@ public final class AXWindowBackend: WindowBackend {
         await registry.get(ref.pid)?.close(ref.id) ?? .failure(.notFound)
     }
 
+    public nonisolated func unhide(_ ref: WindowRef) async -> Result<Void, BackendError> {
+        await registry.get(ref.pid)?.unhide(ref.id) ?? .failure(.notFound)
+    }
+
     // MARK: - Termination (spec §7.4)
 
     /// Never strand a window in a parking corner. Every window in `parked` is centred on its
