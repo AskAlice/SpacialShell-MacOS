@@ -26,6 +26,14 @@ public actor WorldStore {
     /// is quit and reopened mid-session also comes back to where the user last had it.
     private var placements: [String: UUID]
     private var intents = IntentSet()
+    /// Spec §11 as amended 2026-09-15: retirement lasts only "until it changes", so a retired
+    /// window's last known state is kept to recognise the change that brings it back (#36).
+    private struct Retired { var frame: CGRect; var fullscreen: Bool }
+    private var retired: [WindowRef: Retired] = [:]
+    /// The frame each window had in the last *snapshot* — reality, unlike `observed`, which holds the
+    /// frame we asked for and which a failed write never delivered. "Changed" is judged against this,
+    /// or a retired window would look changed on the very next snapshot and we would fight it forever.
+    private var lastSeen: [WindowRef: CGRect] = [:]
     private var failures: [WindowRef: Int] = [:]
     private var lastRaised: WindowRef?
     /// What the last snapshot said macOS had focused. Focus that has not moved since is an echo,
@@ -126,8 +134,15 @@ public actor WorldStore {
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
+            defer { lastSeen[w.ref] = w.frame }
             observed[w.ref] = w.frame
             bundleIDs[w.ref] = w.bundleID
+            // Spec §11 "until it changes": a retired window that has moved, resized or changed
+            // fullscreen state is alive and ours again — `ignored` is not a one-way door (#36).
+            if world.ignored.contains(w.ref), let was = retired[w.ref],
+               !Reconciler.approx(was.frame, w.frame) || was.fullscreen != w.isFullscreen {
+                revive(w.ref, frame: w.frame, reason: "changed")
+            }
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
             if !known {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
@@ -149,6 +164,7 @@ public actor WorldStore {
             for gone in all.subtracting(present) {
                 Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
                 world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; intents.forget(gone)
+                retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
             }
@@ -158,6 +174,11 @@ public actor WorldStore {
 
     private func applyNativeFocus(_ r: WindowRef?) {
         guard let r else { return }
+        // The focused-window invariant (#36): a window macOS reports as focused is by definition
+        // managed, so a retired one comes back rather than sitting "just under everything".
+        if world.ignored.contains(r), retired[r] != nil {
+            revive(r, frame: observed[r] ?? retired[r]!.frame, reason: "focused")
+        }
         let isEcho = r == lastNativeFocus
         lastNativeFocus = r
         if world.ephemeral.contains(r) { world.focus.window = r; return }
@@ -173,6 +194,19 @@ public actor WorldStore {
         world.focus = Focus(screen: loc.screen, window: r)
         world.screens[loc.screen]!.workspaces[loc.index].anchor = r
         world.normalize()
+    }
+
+    /// Puts a retired window back in the model (spec §11 "until it changes"). The app's remembered
+    /// workspace still applies, exactly as at first adoption.
+    private func revive(_ r: WindowRef, frame: CGRect, reason: StaticString) {
+        guard retired[r] != nil else { return }
+        retired[r] = nil
+        world.ignored.remove(r)
+        failures[r] = nil
+        let bundle = bundleIDs[r]
+        let kind = config.kindOverride(bundleID: bundle, title: "") ?? .tile
+        world.adopt(r, kind: kind, on: screenFor(frame), workspace: bundle.flatMap { placements[$0] })
+        Self.log.notice("revive \(r.id, privacy: .public) pid=\(r.pid) \(bundle ?? "-", privacy: .public) \(reason, privacy: .public)")
     }
 
     private func screenFor(_ frame: CGRect) -> DisplayID {
@@ -242,12 +276,18 @@ public actor WorldStore {
             lastRaised = f
             let result = await backend.raise(f)
             if gen != generation { return }
-            note(result, for: f)
+            // Spec §11 as amended: a failed raise never retires. Raising fails for transient reasons
+            // — the window is in its own fullscreen Space, the app is mid-transition — and counting
+            // it left live windows on screen with no tab (#36). Frame writes are the real signal.
+            if case .failure(let e) = result {
+                Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
+            }
         }
         onChange(world)
     }
 
-    /// Spec §11: three failed writes in a row retire the window to `ignored` so we stop fighting it.
+    /// Spec §11: three failed *writes* in a row retire the window to `ignored` so we stop fighting
+    /// it — until it changes, when `revive` brings it back. Raises never reach here (see `reconcile`).
     private func note(_ result: Result<Void, BackendError>, for r: WindowRef) {
         switch result {
         case .success:
@@ -256,8 +296,12 @@ public actor WorldStore {
             failures[r, default: 0] += 1
             guard failures[r, default: 0] >= 3 else { return }
             failures[r] = nil
+            // macOS owns a fullscreen window and the shell writes nothing for it, so a failure
+            // there says nothing about manageability (#36).
+            guard !world.fullscreen.contains(r) else { return }
             // Remember where it belongs before the side tables that know are cleared.
             if parked.contains(r), let frame = prePark[r] ?? observed[r] { stranded[r] = frame }
+            retired[r] = Retired(frame: lastSeen[r] ?? observed[r] ?? .zero, fullscreen: world.fullscreen.contains(r))
             Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.bundleIDs[r] ?? "-", privacy: .public) after 3 failed writes")
             world.remove(r); world.ignored.insert(r)
             observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r)

@@ -346,6 +346,10 @@ Windows are **not** persisted in M1 (window ids don't survive app restart; match
 ## 11. Error handling
 
 - No AX failure ever crashes the agent. Every backend call returns `Result`; a failing window is marked unmanageable for that refresh; three consecutive failures move it to `ignored` until it changes.
+  *Amended 2026-09-15 (user decision: "i think you should respec dont permanently ignore windows").* Three points the first implementation got wrong, each of which stranded a live window with no tab (#36):
+  - **Only frame/position writes count.** A failed `raise` is logged and forgotten: raising fails for transient reasons — the window is in its own fullscreen Space, the app is mid-transition — and none of them mean the window is unmanageable.
+  - **A fullscreen window is never retired.** macOS owns it and the shell issues no writes for it.
+  - **"Until it changes" is binding, and retirement is never permanent.** A retired window returns to the model as soon as it changes — a snapshot showing a different frame or fullscreen state, or native focus landing on it. Focus is the strongest signal of all: a window macOS reports as focused is by definition managed, so it is re-adopted and shown, per the focused-window invariant.
 - An app whose thread times out is marked unresponsive; its windows keep their last frames and are skipped by the reconciler until an event from it succeeds.
 - `os_log` categories: `model`, `reconcile`, `ax`, `hotkeys`, `displays`. A watchdog logs any refresh session over 500 ms with per-app timings.
 - Termination path always restores parked windows (§7.4).

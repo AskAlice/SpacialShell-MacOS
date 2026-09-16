@@ -138,6 +138,52 @@ import Foundation
         #expect(await wrote(b, be.calls))
         #expect(w.invariantViolations().isEmpty)
     }
+    /// Spec §11 as amended 2026-09-15. A failed *raise* never retires a window: raising fails for
+    /// transient reasons — the window is in its own fullscreen Space, the app is mid-transition —
+    /// and retiring on it left a live window on screen with no tab anywhere (#36).
+    ///
+    /// A *fullscreen* window is the case that bites: it gets no frame writes, so nothing ever
+    /// resets the failure counter between raises, and three focus changes retire it.
+    @Test func failedRaisesNeverRetire() async {
+        let (store, be) = await make(snap([win(a), win(b, fs: true)], focused: a))
+        await be.failRaise(b)
+        for _ in 0..<4 {
+            await store.run(.focusWindow(.right))   // focus b → raise(b) fails
+            await store.run(.focusWindow(.left))    // focus a → raise(a) succeeds
+        }
+        let w = await store.world
+        #expect(!w.ignored.contains(b) && w.location(of: b) != nil)
+    }
+
+    /// Spec §11's "until it changes", which the first implementation never honoured: `ignored` was a
+    /// one-way door, so a window retired once stayed unreachable for the life of the process (#36).
+    @Test func aRetiredWindowComesBackWhenItChanges() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.fail(b)
+        for y in [100.0, 200.0, 300.0] {
+            await store.apply(.windowMoved(b, CGRect(x: y, y: y, width: 300, height: 200)))
+        }
+        #expect(await store.world.ignored.contains(b))          // retired after three failed writes
+        await store.apply(.snapshot(snap([win(a), win(b, CGRect(x: 40, y: 40, width: 500, height: 400))], focused: a)))
+        let w = await store.world
+        #expect(!w.ignored.contains(b) && w.location(of: b) != nil)
+        #expect(w.invariantViolations().isEmpty)
+    }
+
+    /// The user's invariant (#36): a window macOS reports as focused is by definition managed, so a
+    /// retired one is re-adopted rather than left "just under everything" with no tab.
+    @Test func nativeFocusOnARetiredWindowBringsItBack() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.fail(b)
+        for y in [100.0, 200.0, 300.0] {
+            await store.apply(.windowMoved(b, CGRect(x: y, y: y, width: 300, height: 200)))
+        }
+        #expect(await store.world.ignored.contains(b))
+        await store.apply(.focusChanged(b))
+        let w = await store.world
+        #expect(!w.ignored.contains(b) && w.location(of: b) != nil && w.focus.window == b)
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])

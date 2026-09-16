@@ -13,6 +13,7 @@ actor FakeBackend: WindowBackend {
     /// Test hooks. `failWrites` makes writes for those refs report `.ax(-25200)` (three-strikes, spec §11);
     /// the write gate suspends the Nth write so a test can interleave another store call mid-plan.
     var failWrites: Set<WindowRef> = []
+    var failRaises: Set<WindowRef> = []
     var writeGate: CheckedContinuation<Void, Never>?
     var gateOnWriteNumber: Int?
     private var writeCount = 0
@@ -37,7 +38,7 @@ actor FakeBackend: WindowBackend {
     }
     func raise(_ ref: WindowRef) -> Result<Void, BackendError> {
         calls.append(.raise(ref))
-        if failWrites.contains(ref) { return .failure(.ax(-25200)) }
+        if failWrites.contains(ref) || failRaises.contains(ref) { return .failure(.ax(-25200)) }
         return .success(())
     }
     func close(_ ref: WindowRef) -> Result<Void, BackendError> { calls.append(.close(ref)); return .success(()) }
@@ -49,6 +50,9 @@ actor FakeBackend: WindowBackend {
     // MARK: test hooks
 
     func fail(_ ref: WindowRef) { failWrites.insert(ref) }
+    /// Fail only `raise` for this window — what a window in another Space, or an app mid-transition,
+    /// does in reality (spec §11 as amended 2026-09-15).
+    func failRaise(_ ref: WindowRef) { failRaises.insert(ref) }
     /// Suspend the `n`th write (1-based, counted from the last `reset()`) until `releaseGate()`.
     func armGate(onWriteNumber n: Int) { gateOnWriteNumber = n }
     func isGateArmed() -> Bool { writeGate != nil }
