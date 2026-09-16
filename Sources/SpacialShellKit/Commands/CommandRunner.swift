@@ -25,6 +25,15 @@ public enum CommandRunner {
             return true
         }
 
+        /// Decision 2026-09-15 (#49): macOS shows only the fullscreen Space on the display that has
+        /// one, so a workspace switch there is invisible until the user leaves fullscreen by hand.
+        /// Leaving it first is what makes the switch mean anything. Only the window(s) of the
+        /// workspace being left can be in front, so only those are asked.
+        func leaveFullscreen(on screen: DisplayID) {
+            guard let s = w.screens[screen] else { return }
+            for win in s.active.windows where w.fullscreen.contains(win) { effects.append(.exitFullscreen(win)) }
+        }
+
         func setFocus(_ ref: WindowRef?) {
             w.focus.window = ref
             if let ref { w.screens[w.focus.screen]!.workspaces[w.screens[w.focus.screen]!.activeIndex].anchor = ref; effects.append(.focus(ref)) }
@@ -41,6 +50,7 @@ public enum CommandRunner {
         case .focusWorkspace(let dir):
             let target = screen.activeIndex + (dir == .down ? 1 : -1)
             guard (0..<screen.workspaces.count).contains(target) else { return (w, []) }
+            leaveFullscreen(on: sid)
             w.activate(index: target, on: sid)
             if let f = w.focus.window { effects.append(.focus(f)) }
             effects.append(.relayout)
@@ -48,6 +58,7 @@ public enum CommandRunner {
         case .focusWorkspaceIndex(let n):
             let target = n - 1
             guard (0..<screen.workspaces.count).contains(target), target != screen.activeIndex else { return (w, []) }
+            leaveFullscreen(on: sid)
             w.activate(index: target, on: sid)
             if let f = w.focus.window { effects.append(.focus(f)) }
             effects.append(.relayout)
@@ -120,6 +131,7 @@ public enum CommandRunner {
             // Focus moves to the clicked screen first so `activate` re-derives the focused window
             // from that workspace's anchor, exactly as the keyboard path does.
             if w.focus.screen != loc.screen { w.focus = Focus(screen: loc.screen, window: nil) }
+            if w.screens[loc.screen]?.activeIndex != loc.index { leaveFullscreen(on: loc.screen) }
             w.activate(index: loc.index, on: loc.screen)
             if let f = w.focus.window { effects.append(.focus(f)) }
             effects.append(.relayout)

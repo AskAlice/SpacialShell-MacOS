@@ -332,6 +332,10 @@ public final class AXWindowBackend: WindowBackend {
         await registry.get(ref.pid)?.close(ref.id) ?? .failure(.notFound)
     }
 
+    public nonisolated func setFullscreen(_ ref: WindowRef, _ on: Bool) async -> Result<Void, BackendError> {
+        await registry.get(ref.pid)?.setFullscreen(ref.id, on) ?? .failure(.notFound)
+    }
+
     // MARK: - Termination (spec §7.4)
 
     /// Never strand a window in a parking corner. Every window in `parked` is centred on its

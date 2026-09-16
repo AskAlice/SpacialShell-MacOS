@@ -62,5 +62,9 @@ public protocol WindowBackend: Sendable {
     func setPosition(_ ref: WindowRef, _ origin: CGPoint) async -> Result<Void, BackendError>
     func raise(_ ref: WindowRef) async -> Result<Void, BackendError>
     func close(_ ref: WindowRef) async -> Result<Void, BackendError>
+    /// Put a window into, or take it out of, native macOS fullscreen (`AXFullScreen`). Used to
+    /// leave fullscreen before a workspace switch on that display (#49); the shell never *enters*
+    /// fullscreen on the user's behalf.
+    func setFullscreen(_ ref: WindowRef, _ on: Bool) async -> Result<Void, BackendError>
     var events: AsyncStream<BackendEvent> { get }
 }

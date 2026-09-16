@@ -3,7 +3,7 @@ import Foundation
 
 /// In-memory backend: records writes, lets tests push events, applies writes to its own frames.
 actor FakeBackend: WindowBackend {
-    enum Call: Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint), raise(WindowRef), close(WindowRef) }
+    enum Call: Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint), raise(WindowRef), close(WindowRef), setFullscreen(WindowRef, Bool) }
     var calls: [Call] = []
     var frames: [WindowRef: CGRect] = [:]
     var snapshot: Snapshot
@@ -42,6 +42,11 @@ actor FakeBackend: WindowBackend {
         return .success(())
     }
     func close(_ ref: WindowRef) -> Result<Void, BackendError> { calls.append(.close(ref)); return .success(()) }
+    func setFullscreen(_ ref: WindowRef, _ on: Bool) -> Result<Void, BackendError> {
+        calls.append(.setFullscreen(ref, on))
+        if failWrites.contains(ref) { return .failure(.ax(-25200)) }
+        return .success(())
+    }
 
     func push(_ e: BackendEvent) { if case .snapshot(let s) = e { snapshot = s; for w in s.windows where frames[w.ref] == nil { frames[w.ref] = w.frame } }; continuation.yield(e) }
     func reset() { calls = []; writeCount = 0 }

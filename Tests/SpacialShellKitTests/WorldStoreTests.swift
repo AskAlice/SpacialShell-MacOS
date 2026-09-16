@@ -184,6 +184,29 @@ import Foundation
         #expect(!w.ignored.contains(b) && w.location(of: b) != nil && w.focus.window == b)
     }
 
+    /// Decision 2026-09-15 (#49): macOS shows only the fullscreen Space on that display, so a
+    /// workspace switch there is invisible until fullscreen ends. Leave it first, and the switch
+    /// means something.
+    @Test func switchingWorkspaceLeavesFullscreenFirst() async {
+        let (store, be) = await make(snap([win(a), win(b, fs: true)], focused: a))
+        await be.reset()
+        await store.run(.focusWorkspace(.down))
+        #expect(await be.calls.contains(.setFullscreen(b, false)))
+    }
+
+    /// #49: macOS re-reports a fullscreen window as focused for as long as its Space is front. Those
+    /// echoes used to be dropped when the window's workspace was not active, leaving the model with
+    /// no focused window — and the next `Fn+S` acting on whatever screen it still believed in.
+    @Test func echoedFocusOnAFullscreenWindowActivatesItsWorkspace() async {
+        let (store, _) = await make(snap([win(a), win(b, fs: true)], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))        // a → ws1, which becomes active
+        #expect(await store.world.screens["D1"]!.activeIndex == 1)
+        await store.apply(.focusChanged(b))                   // first event
+        await store.apply(.focusChanged(b))                   // …and its echo
+        let w = await store.world
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == b)
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])
@@ -408,7 +431,7 @@ import Foundation
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
-    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x): return x == r
+    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x), .setFullscreen(let x, _): return x == r
     }
 }
 actor ChangeBox { var value: World?; func set(_ w: World) { value = w } 

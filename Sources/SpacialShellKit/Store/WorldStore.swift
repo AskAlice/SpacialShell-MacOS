@@ -85,7 +85,15 @@ public actor WorldStore {
         let (next, effects) = CommandRunner.apply(command, to: world)
         world = next
         Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
-        for e in effects { if case .close(let r) = e { _ = await backend.close(r) } }
+        for e in effects {
+            switch e {
+            case .close(let r): _ = await backend.close(r)
+            case .exitFullscreen(let r):
+                Self.log.notice("exit fullscreen \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) before workspace switch")
+                _ = await backend.setFullscreen(r, false)
+            case .focus, .relayout: break
+            }
+        }
         await reconcile()
     }
 
@@ -196,7 +204,10 @@ public actor WorldStore {
         // keeps the previous window focused, and the very click that activated it schedules a
         // refresh via the global mouse-up monitor. Honouring that echo bounced the user straight
         // back out of the workspace they had just opened.
-        if isEcho && world.screens[loc.screen]!.activeIndex != loc.index { return }
+        // …but a *fullscreen* window's echo is news, not noise (#49): macOS re-reports it as focused
+        // for as long as its Space is front, and dropping those left the model with no focused
+        // window at all, so the next workspace verb ran from a stale belief on a stale screen.
+        if isEcho && !world.fullscreen.contains(r) && world.screens[loc.screen]!.activeIndex != loc.index { return }
         if world.screens[loc.screen]!.activeIndex != loc.index { world.activate(index: loc.index, on: loc.screen) }
         world.focus = Focus(screen: loc.screen, window: r)
         world.screens[loc.screen]!.workspaces[loc.index].anchor = r

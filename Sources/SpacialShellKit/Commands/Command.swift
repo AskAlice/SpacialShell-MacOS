@@ -38,5 +38,10 @@ public enum Command: Sendable, Hashable {
 public enum Effect: Sendable, Equatable {
     case focus(WindowRef)
     case close(WindowRef)
+    /// Decision 2026-09-15 (#49): a workspace switch on a display whose front Space is a native
+    /// fullscreen window takes that window out of fullscreen first — macOS shows only that Space
+    /// there, so the workspace being switched to would otherwise stay invisible until the user
+    /// left fullscreen by hand.
+    case exitFullscreen(WindowRef)
     case relayout
 }

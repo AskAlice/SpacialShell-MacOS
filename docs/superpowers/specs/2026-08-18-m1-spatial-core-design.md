@@ -162,6 +162,14 @@ Invariant 4 is what makes "down" always meaningful without letting empty workspa
 - **Ephemeral** windows (config list, e.g. System Settings, Calculator) belong to no workspace: they are centred on the focused screen when they appear, are never parked, and are not in any row. `Fn+A/D` never reaches them; `Fn+Q` closes them when focused. This is Veshell's "visitor" — the launcher UI for it is M2.
 - **Native fullscreen** windows keep their workspace slot and their tab (`World.fullscreen`), stay reachable by `Fn+A/D` and a tab click (raising one is how the user gets back to its fullscreen Space), but are excluded from layout and never parked. Leaving fullscreen retiles them in place. macOS owns fullscreen; we do not fight it.
   *Amended 2026-09-14 (user decision).* Originally they were moved to `ignored` and re-adopted on exit; that left nothing in the shell to return to a fullscreen window once another app took focus.
+  *Amended 2026-09-15 (user decision).* Two further rulings, both from live behaviour (#49). A
+  **workspace switch on a display whose front Space is a fullscreen window takes that window out of
+  fullscreen first** (`AXFullScreen = false`): macOS shows only that Space there, so the workspace
+  switched to stays invisible until the user exits by hand — which reads as "the keypress did
+  nothing", or as switching on the wrong display. And macOS re-reports a fullscreen window as
+  focused for as long as its Space is front, so **those repeats are news, not echoes**: they
+  activate that window's workspace. Dropping them left the model with no focused window, and the
+  next workspace verb acted on whatever screen it still believed in.
 - **Minimized** windows stay in their workspace at their index but are excluded from layout until deminiaturized. `Fn+A/D` skips them.
 - **Cmd+H hidden apps**: their windows stay in place in the model and are excluded from layout until the app unhides.
 

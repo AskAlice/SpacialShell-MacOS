@@ -522,6 +522,21 @@ final class AXApp: @unchecked Sendable {
         return outcome.result
     }
 
+    /// Put a window into, or take it out of, native fullscreen (#49). The shell only ever clears
+    /// it: a workspace switch on a display whose front Space is a fullscreen window leaves that
+    /// Space first, or the workspace switched to stays invisible until the user exits by hand.
+    ///
+    /// `AXFullScreen` is writable on every app that offers the green button; one that does not
+    /// answers `kAXErrorAttributeUnsupported`, which surfaces as `.ax(...)` and is simply logged
+    /// by the caller — it never retires the window (spec §11 as amended).
+    func setFullscreen(_ id: WindowID, _ on: Bool) async -> Result<Void, BackendError> {
+        await runOnAppThread(fallback: { Result<Void, BackendError>.failure(.notFound) }) { [self] job in
+            if job.isCancelled { return .failure(.timeout) }
+            guard let window = windows.threadGuarded[id] else { return .failure(.notFound) }
+            return window.ax.setChecked(Ax.isFullscreenAttr, on).asBackendResult
+        }
+    }
+
     /// MacApp.swift:102-110 (`closeAndUnregisterAxWindow`): press the close button and forget
     /// the window so no queued write outlives it.
     func close(_ id: WindowID) async -> Result<Void, BackendError> {
