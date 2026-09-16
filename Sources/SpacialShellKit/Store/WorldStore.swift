@@ -81,8 +81,10 @@ public actor WorldStore {
 
     public func run(_ command: Command) async {
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
+        let before = world.focus
         let (next, effects) = CommandRunner.apply(command, to: world)
         world = next
+        Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
         for e in effects { if case .close(let r) = e { _ = await backend.close(r) } }
         await reconcile()
     }
@@ -153,7 +155,11 @@ public actor WorldStore {
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
                 if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
             }
-            world.setHidden(w.ref, w.isMinimized || hiddenApps.contains(w.ref.pid))
+            let nowHidden = w.isMinimized || hiddenApps.contains(w.ref.pid)
+            if nowHidden != world.hidden.contains(w.ref), world.location(of: w.ref) != nil {
+                Self.log.notice("hidden \(nowHidden ? "on" : "off", privacy: .public) \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public) minimized=\(w.isMinimized) appHidden=\(hiddenApps.contains(w.ref.pid))")
+            }
+            world.setHidden(w.ref, nowHidden)
             if w.isFullscreen != world.fullscreen.contains(w.ref), world.location(of: w.ref) != nil {
                 Self.log.notice("fullscreen \(w.isFullscreen ? "enter" : "exit", privacy: .public) \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public)")
             }
@@ -181,6 +187,7 @@ public actor WorldStore {
         }
         let isEcho = r == lastNativeFocus
         lastNativeFocus = r
+        Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)")
         if world.ephemeral.contains(r) { world.focus.window = r; return }
         guard let loc = world.location(of: r), !world.hidden.contains(r) else { return }
         // An unchanged native focus is news about nothing, and must never drag the active
