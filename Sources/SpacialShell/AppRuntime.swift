@@ -325,13 +325,20 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     /// the main thread on the export's semaphore is exactly how to make it time out.
     private func installSignalHandlers() {
         let gate = termination
+        // Issue #30. `setEventHandler`'s parameter is *not* `@Sendable`, so a closure written
+        // inline here — inside a `@MainActor` type — inherits main-actor isolation. libdispatch
+        // then runs it on the termination queue, the isolation preamble's executor check fails,
+        // and the process traps (SIGTRAP, exit 133) on the handler's first instruction: before
+        // `gate.run`, i.e. before the §7.4 restore, leaving parked windows in their corner.
+        // Typing the closure `@Sendable` keeps it nonisolated, which is what it always had to be.
+        let handler: @Sendable () -> Void = {
+            gate.run(onMainThread: false)
+            exit(0)
+        }
         for sig in [SIGINT, SIGTERM] {
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: TerminationGate.queue)
-            source.setEventHandler {
-                gate.run(onMainThread: false)
-                exit(0)
-            }
+            source.setEventHandler(handler: handler)
             source.resume()
             signalSources.append(source)
         }
