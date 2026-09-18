@@ -221,6 +221,19 @@ import Foundation
         #expect(w.invariantViolations().isEmpty)
     }
 
+    /// I6 precedence: a window cannot be both put away and filling a display. Minimizing a
+    /// fullscreen window clears the fullscreen flag, and a stale fullscreen report cannot resurrect
+    /// it while the window stays minimized — otherwise the layout skips it twice and it is
+    /// reachable by nothing.
+    @Test func hiddenWinsOverFullscreen() async {
+        let (store, _) = await make(snap([win(a), win(b, fs: true)], focused: a))
+        #expect(await store.world.fullscreen == [b])
+        await store.apply(.snapshot(snap([win(a), win(b, min: true, fs: true)], focused: a)))
+        let w = await store.world
+        #expect(w.hidden.contains(b) && !w.fullscreen.contains(b))
+        #expect(w.invariantViolations().isEmpty)
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])

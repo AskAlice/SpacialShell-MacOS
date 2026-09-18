@@ -83,14 +83,21 @@ extension World {
         normalize()
     }
 
+    /// Hidden wins over fullscreen (I6). A minimized or ⌘H-hidden window is put away whatever
+    /// `AXFullScreen` still says about it, and the two states arrive from different reads of the
+    /// same snapshot — so without a precedence the model could hold both and the layout would skip
+    /// the window twice over: once as hidden, once as macOS-owned.
     public mutating func setHidden(_ w: WindowRef, _ isHidden: Bool) {
         guard location(of: w) != nil else { return }
-        if isHidden { hidden.insert(w) } else { hidden.remove(w) }
+        if isHidden { hidden.insert(w); fullscreen.remove(w) } else { hidden.remove(w) }
         normalize()
     }
 
+    /// No-op while the window is hidden — see `setHidden`. A window that leaves minimization while
+    /// still fullscreen is flagged again by the next snapshot, which is the only place both facts
+    /// are read together.
     public mutating func setFullscreen(_ w: WindowRef, _ isFullscreen: Bool) {
-        guard location(of: w) != nil else { return }
+        guard location(of: w) != nil, !hidden.contains(w) else { return }
         if isFullscreen { fullscreen.insert(w) } else { fullscreen.remove(w) }
     }
 
