@@ -33,6 +33,11 @@ public enum Command: Sendable, Hashable {
     /// end of the row when the second is nil. Reference-based rather than index-based because an
     /// index means something different before and after the removal — a classic off-by-one.
     case moveWindowRefBefore(WindowRef, WindowRef?)
+    /// Spec §13.3 / M3a A4 (#52): put every window that has ended up off every display back where
+    /// a human can reach it. The model says nothing about geometry, so this changes nothing here —
+    /// `WorldStore` does the work — but it is a `Command` so it arrives by the same door as a
+    /// hotkey, a menu item and `spacialctl run rescue-windows`.
+    case rescueWindows
 }
 
 public enum Effect: Sendable, Equatable {

@@ -159,6 +159,11 @@ public enum CommandRunner {
         case .closeWindowRef(let r):
             effects.append(.close(r))
 
+        case .rescueWindows:
+            // Geometry only: the store sweeps `observed` against the displays. Relayout so the
+            // sweep runs inside the ordinary reconcile.
+            effects.append(.relayout)
+
         case .toggleOverview, .openSettings:
             // App-layer surfaces; AppRuntime routes them before the store, and if one does reach
             // the store anyway (custom wiring, tests) it must change nothing.

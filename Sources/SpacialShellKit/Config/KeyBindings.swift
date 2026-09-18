@@ -31,6 +31,7 @@ public enum KeyBindings {
         "cycle-layout": .cycleLayout, "toggle-shell-ui": .toggleShellUI, "toggle-overview": .toggleOverview,
         "focus-screen-prev": .focusScreen(.prev), "focus-screen-next": .focusScreen(.next),
         "move-window-to-screen-prev": .moveWindowToScreen(.prev), "move-window-to-screen-next": .moveWindowToScreen(.next),
+        "rescue-windows": .rescueWindows,
         "toggle-float": .toggleFloat, "open-settings": .openSettings,
         "focus-workspace-1": .focusWorkspaceIndex(1), "focus-workspace-2": .focusWorkspaceIndex(2), "focus-workspace-3": .focusWorkspaceIndex(3),
         "focus-workspace-4": .focusWorkspaceIndex(4), "focus-workspace-5": .focusWorkspaceIndex(5), "focus-workspace-6": .focusWorkspaceIndex(6),

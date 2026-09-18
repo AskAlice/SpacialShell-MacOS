@@ -85,6 +85,20 @@ public enum Reconciler {
         return frames + parks
     }
 
+    /// Is this frame beyond reach — off every display? (#52.) A parking corner leaves a 1 pt sliver
+    /// on screen by design, and a window dragged half off an edge is still grabbable, so "reachable"
+    /// is generous: a tenth of the window visible somewhere counts. Anything less is a window the
+    /// user cannot click, however healthy the model believes it to be.
+    public static func isBeyondReach(_ frame: CGRect, displays: [DisplayInfo], minVisible: CGFloat = 0.1) -> Bool {
+        let area = frame.width * frame.height
+        guard area > 0 else { return true }
+        let visible = displays.map { d -> CGFloat in
+            let i = d.visibleFrame.intersection(frame)
+            return i.isNull ? 0 : i.width * i.height
+        }.max() ?? 0
+        return visible / area < minVisible
+    }
+
     static func centered(size: CGSize, in rect: CGRect) -> CGRect {
         CGRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
     }

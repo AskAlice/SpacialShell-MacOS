@@ -57,6 +57,11 @@ public actor WorldStore {
     public func start() async {
         guard !started else { return }; started = true
         await apply(.snapshot(await backend.currentSnapshot()))
+        // #52: the previous run may have ended without its §7.4 restore — a crash, an OOM kill, a
+        // force quit, or (until #30) an ordinary SIGTERM. Whatever it parked is still in a corner,
+        // and nothing else will move it: the reconciler leaves floating, ephemeral and ignored
+        // windows alone by design. Sweep once, at the only moment we know reality predates us.
+        await rescueBeyondReach(reason: "boot")
         eventTask = Task { [weak self] in
             guard let self else { return }
             for await e in self.backend.events { await self.apply(e) }
@@ -98,6 +103,7 @@ public actor WorldStore {
             }
         }
         await reconcile()
+        if case .rescueWindows = command { await rescueBeyondReach(reason: "command") }
     }
 
     public func apply(_ event: BackendEvent) async {
@@ -305,6 +311,37 @@ public actor WorldStore {
             }
         }
         onChange(world)
+    }
+
+    /// Spec §13.3 / M3a A4 (#52). Put back every window that has ended up off every display.
+    ///
+    /// Only windows the reconciler would *not* move are touched: a window whose desired placement
+    /// is `.frame` is about to be laid out anyway, and one whose placement is `.parked` is in a
+    /// corner on purpose (its workspace is inactive, and the rail is how the user gets it back).
+    /// That leaves exactly the windows nothing else looks after — floating, ephemeral, ignored, and
+    /// anything stranded by a run that died before its restore — which is the set that strands.
+    private func rescueBeyondReach(reason: StaticString) async {
+        guard !locked, !displays.isEmpty else { return }
+        let shellInsets = ShellInsets(config: config, hidden: world.zen)
+        let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
+        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
+                                         observed: observed, prePark: prePark, parkedNow: parked,
+                                         zeroSliver: [], insets: insets)
+        for (ref, frame) in observed.sorted(by: { $0.key.id < $1.key.id }) {
+            guard Reconciler.isBeyondReach(frame, displays: displays) else { continue }
+            switch desired[ref] {
+            case .frame, .parked: continue          // the reconciler owns this one
+            case .untouched, nil: break
+            }
+            let screen = world.screenContaining(ref) ?? world.focus.screen
+            let display = displays.first { $0.id == screen } ?? displays[0]
+            let rescued = Reconciler.centered(size: frame.size, in: display.visibleFrame)
+            Self.log.notice("rescue \(ref.id, privacy: .public) \(self.bundleIDs[ref] ?? "-", privacy: .public) from \(String(describing: frame.origin), privacy: .public) (\(reason, privacy: .public))")
+            intents.record(.setFrame(ref, rescued))
+            let result = await backend.setFrame(ref, rescued)
+            observed[ref] = rescued
+            note(result, for: ref)
+        }
     }
 
     /// Spec §11: three failed *writes* in a row retire the window to `ignored` so we stop fighting

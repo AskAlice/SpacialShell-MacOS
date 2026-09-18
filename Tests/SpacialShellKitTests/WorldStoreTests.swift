@@ -234,6 +234,37 @@ import Foundation
         #expect(w.invariantViolations().isEmpty)
     }
 
+    /// #52: a run that ends without its §7.4 restore — a crash, an OOM kill, a force quit, or (until
+    /// #30) an ordinary SIGTERM — leaves parked windows in a corner, and nothing else will move a
+    /// floating one: the reconciler leaves it `.untouched` by design. The boot sweep is the only
+    /// thing standing between the user and a window they cannot click.
+    @Test func bootRescuesWindowsLeftBeyondReach() async {
+        let corner = CGRect(x: 999, y: 699, width: 300, height: 200)   // where the last run parked it
+        let be = FakeBackend(snapshot: snap([win(a), win(b, corner, kind: .float)], focused: a))
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        await store.start()
+        let rescued = await be.calls.compactMap { call -> CGRect? in
+            if case .setFrame(let r, let f) = call, r == b { return f } else { return nil }
+        }.last
+        #expect(rescued != nil, "a floating window left off-screen was not rescued")
+        #expect(rescued.map { d1.visibleFrame.intersects($0) } == true)
+    }
+
+    /// …but a window parked *on purpose* — its workspace is inactive, and the rail is how the user
+    /// gets it back — must be left where the reconciler put it. Rescuing those would drag every
+    /// inactive workspace onto the screen at boot.
+    @Test func bootDoesNotRescueDeliberatelyParkedWindows() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))          // a → ws1; b stays parked in ws0
+        #expect(await store.debugSideTables().parked.contains(b))
+        await be.reset()
+        await store.run(.rescueWindows)
+        let framed = await be.calls.contains { call in
+            if case .setFrame(let r, _) = call { return r == b } else { return false }
+        }
+        #expect(!framed, "a deliberately parked window was dragged back on screen")
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])
