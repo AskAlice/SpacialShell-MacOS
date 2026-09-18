@@ -486,6 +486,37 @@ import Foundation
         #expect(await store.currentPlacements()["com.x"] == moved)
         #expect(await store.exportForTermination().placements["com.x"] != nil)
     }
+    // MARK: native macOS window tabs (issue #27)
+
+    /// A native macOS tab group reaches the store as one managed window plus `.ignore` siblings
+    /// sitting on the group's single shared frame — the platform layer demotes them, because a
+    /// background tab is only recognisable against its siblings. The ignored tabs must draw no
+    /// frame write at all: under `maximize` the reconciler would park them in the corner, and
+    /// since a tab group shares one frame, parking any member drags the whole group — the tab the
+    /// user is looking at included — off-screen. That is the bug this models.
+    @Test func ignoredNativeTabsAreNeitherTiledNorParked() async {
+        let shared = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let (store, be) = await make(snap([win(a, shared), win(b, shared, kind: .ignore)], focused: a))
+        let w = await store.world
+        #expect(w.screens["D1"]!.active.windows == [a])     // one window in the row, not two
+        #expect(w.ignored.contains(b))
+        let calls = await be.calls
+        #expect(calls.contains(.setFrame(a, CGRect(x: 8, y: 33, width: 984, height: 658))))
+        #expect(!calls.contains { touches($0, b) })
+    }
+
+    /// Switching tabs: macOS reports focus on the background tab's AX window. It is not in the
+    /// model, so the shell must sit still — no re-anchoring, and above all no writes.
+    @Test func focusOnAnIgnoredNativeTabMovesNothing() async {
+        let shared = CGRect(x: 100, y: 100, width: 400, height: 300)
+        let (store, be) = await make(snap([win(a, shared), win(b, shared, kind: .ignore)], focused: a))
+        await be.reset()
+        await store.apply(.focusChanged(b))
+        let w = await store.world
+        #expect(w.focus.window == a)
+        #expect(await be.calls.isEmpty)
+        #expect(w.invariantViolations().isEmpty)
+    }
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {

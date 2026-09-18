@@ -174,6 +174,11 @@ enum Ax {
         key: kAXParentAttribute,
         getter: { ($0 as! AXUIElement) },
     )
+    /// Direct children. Read to find a window's native tab bar — see `WindowClassifier`.
+    static let childrenAttr = ReadableAttrImpl<[AxUiElementMock]>(
+        key: kAXChildrenAttribute,
+        getter: { ($0 as? NSArray)?.map { castToAxUiElementMock($0 as AnyObject) } ?? [] },
+    )
     static let titleAttr = WritableAttrImpl<String>(
         key: kAXTitleAttribute,
         getter: { $0 as? String },

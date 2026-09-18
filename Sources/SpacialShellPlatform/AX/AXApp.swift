@@ -409,7 +409,31 @@ final class AXApp: @unchecked Sendable {
             window.lastSnapshot = snapshot
             result.append(snapshot)
         }
-        return result
+        if job.isCancelled { return nil }
+        return demoteBackgroundTabs(result)
+    }
+
+    /// Spec §7.3 addendum (issue #27): a native macOS tab group is one managed window. The rest of
+    /// its tabs become `.ignore` here rather than in `WindowClassifier.kind`, because a background
+    /// tab is only recognisable against its siblings — the group is found from the one window
+    /// carrying the tab bar, and every member reports the same frame.
+    private func demoteBackgroundTabs(_ snapshots: [WindowSnapshot]) -> [WindowSnapshot] {
+        let map = windows.threadGuarded
+        let tabs = WindowClassifier.backgroundNativeTabs(snapshots.compactMap { s in
+            map[s.ref.id].map { (ref: s.ref, frame: s.frame, ax: $0.ax as any AxUiElementMock) }
+        })
+        guard !tabs.isEmpty else { return snapshots }
+        return snapshots.map { s in
+            guard tabs.contains(s.ref) else { return s }
+            let demoted = WindowSnapshot(
+                ref: s.ref, frame: s.frame, title: s.title, bundleID: s.bundleID, kind: .ignore,
+                parent: s.parent, isMinimized: s.isMinimized, isFullscreen: s.isFullscreen,
+            )
+            // Keep the cache in step: a tab that stops answering later is replayed from here, and
+            // replaying it as `.tile` would re-adopt the very window this just demoted.
+            map[s.ref.id]?.lastSnapshot = demoted
+            return demoted
+        }
     }
 
     /// Spec §7.2 / ruling 5. `AXParent` of a plain window is the application element, whose
