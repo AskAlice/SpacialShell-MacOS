@@ -537,6 +537,23 @@ final class AXApp: @unchecked Sendable {
         }
     }
 
+    /// Bring a window back from minimized or ⌘H-hidden (#48), so that clicking its tab delivers it.
+    ///
+    /// Two independent ways a window gets put away, so both are undone: `AXMinimized = false` on
+    /// the window, and `unhide()` on the app for ⌘H. The app-level call goes through the main actor
+    /// like the activation in `raise`. A window that was not minimized answers success for the
+    /// first half, which is why the result of the AX write is what the caller sees.
+    func unhide(_ id: WindowID) async -> Result<Void, BackendError> {
+        let result = await runOnAppThread(fallback: { Result<Void, BackendError>.failure(.notFound) }) { [self] job in
+            if job.isCancelled { return .failure(.timeout) }
+            guard let window = windows.threadGuarded[id] else { return .failure(.notFound) }
+            guard window.ax.get(Ax.minimizedAttr) == true else { return .success(()) }
+            return window.ax.setChecked(Ax.minimizedAttr, false).asBackendResult
+        }
+        await MainActor.run { if nsApp.isHidden { nsApp.unhide() } }
+        return result
+    }
+
     /// MacApp.swift:102-110 (`closeAndUnregisterAxWindow`): press the close button and forget
     /// the window so no queued write outlives it.
     func close(_ id: WindowID) async -> Result<Void, BackendError> {

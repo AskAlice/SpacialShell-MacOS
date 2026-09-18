@@ -66,5 +66,9 @@ public protocol WindowBackend: Sendable {
     /// leave fullscreen before a workspace switch on that display (#49); the shell never *enters*
     /// fullscreen on the user's behalf.
     func setFullscreen(_ ref: WindowRef, _ on: Bool) async -> Result<Void, BackendError>
+    /// Bring a minimized or app-hidden window back (#48): clear `AXMinimized`, and unhide its app
+    /// if ⌘H put it away. The shell never hides windows itself; this only undoes what the user or
+    /// the app did, so that a tab click can deliver the window it names.
+    func unhide(_ ref: WindowRef) async -> Result<Void, BackendError>
     var events: AsyncStream<BackendEvent> { get }
 }

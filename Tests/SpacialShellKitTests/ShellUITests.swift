@@ -86,11 +86,16 @@ import Foundation
         #expect(w.screens["D2"]!.active.anchor == c)
         #expect(e == [.focus(c), .relayout])
     }
-    @Test func focusHiddenWindowIsANoOp() {
+    /// Decision 2026-09-15 (#48), replacing "a hidden window's tab is a no-op": a tab is a promise
+    /// that clicking it delivers the window. A minimized or ⌘H-hidden window is brought back —
+    /// `hidden` is cleared so focus can land on it (invariant 5), the backend is told to un-hide it,
+    /// and the reconciler places it by its row's layout.
+    @Test func focusHiddenWindowBringsItBack() {
         var w = base(); w.setHidden(b, true)
-        let before = w
         let (after, e) = run(w, .focusWindowRef(b))
-        #expect(after == before && e.isEmpty)
+        #expect(!after.hidden.contains(b) && after.focus.window == b)
+        #expect(e == [.unhide(b), .focus(b), .relayout])
+        #expect(after.invariantViolations().isEmpty)
     }
     @Test func focusEphemeralWorksWithoutAWorkspace() {
         var w = base(); let v = WindowRef(id: 9, pid: 9); w.adopt(v, kind: .ephemeral, on: "D1")

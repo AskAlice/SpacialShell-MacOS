@@ -207,6 +207,20 @@ import Foundation
         #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == b)
     }
 
+    /// Decision 2026-09-15 (#48): a tab is a promise that clicking it delivers the window. A
+    /// minimized window used to keep its (dimmed) tab while the click did nothing at all — the
+    /// user's Signal window, logged as `minimized=true`, with a tab that led nowhere.
+    @Test func clickingAHiddenWindowsTabBringsItBack() async {
+        let (store, be) = await make(snap([win(a), win(b, min: true)], focused: a))
+        #expect(await store.world.hidden == [b])
+        await be.reset()
+        await store.run(.focusWindowRef(b))
+        let w = await store.world
+        #expect(!w.hidden.contains(b) && w.focus.window == b)
+        #expect(await be.calls.contains(.unhide(b)))
+        #expect(w.invariantViolations().isEmpty)
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])
@@ -431,7 +445,7 @@ import Foundation
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
-    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x), .setFullscreen(let x, _): return x == r
+    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x), .setFullscreen(let x, _), .unhide(let x): return x == r
     }
 }
 actor ChangeBox { var value: World?; func set(_ w: World) { value = w } 

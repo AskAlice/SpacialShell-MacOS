@@ -91,6 +91,9 @@ public actor WorldStore {
             case .exitFullscreen(let r):
                 Self.log.notice("exit fullscreen \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) before workspace switch")
                 _ = await backend.setFullscreen(r, false)
+            // #48: the model already calls it visible, so make that true before the reconciler
+            // places it — otherwise the frame lands on a window macOS still has put away.
+            case .unhide(let r): _ = await backend.unhide(r)
             case .focus, .relayout: break
             }
         }

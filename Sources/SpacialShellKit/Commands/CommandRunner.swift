@@ -138,9 +138,12 @@ public enum CommandRunner {
 
         case .focusWindowRef(let r):
             if w.ephemeral.contains(r) { w.focus.window = r; return (w, [.focus(r)]) }
-            // A minimized/hidden window keeps its tab but a click cannot land focus on it: raising
-            // it would not deminiaturize it, and focus must stay somewhere real (invariant 5).
-            guard let loc = w.location(of: r), !w.hidden.contains(r) else { return (w, []) }
+            guard let loc = w.location(of: r) else { return (w, []) }
+            // Decision 2026-09-15 (#48): a tab is a promise. Clicking one delivers its window, so a
+            // minimized or app-hidden window is brought back instead of the click doing nothing —
+            // a visible control that silently no-ops was the bug. `hidden` is cleared here so focus
+            // lands on something the model calls visible (invariant 5); the backend makes it true.
+            if w.hidden.contains(r) { w.hidden.remove(r); effects.append(.unhide(r)) }
             w.focus.screen = loc.screen
             w.activate(index: loc.index, on: loc.screen)
             w.focus.window = r
