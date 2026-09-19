@@ -150,7 +150,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 await store.run(command)
                 return .ok(id: request.id)
             case "state":
-                let state = WireState(world: await store.world)
+                let state = await store.wireState()
                 return .ok(id: request.id, data: (try? JSONValue(encoding: state)) ?? .null)
             default:
                 return .failure(id: request.id, "unknown cmd \(request.cmd)")

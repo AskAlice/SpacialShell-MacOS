@@ -265,6 +265,22 @@ import Foundation
         #expect(!framed, "a deliberately parked window was dragged back on screen")
     }
 
+    /// #57: counts could not answer "which window is where, and is it parked", so diagnosing a
+    /// window that held focus while sitting off-screen meant reading the window server instead of
+    /// asking the shell. `spacialctl state` now carries the rows.
+    @Test func wireStateCarriesWindowRows() async {
+        let (store, _) = await make(snap([win(a, bundle: "com.a"), win(b, bundle: "com.b")], focused: a))
+        let state = await store.wireState()
+        let row = state.screens[0].workspaces[0].windows
+        #expect(row.count == 2)
+        #expect(row.first { $0.id == a.id }?.bundleID == "com.a")
+        #expect(row.first { $0.id == a.id }?.isFocused == true)
+        // `b` is parked under maximize — the fact the model knows and the outside could not see.
+        #expect(row.first { $0.id == b.id }?.isParked == true)
+        #expect(row.first { $0.id == b.id }?.frame?.count == 4)
+        #expect(state.v == 2 && state.capabilities.contains("window-rows"))
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])

@@ -82,6 +82,11 @@ public actor WorldStore {
     }
     /// The placement memory to persist — see `PersistedState.placements`.
     public func currentPlacements() -> [String: UUID] { placements }
+    /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
+    /// window belongs to, whether the shell has it parked, and the last frame it observed.
+    public func wireState() -> WireState {
+        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed)
+    }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
     public func run(_ command: Command) async {
