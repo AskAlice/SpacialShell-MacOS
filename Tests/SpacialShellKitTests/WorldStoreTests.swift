@@ -281,6 +281,39 @@ import Foundation
         #expect(state.v == 2 && state.capabilities.contains("window-rows"))
     }
 
+    /// I6's corollary, *switching to an app always shows a window* (#56, cause of #57). Measured
+    /// live before the fix: activating Finder, whose only window was parked in an inactive
+    /// workspace, produced **no store event at all** — macOS named it in the menu bar while the
+    /// window stayed at a parking corner, 7% visible.
+    @Test func activatingAnAppSurfacesItsParkedWindow() async {
+        let other = WindowRef(id: 3, pid: 9)      // a second app, so the row is not trivially active
+        let (store, be) = await make(snap([win(a), win(other, bundle: "com.other")], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))        // a → ws1, so `other` is left parked in ws0
+        #expect(await store.debugSideTables().parked.contains(other))
+        #expect(await store.world.screens["D1"]!.activeIndex == 1)
+        await be.reset()
+
+        await store.apply(.appActivated(pid: 9))
+
+        let w = await store.world
+        #expect(w.screens["D1"]!.activeIndex == 0, "the activated app's workspace was not activated")
+        #expect(w.focus.window == other)
+        #expect(await be.calls.contains { call in
+            if case .setFrame(let r, _) = call { return r == other } else { return false }
+        }, "the parked window was never given a frame")
+        #expect(w.invariantViolations().isEmpty)
+    }
+
+    /// …but an app that already has a visible, focused window must not be disturbed: re-activating
+    /// the app you are already in should change nothing.
+    @Test func activatingTheAppYouAreAlreadyInChangesNothing() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        let before = await store.world
+        await be.reset()
+        await store.apply(.appActivated(pid: 1))
+        #expect(await store.world == before)
+    }
+
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])

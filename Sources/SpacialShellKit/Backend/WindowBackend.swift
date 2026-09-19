@@ -47,6 +47,11 @@ public struct Snapshot: Equatable, Sendable {
 
 public enum BackendEvent: Sendable, Equatable {
     case snapshot(Snapshot)
+    /// macOS brought an app to the front (⌘Tab, the Dock, a click, `open`). Distinct from
+    /// `focusChanged`, which only ever names a *window*: an app whose windows are all parked or
+    /// minimized becomes frontmost with no focused window at all, so the shell heard nothing and
+    /// left the user with a menu bar naming an app they could not see (#56, #57).
+    case appActivated(pid: Int32)
     case windowMoved(WindowRef, CGRect)
     case windowResized(WindowRef, CGRect)
     case focusChanged(WindowRef?)

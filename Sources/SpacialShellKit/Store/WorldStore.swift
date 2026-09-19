@@ -124,6 +124,9 @@ public actor WorldStore {
         case .focusChanged(let r):
             if locked { return }
             applyNativeFocus(r)
+        case .appActivated(let pid):
+            if locked { return }
+            surfaceActivatedApp(pid)
         case .screenLocked:
             // Spec §7.7 freeze. Setting the flag only stops the *next* pass from starting; a plan
             // already mid-flight would keep writing frames at a locked screen, and its writes land
@@ -198,6 +201,44 @@ public actor WorldStore {
             }
         }
         applyNativeFocus(s.focused)
+    }
+
+    /// I6's corollary — *switching to an app always shows a window* (#56, and the cause of #57).
+    ///
+    /// `focusChanged` only ever names a window. An app whose windows are all parked in an inactive
+    /// workspace becomes frontmost with **no focused window**, so the store heard nothing: macOS
+    /// named the app in the menu bar, its tab highlighted, and the window stayed off-screen at a
+    /// parking corner. Measured live: activating Finder produced no store event at all, and the
+    /// model was byte-identical before and after.
+    ///
+    /// So an activation surfaces a window of that app itself. The workspace's anchor wins where
+    /// there is one — it is the window the user last used there — and the reconcile that follows
+    /// unparks it.
+    private func surfaceActivatedApp(_ pid: Int32) {
+        // Already showing something of this app in an active workspace: nothing to surface.
+        if let f = world.focus.window, f.pid == pid, let loc = world.location(of: f),
+           world.screens[loc.screen]?.activeIndex == loc.index, !world.hidden.contains(f) { return }
+        guard let target = candidateWindow(ofPid: pid), let loc = world.location(of: target) else { return }
+        Self.log.notice("surface \(target.id, privacy: .public) pid=\(pid) \(self.bundleIDs[target] ?? "-", privacy: .public) after app activation")
+        world.focus.screen = loc.screen
+        if world.screens[loc.screen]?.activeIndex != loc.index { world.activate(index: loc.index, on: loc.screen) }
+        world.focus.window = target
+        world.screens[loc.screen]!.workspaces[loc.index].anchor = target
+        world.normalize()
+    }
+
+    /// The window to show for an app: its workspace's anchor if that belongs to the app, else the
+    /// first of its windows the model can actually put on screen.
+    private func candidateWindow(ofPid pid: Int32) -> WindowRef? {
+        let mine = world.screenOrder
+            .flatMap { world.screens[$0]!.workspaces.flatMap(\.windows) }
+            .filter { $0.pid == pid && !world.hidden.contains($0) }
+        guard !mine.isEmpty else { return nil }
+        for w in mine {
+            guard let loc = world.location(of: w) else { continue }
+            if world.screens[loc.screen]!.workspaces[loc.index].anchor == w { return w }
+        }
+        return mine.first
     }
 
     private func applyNativeFocus(_ r: WindowRef?) {

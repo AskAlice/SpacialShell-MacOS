@@ -122,10 +122,16 @@ public final class AXWindowBackend: WindowBackend {
             observe(workspaceCenter, name) { [weak self] note in
                 // Spec §7.7 defence 3: loginwindow's launch/activate churn is the lock screen
                 // arriving, not the user doing anything.
-                let fromLoginwindow = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?
-                    .bundleIdentifier == loginwindowBundleId
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                let fromLoginwindow = app?.bundleIdentifier == loginwindowBundleId
+                // An activation is news in its own right, ahead of the debounced sweep (#56): the
+                // sweep reports the *focused window*, and an app whose windows are all parked has
+                // none, so waiting for it means never hearing that the user switched app at all.
+                let activatedPid = name == NSWorkspace.didActivateApplicationNotification
+                    ? app?.processIdentifier : nil
                 MainActor.assumeIsolated {
                     guard !fromLoginwindow else { return }
+                    if let pid = activatedPid { self?.continuation.yield(.appActivated(pid: pid)) }
                     self?.scheduleRefresh()
                 }
             }
