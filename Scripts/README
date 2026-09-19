@@ -33,9 +33,17 @@ is an .app.
 
   **Fix this once and it stops happening.** TCC keys the grant to the *designated
   requirement*, so a stable one survives rebuilds where an ad-hoc one cannot. `bundle.sh`
-  takes the best identity available, in order: `SPACIAL_SIGN_IDENTITY`, then
+  takes the best identity available, in order: `SPACIAL_SIGN_IDENTITY`, then the hash
+  pinned in `Scripts/sign-identity` (when that certificate is present on this Mac), then
   **Developer ID Application**, then **Apple Development**, then a self-signed
   `SpacialShell Dev`, then ad-hoc with a warning.
+
+  The pin exists because a Mac can hold two certificates with the same common name — a
+  renewed Developer ID gives you exactly that — and the search would otherwise take
+  whichever came first. Building with the other one produces an app TCC does not
+  recognise: the Accessibility checkbox stays ticked and `AXIsProcessTrusted()` returns
+  false, with nothing to explain why. A fresh clone on another Mac does not have the
+  pinned certificate, so it falls through to the search as before.
 
   A Developer ID is the best of these and not only because it is Apple-issued. Its
   designated requirement keys on the *team* — `certificate leaf[subject.OU] = <TEAMID>`
