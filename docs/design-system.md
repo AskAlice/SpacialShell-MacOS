@@ -40,7 +40,7 @@ No custom fonts, no font config key — deliberately (see §Config below).
 app names, category and window previews belong to the hover popover, not the tile — the rail stays
 narrow because it is furniture, and detail is one hover away. Top bar **34 pt** tall (`panel-height`): 26 pt tabs, radius 6, 16 pt icons,
 10 pt h-padding, tab width 88–220 pt; layout switcher 24 pt glyph, 12 pt from the trailing edge;
-badge offset (+7, −7). Panels sit flush to screen edges.
+badge offset (+7, −7). Panels sit flush to screen edges. (Tried and rejected 2026-09-21: floating cards inset by a `panel-margin`, per `claude/mockup-look` — see #59. There is no margin knob, and the rail stays 48 pt: a wider rail to hold per-workspace layout schematics was rejected with it, #61.)
 
 **The only mutable "tokens" are config keys** (`Sources/SpacialShellKit/Config/Config.swift`),
 TOML, kebab-case:
