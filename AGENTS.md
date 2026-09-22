@@ -93,6 +93,13 @@ Other PR expectations:
 
 GitHub Issues on `AskAlice/SpacialShell-MacOS`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
+**Nothing lives only in the conversation.** Every bug the user reports, feature or design idea,
+rule they state, and bug you discover is filed, or its existing issue updated, **in the same
+reply it comes up**, even when you are fixing it right away (the PR closes it). Issues sit in a
+hierarchy: milestone → `epic` → `story` → `task`, linked with GitHub sub-issues. Each reply that
+touches the tracker ends with `Tracked: #n (new), #m (updated)`. The full procedure is in
+`docs/agents/issue-tracker.md` → "Conversation tracking".
+
 ### Domain docs
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root, both created lazily by
