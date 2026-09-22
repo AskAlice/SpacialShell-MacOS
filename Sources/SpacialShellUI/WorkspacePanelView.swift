@@ -57,11 +57,8 @@ struct WorkspacePanelView: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Same card treatment as the rail (M2 design, amended 2026-09-21).
         .background(chrome)
-        .clipShape(RoundedRectangle(cornerRadius: ScreenPanelView.cornerRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: ScreenPanelView.cornerRadius, style: .continuous)
-            .strokeBorder(.separator, lineWidth: 1).opacity(0.6))
+        .overlay(alignment: .bottom) { Rectangle().fill(.separator).frame(height: 1).opacity(0.6) }
     }
 
     /// Not a `Button`: the close control inside it is one, and nested buttons fight over the

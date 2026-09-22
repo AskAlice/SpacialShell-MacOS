@@ -92,8 +92,8 @@ enum Stories {
                       isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen)
     }
 
-    static let railGeometry = CGSize(width: 112, height: 800)
-    static let barGeometry = CGSize(width: 1200, height: 48)
+    static let railGeometry = CGSize(width: 48, height: 800)
+    static let barGeometry = CGSize(width: 1200, height: 34)
 
     // MARK: catalog
 

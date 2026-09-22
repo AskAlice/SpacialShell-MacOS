@@ -19,19 +19,17 @@ import Foundation
     }
     @Test func leftRailInsets() {
         // Pinned, not defaulted: this test is about the inset arithmetic, so it must not move
-        // when `panel-width`'s or `panel-margin`'s default does. ConfigTests owns the defaults.
-        var c = Config(); c.railSide = .left; c.panelWidth = 48; c.panelHeight = 34; c.panelMargin = 10
+        // when `panel-width`'s default does. ConfigTests owns the default.
+        var c = Config(); c.railSide = .left; c.panelWidth = 48; c.panelHeight = 34
         let i = ShellInsets(config: c, hidden: false)
-        // The cards float: every edge gives up the margin, the two carrying a card give up the
-        // card on top of it.
-        #expect(i.top == 44 && i.left == 58 && i.right == 10 && i.bottom == 10)
-        #expect(i.apply(to: CGRect(x: 0, y: 0, width: 1000, height: 700)) == CGRect(x: 58, y: 44, width: 932, height: 646))
+        #expect(i.top == 34 && i.left == 48 && i.right == 0 && i.bottom == 0)
+        #expect(i.apply(to: CGRect(x: 0, y: 0, width: 1000, height: 700)) == CGRect(x: 48, y: 34, width: 952, height: 666))
     }
     @Test func rightRailInsets() {
-        var c = Config(); c.railSide = .right; c.panelWidth = 48; c.panelHeight = 34; c.panelMargin = 10
+        var c = Config(); c.railSide = .right; c.panelWidth = 48; c.panelHeight = 34
         let i = ShellInsets(config: c, hidden: false)
-        #expect(i.top == 44 && i.left == 10 && i.right == 58 && i.bottom == 10)
-        #expect(i.apply(to: CGRect(x: 0, y: 0, width: 1000, height: 700)) == CGRect(x: 10, y: 44, width: 932, height: 646))
+        #expect(i.top == 34 && i.left == 0 && i.right == 48 && i.bottom == 0)
+        #expect(i.apply(to: CGRect(x: 0, y: 0, width: 1000, height: 700)) == CGRect(x: 0, y: 34, width: 952, height: 666))
     }
     @Test func hiddenIsZero() {
         #expect(ShellInsets(config: Config(), hidden: true) == .zero)

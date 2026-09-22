@@ -88,28 +88,23 @@ public final class ShellController: NSObject {
             // NSScreen speaks bottom-left y-up; panels are placed directly in it, no flip needed.
             // `rail-side` mirrors the rail; the bar always spans the rest of the top edge.
             let vf = nsScreen.visibleFrame
-            // Floating cards: every edge gives up `panel-margin`, and the bar starts a margin past
-            // the rail rather than butting against it. The same margin is what `ShellInsets` hands
-            // the reconciler, so the window area meets the cards exactly — plus the tiling `gap`.
-            let m = CGFloat(config.panelMargin)
-            let railX = config.railSide == .left ? vf.minX + m : vf.maxX - m - railWidth
-            let barX = config.railSide == .left ? railX + railWidth + m : vf.minX + m
-            p.rail.setFrame(NSRect(x: railX, y: vf.minY + m, width: railWidth, height: vf.height - 2 * m),
-                            display: true)
-            p.bar.setFrame(NSRect(x: barX, y: vf.maxY - m - barHeight,
-                                  width: vf.width - 2 * m - railWidth - m, height: barHeight), display: true)
+            let railX = config.railSide == .left ? vf.minX : vf.maxX - railWidth
+            let barX = config.railSide == .left ? vf.minX + railWidth : vf.minX
+            p.rail.setFrame(NSRect(x: railX, y: vf.minY, width: railWidth, height: vf.height), display: true)
+            p.bar.setFrame(NSRect(x: barX, y: vf.maxY - barHeight,
+                                  width: vf.width - railWidth, height: barHeight), display: true)
 
             // The ring panel covers the whole display. `focusedFrame` is AX top-left and global;
             // the ring view draws in its own top-left space, so the frame only needs shifting by
             // the panel's origin — the flip from NSScreen's y-up happens once, here.
             p.ring.setFrame(vf, display: true)
             let mainHeight = NSScreen.screens.first?.frame.height ?? 0
-            let ringFrame = focusedFrame.flatMap { f -> CGRect? in
+            let ringFrame = config.focusRing ? focusedFrame.flatMap { f -> CGRect? in
                 let screenTop = mainHeight - vf.maxY          // AX y of this display's visible top
                 let local = CGRect(x: f.minX - vf.minX, y: f.minY - screenTop, width: f.width, height: f.height)
                 // Only draw a ring for a window on *this* display.
                 return local.intersects(CGRect(origin: .zero, size: vf.size)) ? local : nil
-            }
+            } : nil
             p.ringHost.rootView = FocusRingView(frame: ringFrame,
                                                 color: FocusRingView.color(for: config),
                                                 animation: FocusRingView.animation(for: config))
