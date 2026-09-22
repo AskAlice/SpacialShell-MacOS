@@ -78,6 +78,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
             placements: restored?.placements ?? [:],
+            // T20: the ring is driven straight from the reconcile, ahead of the AX write.
+            onFocusedFrame: { [weak self] frame in
+                Task { @MainActor in self?.shell?.update(focusedFrame: frame) }
+            },
         ) { [weak self] world in
             gate.note(world: world)
             Task { @MainActor in

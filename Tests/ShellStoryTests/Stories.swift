@@ -199,6 +199,12 @@ enum Stories {
         add("bar-fullscreen", barGeometry, WorkspacePanelView(
             state: tabs([tab(3, focused: true), tab(1, fullscreen: true), tab(4)]),
             metaFor: meta, sizing: .fit, send: send))
+        // T20 focus ring: the highlight panel's content — one window's frame inside a display.
+        add("ring-focused", CGSize(width: 600, height: 400),
+            FocusRingView(frame: CGRect(x: 40, y: 40, width: 400, height: 260), color: .accentColor, animation: nil))
+        // …and the honest empty case: focus on something with no tiled frame draws nothing at all.
+        add("ring-none", CGSize(width: 600, height: 400),
+            FocusRingView(frame: nil, color: .accentColor, animation: nil))
         add("bar-twenty-tabs", CGSize(width: 800, height: 34), WorkspacePanelView(
             state: tabs((1...20).map { tab(Int32(($0 % 6) + 1), focused: $0 == 1) }, layout: .column),
             metaFor: meta, sizing: .fit, send: send),

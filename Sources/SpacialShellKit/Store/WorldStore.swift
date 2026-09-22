@@ -10,6 +10,11 @@ public actor WorldStore {
     private var config: Config
     private let zeroSliverBundleIDs: Set<String>
     private let onChange: @Sendable (World) -> Void
+    /// The frame the focused window is about to be tiled at (AX top-left coordinates), nil when
+    /// focus is floating, hidden, fullscreen or nowhere. Published from `Reconciler.desired`
+    /// *before* the AX write lands, so the focus ring arrives with the intent instead of trailing
+    /// the window across the screen (M2 T20 / M3a A-list B6).
+    private let onFocusedFrame: @Sendable (CGRect?) -> Void
 
     private var displays: [DisplayInfo] = []
     private var observed: [WindowRef: CGRect] = [:]
@@ -48,8 +53,11 @@ public actor WorldStore {
     private var started = false
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
-                placements: [String: UUID] = [:], onChange: @escaping @Sendable (World) -> Void) {
+                placements: [String: UUID] = [:],
+                onFocusedFrame: @escaping @Sendable (CGRect?) -> Void = { _ in },
+                onChange: @escaping @Sendable (World) -> Void) {
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
+        self.onFocusedFrame = onFocusedFrame
         self.placements = placements
         self.world = world ?? World.seeded(screens: [], config: config)
     }
@@ -356,6 +364,11 @@ public actor WorldStore {
                 Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
             }
         }
+        // T20: the ring follows the *intent* — the frame the reconciler just decided on — rather
+        // than chasing the window across the screen after AX delivers it. A focused window with no
+        // tiled frame (floating, fullscreen, parked, hidden) has no ring, which is the honest
+        // answer: there is nothing at a known place to draw around.
+        if let f = world.focus.window, case .frame(let r)? = desired[f] { onFocusedFrame(r) } else { onFocusedFrame(nil) }
         onChange(world)
     }
 
