@@ -314,6 +314,51 @@ import Foundation
         #expect(await store.world == before)
     }
 
+    /// The workspace ping-pong (#NN): "i was switching workspaces and it started repeatedly cycling
+    /// different workspaces". Two displays, each already showing a different app. Activating either
+    /// app must do nothing — before the fix the test asked whether the activated app owned the
+    /// single *global* focus, which is false for whichever display is not focused, so the shell
+    /// surfaced an app that was already on screen, switching that display's workspace; the switch
+    /// activated the app it left, and the two displays traded workspaces for as long as it ran.
+    @Test func anAppAlreadyOnScreenOnAnotherDisplayIsNeverResurfaced() async {
+        let d2 = DisplayInfo(id: "D2", frame: CGRect(x: 1000, y: 0, width: 1000, height: 700),
+                             visibleFrame: CGRect(x: 1000, y: 25, width: 1000, height: 675), isMain: false)
+        let far = WindowRef(id: 7, pid: 9)
+        let s = Snapshot(displays: [d1, d2],
+                         apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false),
+                                AppInfo(pid: 9, bundleID: "com.other", isHidden: false)],
+                         windows: [win(a, CGRect(x: 0, y: 0, width: 300, height: 200)),
+                                   win(far, CGRect(x: 1000, y: 0, width: 300, height: 200), bundle: "com.other")],
+                         focused: a, loginwindowFrontmost: false)
+        let (store, be) = await make(s)
+        // Each display shows one app, and focus is on D1 — so `far` is on screen but unfocused.
+        #expect(await store.world.screens["D2"]!.active.windows == [far])
+        let before = await store.world
+        await be.reset()
+
+        await store.apply(.appActivated(pid: 9))
+
+        #expect(await store.world == before, "an app that is already on screen was resurfaced")
+        #expect(await be.calls.isEmpty, "nothing on screen changed, yet the shell wrote to AX")
+    }
+
+    /// The loop's second beat: once an app has been surfaced, every further activation of it —
+    /// the echo of our own raise, a second Dock click — must be a no-op. (The visibility test above
+    /// is what makes this hold; the `lastRaised` guard in `apply` is belt-and-braces for the case
+    /// where the raise failed and the model believes a window is on screen that is not.)
+    @Test func reActivatingAnAppAlreadySurfacedChangesNothing() async {
+        let other = WindowRef(id: 3, pid: 9)
+        let (store, _) = await make(snap([win(a), win(other, bundle: "com.other")], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))   // a → ws1; `other` is parked in ws0
+        await store.apply(.appActivated(pid: 9))         // a human activation: surfaces `other`
+        let surfaced = await store.world
+        #expect(surfaced.focus.window == other)
+
+        // macOS now reports the activation our raise of `other` caused. Nothing may move.
+        await store.apply(.appActivated(pid: 9))
+        #expect(await store.world == surfaced)
+    }
+
     /// T20 (M2 design, Motion): the focus ring is published from `Reconciler.desired` during the
     /// reconcile — the frame the window is *about* to get — so the ring is already at the
     /// destination when AX delivers the window there, instead of chasing it across the screen.

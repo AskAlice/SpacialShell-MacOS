@@ -143,6 +143,17 @@ extension World {
         normalize()
     }
 
+    /// Drops every workspace reservation and reaps what that exposes. `PersistedState.restore`
+    /// reserves a workspace per remembered placement so the window can land back in it; once the
+    /// first snapshot has adopted everything that is running, a reservation still empty belongs to
+    /// an app that did not come back, and keeping it leaves a dead row in the middle of the rail.
+    public mutating func clearReservations() {
+        for id in screens.keys {
+            for i in screens[id]!.workspaces.indices { screens[id]!.workspaces[i].reserved = false }
+        }
+        normalize()
+    }
+
     /// Restores invariants 4 and 5 after any mutation. Idempotent.
     public mutating func normalize() {
         for id in screens.keys {

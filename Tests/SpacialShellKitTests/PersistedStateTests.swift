@@ -101,6 +101,34 @@ import Foundation
         #expect(fresh.screens["D1"]!.workspaces.first?.reserved == false)   // its windows are back
         #expect(fresh.invariantViolations().isEmpty)
     }
+    /// …but the reservation has to end. Reported: "there shouldn't be empty workspaces in between a
+    /// workspace with windows in it". An app that is simply not running this session leaves its
+    /// reserved workspace empty forever, and `normalize()` will not reap it, so the rail keeps a
+    /// dead row in the middle of the stack. `clearReservations()` — which the store calls once the
+    /// first snapshot has adopted everything that *is* running — ends the hold and reaps it.
+    @Test func clearingReservationsReapsTheWorkspacesNoAppCameBackTo() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        let live = WindowRef(id: 1, pid: 10), gone = WindowRef(id: 2, pid: 11)
+        w.adopt(live, kind: .tile, on: "D1")
+        w.activate(index: 1, on: "D1")                          // the trailing empty row…
+        w.adopt(gone, kind: .tile, on: "D1")                    // …which this fills, so there are two
+        let s = PersistedState(world: w, placements: PersistedState.placements(
+            world: w, bundleIDs: [live: "com.live", gone: "com.gone"]))
+
+        // Next launch: only `com.live` is running, so only its window is adopted.
+        var fresh = s.restore(into: World.empty(screens: ["D1"], defaultLayout: .maximize))
+        fresh.adopt(live, kind: .tile, on: "D1", workspace: s.placements["com.live"])
+        let held = fresh.screens["D1"]!.workspaces
+        #expect(held.contains { $0.isEmpty && $0.reserved }, "com.gone's workspace was not held open")
+
+        fresh.clearReservations()
+
+        let rows = fresh.screens["D1"]!.workspaces
+        #expect(rows.dropLast().allSatisfy { !$0.isEmpty }, "an empty row survived in the middle: \(rows.map(\.windows))")
+        #expect(rows.last!.isEmpty, "the trailing empty workspace is invariant 4 and must remain")
+        #expect(fresh.invariantViolations().isEmpty)
+    }
+
     @Test func restoreDropsAnUnpinnedWorkspaceNoAppIsComingBackTo() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         w.adopt(WindowRef(id: 1, pid: 10), kind: .tile, on: "D1")

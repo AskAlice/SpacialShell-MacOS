@@ -51,6 +51,8 @@ public actor WorldStore {
     private var generation = 0
     private var eventTask: Task<Void, Never>?
     private var started = false
+    /// See `applySnapshot`: the boot reservations are retired after the first snapshot.
+    private var reservationsExpired = false
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:],
@@ -134,6 +136,10 @@ public actor WorldStore {
             applyNativeFocus(r)
         case .appActivated(let pid):
             if locked { return }
+            // Raising a window activates its app, and macOS reports that back as an activation
+            // like any other. Acting on it would raise again, and again. Nothing is lost by
+            // ignoring it: the app we just raised is the one already on screen.
+            if pid == lastRaised?.pid { return }
             surfaceActivatedApp(pid)
         case .screenLocked:
             // Spec §7.7 freeze. Setting the flag only stops the *next* pass from starting; a plan
@@ -208,6 +214,17 @@ public actor WorldStore {
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
             }
         }
+        // Reservations only have to survive the gap between `PersistedState.restore` and the first
+        // snapshot: restore holds a workspace open for each remembered placement so its window can
+        // land back in it. By here every window that is actually running has been adopted, so a
+        // reserved workspace still empty belongs to an app that did not come back — and holding it
+        // open any longer leaves a dead row in the middle of the rail forever. One shot: a later
+        // snapshot must not re-reap a workspace the user has deliberately emptied and is about to
+        // fill, which `normalize()` already protects by never reaping the active row.
+        if !reservationsExpired {
+            reservationsExpired = true
+            world.clearReservations()
+        }
         applyNativeFocus(s.focused)
     }
 
@@ -223,9 +240,13 @@ public actor WorldStore {
     /// there is one — it is the window the user last used there — and the reconcile that follows
     /// unparks it.
     private func surfaceActivatedApp(_ pid: Int32) {
-        // Already showing something of this app in an active workspace: nothing to surface.
-        if let f = world.focus.window, f.pid == pid, let loc = world.location(of: f),
-           world.screens[loc.screen]?.activeIndex == loc.index, !world.hidden.contains(f) { return }
+        // Already showing a window of this app: nothing to surface. The test is per display, not
+        // "does this app own the single global focus" — with more than one screen two apps are on
+        // screen at once, one per screen, and a focus test answers no for the app on the *other*
+        // display. Surfacing it then switches that display's workspace for nothing, and the switch
+        // activates the app we just left, which surfaces it right back: the two displays trade
+        // workspaces forever.
+        if world.screens.values.contains(where: { world.visible(in: $0.active).contains { $0.pid == pid } }) { return }
         guard let target = candidateWindow(ofPid: pid), let loc = world.location(of: target) else { return }
         Self.log.notice("surface \(target.id, privacy: .public) pid=\(pid) \(self.bundleIDs[target] ?? "-", privacy: .public) after app activation")
         world.focus.screen = loc.screen
