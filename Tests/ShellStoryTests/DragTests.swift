@@ -25,10 +25,10 @@ import UniformTypeIdentifiers
         ScreenShellState(
             display: "D1", isFocusedScreen: true,
             rail: [WorkspaceRailItem(id: UUID(), index: 0, name: "Code", symbol: "terminal",
-                                     windowCount: 1, layout: .maximize, windows: [WindowRef(id: 1, pid: 1)],
+                                     windowCount: 1, windows: [WindowRef(id: 1, pid: 1)],
                                      isActive: true, isPinned: false, isTrailingEmpty: false),
                    WorkspaceRailItem(id: UUID(), index: 1, name: "New", symbol: "plus",
-                                     windowCount: 0, layout: .maximize, windows: [],
+                                     windowCount: 0, windows: [],
                                      isActive: false, isPinned: false, isTrailingEmpty: true)],
             tabs: [], layout: .split)
     }

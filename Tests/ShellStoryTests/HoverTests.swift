@@ -24,7 +24,7 @@ import SwiftUI
         ScreenShellState(
             display: "D1", isFocusedScreen: true,
             rail: [WorkspaceRailItem(id: UUID(), index: 0, name: "Code", symbol: "terminal",
-                                     windowCount: 1, layout: .maximize, windows: [WindowRef(id: 1, pid: 1)],
+                                     windowCount: 1, windows: [WindowRef(id: 1, pid: 1)],
                                      isActive: true, isPinned: false, isTrailingEmpty: false)],
             tabs: [], layout: .split)
     }
