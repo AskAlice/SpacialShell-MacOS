@@ -139,15 +139,15 @@ import Foundation
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         w.adopt(a, kind: .tile, on: "D1")
         // Pinned so the arithmetic below stays readable and does not move with the default.
-        var cfg = Config(); cfg.panelWidth = 48; cfg.panelHeight = 34
+        var cfg = Config(); cfg.panelWidth = 48; cfg.panelHeight = 34; cfg.panelMargin = 10
         func rect(_ world: World) -> Placement? {
             let insets = ["D1": ShellInsets(config: cfg, hidden: world.zen)]
             return Reconciler.desired(world: world, displays: [display], config: LayoutConfig(gap: 8),
                                       observed: [:], prePark: [:], parkedNow: [], zeroSliver: [],
                                       insets: insets)[a]
         }
-        // panel-width 48, panel-height 34, gap 8, height−1:
-        #expect(rect(w) == .frame(CGRect(x: 56, y: 67, width: 936, height: 524)))
+        // panel-width 48, panel-height 34, panel-margin 10, gap 8, height−1:
+        #expect(rect(w) == .frame(CGRect(x: 66, y: 77, width: 916, height: 504)))
         w = CommandRunner.apply(.toggleShellUI, to: w).0
         #expect(w.zen)
         #expect(rect(w) == .frame(CGRect(x: 8, y: 33, width: 984, height: 558)))

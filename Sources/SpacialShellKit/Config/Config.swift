@@ -65,8 +65,12 @@ public struct Config: Codable, Equatable, Sendable {
     public var axTimeoutMs: Int = 1000
     public var refreshIntervalMs: Int = 2000
     public var startAtLogin: Bool = false
-    public var panelWidth: Double = 48
-    public var panelHeight: Double = 34
+    public var panelWidth: Double = 112
+    public var panelHeight: Double = 48
+    /// The gap a floating card leaves to the screen edge, and to the window area (M2 design,
+    /// amended 2026-09-21). `ShellInsets` and the panel frames both derive from it, so the
+    /// reconciler and the windows agree by construction rather than by two copies of the sum.
+    public var panelMargin: Double = 12
     public var railSide: RailSide = .left
     public var tabSizing: TabSizing = .fit
     public var highlightMs: Int = 600
@@ -100,7 +104,7 @@ public struct Config: Codable, Equatable, Sendable {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, keybindings,
-             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
+             panelWidth = "panel-width", panelHeight = "panel-height", panelMargin = "panel-margin", railSide = "rail-side", tabSizing = "tab-sizing",
              highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels",
              highlightColor = "highlight-color", appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
@@ -114,8 +118,9 @@ public struct Config: Codable, Equatable, Sendable {
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
-        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 48
-        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
+        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 112
+        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 48
+        panelMargin = try c.decodeIfPresent(Double.self, forKey: .panelMargin) ?? 12
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
         highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
@@ -163,6 +168,7 @@ public struct Config: Codable, Equatable, Sendable {
         start-at-login = \(startAtLogin)
         panel-width = \(panelWidth)
         panel-height = \(panelHeight)
+        panel-margin = \(panelMargin)
         rail-side = \(q(railSide.rawValue))
         highlight-ms = \(highlightMs)
         launcher-url = \(q(launcherURL))

@@ -104,33 +104,54 @@ struct ScreenPanelView: View {
             }
         }
         .padding(.top, 8)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // A floating card, not flush chrome (M2 design, amended 2026-09-21): the tint is clipped to
+        // the card's shape and the edge is a stroke all the way round, rather than one separator
+        // line where the panel met the screen edge.
         .background(chrome)
-        .overlay(alignment: .trailing) { Rectangle().fill(.separator).frame(width: 1).opacity(0.6) }
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            .strokeBorder(.separator, lineWidth: 1).opacity(0.6))
     }
+
+    static let cornerRadius: CGFloat = 14
 
     @ViewBuilder
     private func row(_ item: WorkspaceRailItem) -> some View {
         let apps = distinctApps(item)
-        ZStack {
-            if item.isTrailingEmpty {
-                Image(systemName: "plus").font(.system(size: 15, weight: .medium))
-            } else if apps.isEmpty {
-                Image(systemName: item.symbol).font(.system(size: 15, weight: .medium))
-            } else {
-                icons(apps)
+        VStack(spacing: 5) {
+            ZStack {
+                if item.isTrailingEmpty {
+                    Image(systemName: "plus").font(.system(size: 15, weight: .medium))
+                } else if apps.isEmpty {
+                    Image(systemName: item.symbol).font(.system(size: 15, weight: .medium))
+                } else {
+                    icons(apps)
+                }
+                if !item.isTrailingEmpty && item.windowCount > 0 {
+                    Text("\(item.windowCount)")
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 3)
+                        .background(Capsule().fill(Color.black.opacity(0.45)))
+                        .foregroundStyle(.white)
+                        .offset(x: 13, y: 13)
+                }
             }
-            if !item.isTrailingEmpty && item.windowCount > 0 {
-                Text("\(item.windowCount)")
-                    .font(.system(size: 8, weight: .bold))
-                    .padding(.horizontal, 3)
-                    .background(Capsule().fill(Color.black.opacity(0.45)))
-                    .foregroundStyle(.white)
-                    .offset(x: 13, y: 13)
+            .frame(width: 32, height: 32)
+
+            // The row's *shape*, so a workspace is recognisable without reading anything. Drawn
+            // from `LayoutEngine` — never a window capture, so no Screen Recording permission and
+            // nothing to keep in step with reality. The trailing "+" row has no layout to show.
+            if !item.isTrailingEmpty {
+                WorkspacePreview(layout: item.layout, count: item.windowCount,
+                                 fill: item.isActive ? Color.white : Color.secondary)
+                    // Display-shaped, so the schematic reads as a screen rather than as a bar.
+                    .frame(width: 56, height: 35)
             }
         }
-        .frame(width: 32, height: 32)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(item.isActive ? AnyShapeStyle(Color.accentColor.opacity(0.85))
@@ -173,4 +194,30 @@ struct ScreenPanelView: View {
         return item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid) : nil }
     }
 
+}
+
+/// The row's tiling at thumbnail scale: one cell per frame the layout engine would give it, so the
+/// tile shows `split` as two columns and `grid` as a grid without anyone labelling them. An empty
+/// row draws a dashed outline — there is a workspace here, with nothing in it yet.
+struct WorkspacePreview: View {
+    // Qualified: SwiftUI has a `Layout` protocol of its own, so the bare name is ambiguous in any
+    // file that imports both SwiftUI and SpacialShellProtocol.
+    let layout: SpacialShellProtocol.Layout
+    let count: Int
+    let fill: Color
+
+    var body: some View {
+        Canvas { ctx, size in
+            let rect = CGRect(origin: .zero, size: size)
+            // The screen itself, always drawn: it is what makes `maximize` read as one window
+            // filling a display rather than as an unexplained slab.
+            ctx.stroke(Path(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerRadius: 4),
+                       with: .color(fill.opacity(0.55)), lineWidth: 1)
+            let inner = rect.insetBy(dx: 3, dy: 3)
+            for c in LayoutEngine.frames(layout, count: count, focused: 0, in: inner, gap: 2).compactMap({ $0 }) {
+                ctx.fill(Path(roundedRect: c, cornerRadius: 1.5), with: .color(fill.opacity(0.5)))
+            }
+        }
+        .accessibilityHidden(true)
+    }
 }

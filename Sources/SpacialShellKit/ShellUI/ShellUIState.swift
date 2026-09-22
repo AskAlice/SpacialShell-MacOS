@@ -11,6 +11,9 @@ public struct WorkspaceRailItem: Identifiable, Equatable, Sendable {
     public let name: String
     public let symbol: String        // SF Symbol name (config seed or default)
     public let windowCount: Int      // all windows in the row, hidden ones included
+    /// The row's layout, so the tile can draw its *shape* — a schematic from `LayoutEngine`, never
+    /// a capture, so it needs no Screen Recording permission and costs nothing to draw.
+    public let layout: Layout
     /// The row itself, in order. The rail draws one icon per distinct app and derives the
     /// workspace's category from them; both need the apps, not just how many there are. Resolving
     /// a `pid` to a name, an icon or a bundle id stays on the platform side, as it does for tabs.
@@ -19,9 +22,10 @@ public struct WorkspaceRailItem: Identifiable, Equatable, Sendable {
     public let isPinned: Bool
     public let isTrailingEmpty: Bool // the always-there way down (invariant 4); drawn as "+"
     public init(id: UUID, index: Int, name: String, symbol: String, windowCount: Int,
-                windows: [WindowRef] = [], isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool) {
+                layout: Layout, windows: [WindowRef] = [],
+                isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool) {
         self.id = id; self.index = index; self.name = name; self.symbol = symbol
-        self.windowCount = windowCount; self.windows = windows
+        self.windowCount = windowCount; self.windows = windows; self.layout = layout
         self.isActive = isActive; self.isPinned = isPinned
         self.isTrailingEmpty = isTrailingEmpty
     }
@@ -61,6 +65,7 @@ public enum ShellUI {
             WorkspaceRailItem(
                 id: ws.id, index: i, name: ws.name, symbol: ws.symbol,
                 windowCount: ws.windows.count,
+                layout: ws.layout,
                 windows: ws.windows,
                 isActive: i == screen.activeIndex,
                 isPinned: ws.pinned,

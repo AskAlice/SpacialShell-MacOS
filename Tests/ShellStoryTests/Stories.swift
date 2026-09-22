@@ -75,9 +75,9 @@ enum Stories {
     }
     /// `pids` are the apps actually in the row — the rail draws one icon each and derives the
     /// category label from them, so a story without pids is a workspace of unknown apps.
-    static func railItem(_ i: Int, name: String, symbol: String, count: Int, pids: [Int32] = [],
+    static func railItem(_ i: Int, name: String, symbol: String, count: Int, layout: SpacialShellProtocol.Layout = .maximize, pids: [Int32] = [],
                          active: Bool = false, pinned: Bool = false, trailing: Bool = false) -> WorkspaceRailItem {
-        WorkspaceRailItem(id: UUID(), index: i, name: name, symbol: symbol, windowCount: count,
+        WorkspaceRailItem(id: UUID(), index: i, name: name, symbol: symbol, windowCount: count, layout: layout,
                           windows: pids.map { WindowRef(id: WindowID($0) * 10, pid: $0) },
                           isActive: active, isPinned: pinned, isTrailingEmpty: trailing)
     }
@@ -92,8 +92,8 @@ enum Stories {
                       isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen)
     }
 
-    static let railGeometry = CGSize(width: 48, height: 800)
-    static let barGeometry = CGSize(width: 1200, height: 34)
+    static let railGeometry = CGSize(width: 112, height: 800)
+    static let barGeometry = CGSize(width: 1200, height: 48)
 
     // MARK: catalog
 
@@ -123,6 +123,16 @@ enum Stories {
             state: rail([railItem(0, name: "Everything", symbol: "square.grid.2x2", count: 6,
                                   pids: [5, 3, 1, 6, 4, 2], active: true),
                          railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta, send: send))
+        // One row per layout: the tile schematic is the only thing that distinguishes them, so this
+        // story is what catches a preview that stops tracking `Workspace.layout`.
+        add("rail-layout-previews", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "One", symbol: "globe", count: 1, layout: .maximize, pids: [1]),
+                         railItem(1, name: "Two", symbol: "globe", count: 2, layout: .split, pids: [1, 3]),
+                         railItem(2, name: "Three", symbol: "globe", count: 3, layout: .column, pids: [1, 3, 5]),
+                         railItem(3, name: "Half", symbol: "globe", count: 3, layout: .half, pids: [1, 3, 5], active: true),
+                         railItem(4, name: "Grid", symbol: "globe", count: 4, layout: .grid, pids: [1, 3, 5, 6]),
+                         railItem(5, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
             launcherURL: "raycast://", metaFor: meta, send: send))
         // No cog on a secondary display — one way into settings, not one per monitor.
         add("rail-secondary-screen", railGeometry, ScreenPanelView(
