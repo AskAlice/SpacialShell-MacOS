@@ -34,7 +34,7 @@ public enum Reconciler {
                 let size = observed[w]?.size ?? fallbackSize
                 return .parked(Parking.origin(windowSize: size, visibleFrame: visible, corner: corner, sliver: zeroSliver.contains(w) ? 0 : 1))
             }
-            var rect = insets[sid, default: .zero].apply(to: screen.rect ?? visible)
+            var rect = viewport(screen: screen, display: display, insets: insets[sid, default: .zero])
             rect = rect.insetBy(dx: config.gap, dy: config.gap)
             rect.size.height -= 1   // macOS may refuse full-height frames on stacked displays
             for (i, ws) in screen.workspaces.enumerated() {
@@ -61,6 +61,12 @@ public enum Reconciler {
         }
         for w in world.ephemeral { out[w] = .untouched }
         return out
+    }
+
+    /// The area a display's windows are tiled in: its visible frame (or the screen's own rect),
+    /// less whatever the shell panels claim. Also the clip a switch animation slides within (#64).
+    public static func viewport(screen: Screen, display: DisplayInfo, insets: ShellInsets) -> CGRect {
+        insets.apply(to: screen.rect ?? display.visibleFrame)
     }
 
     /// Writes needed to move reality to `desired`. Unparks/frames first, then parks. Stable order by window id.

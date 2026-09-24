@@ -402,6 +402,84 @@ import Foundation
         #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == other)
     }
 
+    /// Records what the store asked the animator to draw, and how many backend writes had already
+    /// happened at each step — the overlay must be up before the first frame is written.
+    actor FakeAnimator: SwitchAnimator {
+        let be: FakeBackend
+        let accept: Bool
+        var prepared: [[Transition]] = []
+        var writesAtPrepare: [Int] = []
+        var writesAtPlay: [Int] = []
+        init(be: FakeBackend, accept: Bool = true) { self.be = be; self.accept = accept }
+        func prepare(_ t: [Transition]) async -> Bool {
+            prepared.append(t); writesAtPrepare.append(await be.calls.count); return accept
+        }
+        func play() async { writesAtPlay.append(await be.calls.count) }
+    }
+
+    func makeAnimated(_ s: Snapshot, config: Config? = nil, accept: Bool = true) async -> (WorldStore, FakeBackend, FakeAnimator) {
+        let be = FakeBackend(snapshot: s)
+        let anim = FakeAnimator(be: be, accept: accept)
+        let store = WorldStore(backend: be, config: config ?? m1Config(), world: nil, zeroSliverBundleIDs: [],
+                               animator: anim, onChange: { _ in })
+        await store.start()
+        return (store, be, anim)
+    }
+
+    /// #67: Fn+D under maximize is a transition — the outgoing window leaves left, the incoming
+    /// arrives from the right — and the overlay is prepared before any frame is written, then
+    /// played once they all are.
+    @Test func aTabSwitchIsAnimatedAroundTheWrites() async {
+        let (store, be, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        #expect(await anim.prepared.isEmpty, "adopting the windows at start is not a switch")
+        await be.reset()
+
+        await store.run(.focusWindow(.right))
+
+        let prepared = await anim.prepared
+        #expect(prepared.count == 1)
+        let moves = prepared.first?.first?.moves ?? []
+        #expect(Set(moves.map(\.ref)) == [a, b])
+        let out = moves.first { $0.ref == a }, into = moves.first { $0.ref == b }
+        #expect(out.map { $0.to.minX < $0.from.minX } == true, "the outgoing window did not leave to the left")
+        #expect(into.map { $0.from.minX > $0.to.minX } == true, "the incoming window did not arrive from the right")
+        #expect(await anim.writesAtPrepare == [0], "the overlay must be up before the first write")
+        let writes = await be.calls.count, atPlay = await anim.writesAtPlay
+        #expect(writes > 0 && atPlay == [writes], "play must follow the writes")
+    }
+
+    /// #66: Fn+S is a transition too, travelling up.
+    @Test func aWorkspaceSwitchIsAnimated() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))    // a → ws1 (a switch itself)
+        let before = await anim.prepared.count
+        await store.run(.focusWorkspace(.up))             // back to b's row
+
+        let prepared = await anim.prepared
+        #expect(prepared.count == before + 1)
+        let moves = prepared.last?.first?.moves ?? []
+        let into = moves.first { $0.ref == b }
+        #expect(into.map { $0.from.minY < $0.to.minY } == true, "going up the rail, the row arrives from above")
+    }
+
+    /// `animations = false` places instantly: the animator is never asked.
+    @Test func animationsOffNeverPrepares() async {
+        var c = m1Config(); c.animations = false
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a), config: c)
+        await store.run(.focusWindow(.right))
+        #expect(await anim.prepared.isEmpty)
+    }
+
+    /// An animator that declines (no grant, a switch mid-flight) gets no `play`, and the switch
+    /// still happens.
+    @Test func aDeclinedPrepareStillSwitches() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a), accept: false)
+        await store.run(.focusWindow(.right))
+        #expect(await anim.prepared.count == 1)
+        #expect(await anim.writesAtPlay.isEmpty)
+        #expect(await store.world.focus.window == b)
+    }
+
     /// T20 (M2 design, Motion): the focus ring is published from `Reconciler.desired` during the
     /// reconcile — the frame the window is *about* to get — so the ring is already at the
     /// destination when AX delivers the window there, instead of chasing it across the screen.

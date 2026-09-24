@@ -82,6 +82,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             onFocusedFrame: { [weak self] frame in
                 Task { @MainActor in self?.shell?.update(focusedFrame: frame) }
             },
+            // #64: switches slide as screenshot proxies (#65); instant without the grant.
+            animator: SwitchOverlay(),
         ) { [weak self] world in
             gate.note(world: world)
             Task { @MainActor in

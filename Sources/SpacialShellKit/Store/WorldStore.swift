@@ -55,6 +55,11 @@ public actor WorldStore {
     /// past this, a report of that window is a human choice again, so #56 keeps surfacing it.
     private static let echoWindow = Duration.seconds(1)
     private let now: @Sendable () -> ContinuousClock.Instant
+    /// #64: draws each switch as motion; nil (tests, headless) places instantly.
+    private let animator: (any SwitchAnimator)?
+    /// What each display's tiling showed at the end of the last reconcile — the "before" of the
+    /// next switch.
+    private var lastShown: [DisplayID: ShownRow] = [:]
     /// What the last snapshot said macOS had focused. Focus that has not moved since is an echo,
     /// not news — see `applyNativeFocus`. Same idea as `intents`, which does this for frames.
     private var lastNativeFocus: WindowRef?
@@ -72,8 +77,10 @@ public actor WorldStore {
                 placements: [String: UUID] = [:],
                 onFocusedFrame: @escaping @Sendable (CGRect?) -> Void = { _ in },
                 now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
+                animator: (any SwitchAnimator)? = nil,
                 onChange: @escaping @Sendable (World) -> Void) {
         self.now = now
+        self.animator = animator
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
         self.onFocusedFrame = onFocusedFrame
         self.placements = placements
@@ -366,6 +373,21 @@ public actor WorldStore {
         let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
                                          insets: insets)
+        // #64: a switch is motion. The overlay goes up *before* the first write, so the real windows
+        // jump to their final frames underneath it; `play` then slides the proxies after them.
+        let shownNow = shownRows(desired: desired, insets: insets)
+        let transitions = self.transitions(to: shownNow, insets: insets)
+        // Recorded *before* the first await: an event that lands while the overlay is being
+        // prepared (the echo of this very raise) re-enters and reconciles again, and compared to
+        // the old rows it would plan this same switch a second time and cancel the first mid-flight.
+        lastShown = shownNow
+        var animating = false
+        if let animator, config.animations {
+            if !transitions.isEmpty {
+                animating = await animator.prepare(transitions)
+                if gen != generation { return }      // a newer pass owns the overlay now
+            }
+        }
         // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
         // of them (superseded mid-write) used to leave the queue full, so the next pass centred the
         // same windows again — dragging an ephemeral window back to the middle of the screen long
@@ -413,12 +435,39 @@ public actor WorldStore {
                 Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
             }
         }
+        if animating, let animator { await animator.play() }
         // T20: the ring follows the *intent* — the frame the reconciler just decided on — rather
         // than chasing the window across the screen after AX delivers it. A focused window with no
         // tiled frame (floating, fullscreen, parked, hidden) has no ring, which is the honest
         // answer: there is nothing at a known place to draw around.
         if let f = world.focus.window, case .frame(let r)? = desired[f] { onFocusedFrame(r) } else { onFocusedFrame(nil) }
         onChange(world)
+    }
+
+    /// Each display's active row as `desired` is about to show it: the tiled windows that get a
+    /// frame, in tab order, and which of them the row is focused on.
+    private func shownRows(desired: [WindowRef: Placement], insets: [DisplayID: ShellInsets]) -> [DisplayID: ShownRow] {
+        var out: [DisplayID: ShownRow] = [:]
+        for sid in world.screenOrder {
+            guard let screen = world.screens[sid] else { continue }
+            let ws = screen.active
+            let row = world.tiled(in: ws)
+            var frames: [WindowRef: CGRect] = [:]
+            for r in row { if case .frame(let f)? = desired[r] { frames[r] = f } }
+            out[sid] = ShownRow(workspace: ws.id, index: screen.activeIndex, order: screen.workspaces.map(\.id),
+                                row: row, focused: ws.anchor, frames: frames)
+        }
+        return out
+    }
+
+    private func transitions(to shownNow: [DisplayID: ShownRow], insets: [DisplayID: ShellInsets]) -> [Transition] {
+        world.screenOrder.compactMap { sid in
+            guard let before = lastShown[sid], let after = shownNow[sid], let screen = world.screens[sid],
+                  let display = displays.first(where: { $0.id == sid }) else { return nil }
+            let viewport = Reconciler.viewport(screen: screen, display: display, insets: insets[sid, default: .zero])
+            let moves = Transition.moves(before: before, after: after, viewport: viewport, gap: config.gap)
+            return moves.isEmpty ? nil : Transition(display: sid, viewport: viewport, moves: moves)
+        }
     }
 
     /// Spec §13.3 / M3a A4 (#52). Put back every window that has ended up off every display.
