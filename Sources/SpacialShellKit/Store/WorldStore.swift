@@ -41,6 +41,20 @@ public actor WorldStore {
     private var lastSeen: [WindowRef: CGRect] = [:]
     private var failures: [WindowRef: Int] = [:]
     private var lastRaised: WindowRef?
+    /// Raises whose echoes have not arrived yet, oldest first — one queue per echo stream, since
+    /// every raise is reported twice, as a focus change and as an app activation (#69).
+    ///
+    /// Fast switching raises X then Y before macOS reports X. With only `lastRaised` to go on,
+    /// X's late echo read as a human choosing X, surfaced it, and that raise echoed late in turn —
+    /// two apps trading focus ~10×/s. So a report matching a queued raise is our own echo; and
+    /// since macOS reports raises in order, it also retires every raise queued before it, whose
+    /// echo has either landed or never will. A report matching nothing queued is a human.
+    private var pendingFocusEchoes: [(ref: WindowRef, at: ContinuousClock.Instant)] = []
+    private var pendingActivationEchoes: [(ref: WindowRef, at: ContinuousClock.Instant)] = []
+    /// Backstop for echoes that never come (raising the app already in front activates nothing):
+    /// past this, a report of that window is a human choice again, so #56 keeps surfacing it.
+    private static let echoWindow = Duration.seconds(1)
+    private let now: @Sendable () -> ContinuousClock.Instant
     /// What the last snapshot said macOS had focused. Focus that has not moved since is an echo,
     /// not news — see `applyNativeFocus`. Same idea as `intents`, which does this for frames.
     private var lastNativeFocus: WindowRef?
@@ -57,7 +71,9 @@ public actor WorldStore {
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:],
                 onFocusedFrame: @escaping @Sendable (CGRect?) -> Void = { _ in },
+                now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
                 onChange: @escaping @Sendable (World) -> Void) {
+        self.now = now
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
         self.onFocusedFrame = onFocusedFrame
         self.placements = placements
@@ -139,7 +155,7 @@ public actor WorldStore {
             // Raising a window activates its app, and macOS reports that back as an activation
             // like any other. Acting on it would raise again, and again. Nothing is lost by
             // ignoring it: the app we just raised is the one already on screen.
-            if pid == lastRaised?.pid { return }
+            if consumeEcho(&pendingActivationEchoes, { $0.pid == pid }) || pid == lastRaised?.pid { return }
             surfaceActivatedApp(pid)
         case .screenLocked:
             // Spec §7.7 freeze. Setting the flag only stops the *next* pass from starting; a plan
@@ -239,6 +255,16 @@ public actor WorldStore {
     /// So an activation surfaces a window of that app itself. The workspace's anchor wins where
     /// there is one — it is the window the user last used there — and the reconcile that follows
     /// unparks it.
+    /// True when a report is the echo of a queued raise; retires that raise and every older one.
+    private func consumeEcho(_ queue: inout [(ref: WindowRef, at: ContinuousClock.Instant)],
+                             _ matches: (WindowRef) -> Bool) -> Bool {
+        let t = now()
+        queue.removeAll { t - $0.at >= Self.echoWindow }
+        guard let i = queue.firstIndex(where: { matches($0.ref) }) else { return false }
+        queue.removeFirst(i + 1)
+        return true
+    }
+
     private func surfaceActivatedApp(_ pid: Int32) {
         // Already showing a window of this app: nothing to surface. The test is per display, not
         // "does this app own the single global focus" — with more than one screen two apps are on
@@ -277,7 +303,7 @@ public actor WorldStore {
         if world.ignored.contains(r), retired[r] != nil {
             revive(r, frame: observed[r] ?? retired[r]!.frame, reason: "focused")
         }
-        let isEcho = r == lastNativeFocus
+        let isEcho = consumeEcho(&pendingFocusEchoes, { $0 == r }) || r == lastNativeFocus
         lastNativeFocus = r
         Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)")
         if world.ephemeral.contains(r) { world.focus.window = r; return }
@@ -376,6 +402,8 @@ public actor WorldStore {
         }
         if let f = world.focus.window, f != lastRaised {
             lastRaised = f
+            pendingFocusEchoes.append((f, now()))
+            pendingActivationEchoes.append((f, now()))
             let result = await backend.raise(f)
             if gen != generation { return }
             // Spec §11 as amended: a failed raise never retires. Raising fails for transient reasons

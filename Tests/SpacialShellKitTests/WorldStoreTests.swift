@@ -359,6 +359,49 @@ import Foundation
         #expect(await store.world == surfaced)
     }
 
+    /// The workspace loop, second cause (#69): "i just had it glitch out a ton looping bretween
+    /// switching different workspaces". Fast Fn+W/Fn+S raises app X, then app Y, before macOS has
+    /// reported X's activation. X's echo then arrives when `lastRaised` is already Y, reads as a
+    /// human choosing X, and surfaces X — whose raise echoes after the *next* raise, and so on:
+    /// logged live as two apps trading focus ~10×/s. Every recent raise's echo is ours, not just
+    /// the last one's.
+    @Test func aLateEchoOfAnEarlierRaiseDoesNotSwitchBack() async {
+        let other = WindowRef(id: 3, pid: 9)
+        let (store, _) = await make(snap([win(a), win(other, bundle: "com.other")], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))   // a → ws1; `other` stays in ws0
+        await store.run(.focusWorkspace(.up))            // raises `other`
+        await store.run(.focusWorkspace(.down))          // raises `a` before `other`'s echo lands
+        let settled = await store.world
+        #expect(settled.screens["D1"]!.activeIndex == 1 && settled.focus.window == a)
+
+        await store.apply(.appActivated(pid: 9))         // the late echo of raising `other`
+        #expect(await store.world == settled, "a stale activation echo switched the workspace back")
+
+        await store.apply(.focusChanged(other))          // …and its late focus echo
+        #expect(await store.world.screens["D1"]!.activeIndex == 1, "a stale focus echo switched the workspace back")
+    }
+
+    /// The echo allowance is short-lived: long after the raise, activating that app is a human
+    /// choice again and surfaces it (#56 must keep working).
+    @Test func anActivationLongAfterOurRaiseStillSurfaces() async {
+        final class Clock: @unchecked Sendable { var t = ContinuousClock.now }
+        let clock = Clock()
+        let other = WindowRef(id: 3, pid: 9)
+        let be = FakeBackend(snapshot: snap([win(a), win(other, bundle: "com.other")], focused: a))
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _ in })
+        await store.start()
+        await store.run(.moveWindowToWorkspace(.down))
+        await store.run(.focusWorkspace(.up))
+        await store.run(.focusWorkspace(.down))
+        clock.t = clock.t.advanced(by: .seconds(5))
+
+        await store.apply(.appActivated(pid: 9))
+
+        let w = await store.world
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == other)
+    }
+
     /// T20 (M2 design, Motion): the focus ring is published from `Reconciler.desired` during the
     /// reconcile — the frame the window is *about* to get — so the ring is already at the
     /// destination when AX delivers the window there, instead of chasing it across the screen.
