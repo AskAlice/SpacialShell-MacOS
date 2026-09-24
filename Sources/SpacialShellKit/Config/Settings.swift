@@ -15,6 +15,10 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var railSide: RailSide?
     public var tabSizing: TabSizing?
     public var keybindingPreset: KeybindingPreset?
+    public var focusRing: Bool?
+    public var highlightColor: String?
+    public var highlightMs: Int?
+    public var animations: Bool?
     /// command -> chord. Merged over the file's own overrides per command rather than replacing
     /// the map wholesale, so rebinding one command in the settings window cannot silently discard
     /// a rebind the file made to a different one.
@@ -35,6 +39,10 @@ public enum Settings {
         if let v = overrides.railSide { c.railSide = v }
         if let v = overrides.tabSizing { c.tabSizing = v }
         if let v = overrides.keybindingPreset { c.keybindingPreset = v }
+        if let v = overrides.focusRing { c.focusRing = v }
+        if let v = overrides.highlightColor { c.highlightColor = v }
+        if let v = overrides.highlightMs { c.highlightMs = v }
+        if let v = overrides.animations { c.animations = v }
         if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }
         return c
     }

@@ -91,7 +91,7 @@ struct SettingsView: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar.")
+            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, the focus ring, and switch motion.")
             row("Panel opacity", overridden: overrides.panelOpacity != nil) {
                 HStack(spacing: 8) {
                     Slider(value: binding(\.panelOpacity, default: file.panelOpacity), in: 0.2...1)
@@ -108,6 +108,30 @@ struct SettingsView: View {
                         .disabled((overrides.panelColor ?? file.panelColor) == "system")
                 }
             } reset: { overrides.panelColor = nil }
+
+            Divider()
+            row("Switch animation", overridden: overrides.animations != nil) {
+                Toggle("", isOn: binding(\.animations, default: file.animations)).labelsHidden()
+            } reset: { overrides.animations = nil }
+
+            // #60: the ring is off by default, so without these the keys it reads were file-only.
+            row("Focus ring", overridden: overrides.focusRing != nil) {
+                Toggle("", isOn: binding(\.focusRing, default: file.focusRing)).labelsHidden()
+            } reset: { overrides.focusRing = nil }
+
+            row("Ring colour", overridden: overrides.highlightColor != nil) {
+                HStack(spacing: 8) {
+                    ColorPicker("", selection: hexBinding(\.highlightColor, default: file.highlightColor)).labelsHidden()
+                    Button("Accent") { overrides.highlightColor = "system" }
+                        .disabled((overrides.highlightColor ?? file.highlightColor) == "system")
+                }
+            } reset: { overrides.highlightColor = nil }
+
+            row("Ring motion", overridden: overrides.highlightMs != nil) {
+                stepper(Binding(get: { Double(overrides.highlightMs ?? file.highlightMs) },
+                                set: { overrides.highlightMs = Int($0) }),
+                        range: 0...1000, suffix: "ms")
+            } reset: { overrides.highlightMs = nil }
         }
     }
 
@@ -248,17 +272,21 @@ struct SettingsView: View {
                 set: { overrides[keyPath: key] = $0 })
     }
 
-    private var colorBinding: Binding<Color> {
+    private var colorBinding: Binding<Color> { hexBinding(\.panelColor, default: file.panelColor, system: .gray) }
+
+    /// A "system"-or-#RRGGBB setting as a colour well; `system` is what the well shows for "system".
+    private func hexBinding(_ key: WritableKeyPath<SettingsOverrides, String?>, default fallback: String,
+                            system: Color = .accentColor) -> Binding<Color> {
         Binding(
             get: {
-                guard let rgba = HighlightColor.rgba(overrides.panelColor ?? file.panelColor) else { return .gray }
+                guard let rgba = HighlightColor.rgba(overrides[keyPath: key] ?? fallback) else { return system }
                 return Color(.sRGB, red: rgba.0, green: rgba.1, blue: rgba.2, opacity: 1)
             },
             set: { new in
                 guard let c = NSColor(new).usingColorSpace(.sRGB) else { return }
-                overrides.panelColor = String(format: "#%02X%02X%02X",
-                                              Int(c.redComponent * 255), Int(c.greenComponent * 255),
-                                              Int(c.blueComponent * 255))
+                overrides[keyPath: key] = String(format: "#%02X%02X%02X",
+                                                 Int(c.redComponent * 255), Int(c.greenComponent * 255),
+                                                 Int(c.blueComponent * 255))
             })
     }
 }

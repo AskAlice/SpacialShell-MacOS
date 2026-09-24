@@ -20,6 +20,14 @@ import Foundation
         #expect(Settings.effective(config: file, overrides: SettingsOverrides()).panelWidth == 48)
     }
 
+    /// #60: the focus ring is off by default, so turning it on and styling it must not need the file.
+    @Test func theFocusRingAndMotionAreSettable() {
+        var gui = SettingsOverrides()
+        gui.focusRing = true; gui.highlightColor = "#FF0000"; gui.highlightMs = 0; gui.animations = false
+        let c = Settings.effective(config: Config(), overrides: gui)
+        #expect(c.focusRing && c.highlightColor == "#FF0000" && c.highlightMs == 0 && !c.animations)
+    }
+
     /// Clearing a knob in the settings window hands it back to the file rather than freezing
     /// whatever the GUI last showed — otherwise there would be no way out of an override.
     @Test func clearingAnOverrideHandsTheKnobBack() {
