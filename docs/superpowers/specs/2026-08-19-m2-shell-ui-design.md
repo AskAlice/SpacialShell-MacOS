@@ -43,6 +43,7 @@ The spatial model's semantics don't change; M2 adds *verbs*, a published *snapsh
 | `Fn+Drag` on window bodies | separate `DragTap` (own thread, `HotkeyTap`'s lifecycle), **last task, deferrable** | Mouse traffic in the keyboard tap risks dead hotkeys. |
 | Quit | rail app-menu → **TerminationGate** (never `NSApp.terminate`) | Windows must be restored. |
 | Tray | omitted; `SystemTraySlot` comment; clock kept | macOS menu bar. |
+| Switching motion (#65, ruled 2026-09-24) | **Screenshot proxies, on by default** — mechanism 3b of `2026-09-12-window-animation-feasibility.md`: capture with `SCScreenshotManager`, park the real windows and apply their new size there, slide the snapshots in a click-through overlay panel, one AX position write at the end, remove the overlay only when the window server reports the target frame. No Screen Recording grant or a failed capture → place instantly; never stepped AX size writes. A setting turns it off; reduce-motion → instant. The focus ring is not the motion (#60, off by default). | User: "the animations should simply be moving windows or screenshots of windows during the transition period, no focus highlight". Measured: 101–111 updates/s independent of the app, 0 bad hand-off frames in 458; stepped AX writes stall 35–57 ms. The grant is already asked for by the rail previews (#6). |
 
 ## Architecture
 
