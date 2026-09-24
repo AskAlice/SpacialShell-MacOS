@@ -69,6 +69,8 @@ import Foundation
     /// 3. no frame lands outside the display it belongs to;
     /// 4. nothing tiled in an active workspace is silently `.untouched` — only hidden, fullscreen
     ///    (macOS owns the frame) and floating windows may be left alone.
+    /// 5. every frame is at least `LayoutEngine.minSize` — a crowded row parks its overflow
+    ///    (the tab bar reaches it) instead of framing slivers (#54).
     ///
     /// Deliberately *not* re-deriving the layout rects here: that would re-test `LayoutEngine`'s
     /// arithmetic (`layoutsNeverOverlap` already does) instead of the property users feel.
@@ -121,6 +123,10 @@ import Foundation
                         //    screen, is exactly the "visible but unreachable" state I6 forbids.
                         #expect(display.visibleFrame.intersects(f),
                                 "seed \(seed) step \(step): \(win) framed at \(f), outside \(sid)")
+                        // 5. a frame the user can actually use (#54): intersecting the display is
+                        //    not enough — a 0×h or 40 pt sliver is on screen and useless.
+                        #expect(f.width >= LayoutEngine.minSize.width && f.height >= LayoutEngine.minSize.height,
+                                "seed \(seed) step \(step): \(win) framed at \(f), below the \(LayoutEngine.minSize) floor")
                     case .parked:
                         continue   // 2 covers whether parking was legitimate for this layout
                     case .untouched:
@@ -159,12 +165,15 @@ import Foundation
         var rng = TestRNG(seed: UInt64(seed) &+ 99)
         let rect = CGRect(x: 0, y: 0, width: Double.random(in: 300...4000, using: &rng), height: Double.random(in: 200...3000, using: &rng))
         for l in Layout.allCases {
-            let n = Int.random(in: 1...12, using: &rng)
+            let n = Int.random(in: 1...40, using: &rng)
             let fs = LayoutEngine.frames(l, count: n, focused: Int.random(in: 0..<n, using: &rng), in: rect, gap: Double.random(in: 0...20, using: &rng)).compactMap { $0 }
             for i in fs.indices { for j in fs.indices where j > i {
                 let x = fs[i].intersection(fs[j])
                 #expect(x.isNull || x.width < 0.01 || x.height < 0.01, "\(l) n=\(n) overlap \(fs[i]) \(fs[j])")
             } }
+            // The rect here is always ≥ 300×200, so the floor is always reachable (#54).
+            #expect(fs.allSatisfy { $0.width >= LayoutEngine.minSize.width && $0.height >= LayoutEngine.minSize.height },
+                    "\(l) n=\(n) in \(rect.size): frame below the floor")
         }
     }
 }

@@ -57,6 +57,53 @@ import Foundation
             #expect(!overlaps(LayoutEngine.frames(l, count: n, focused: f, in: r, gap: 6)), "\(l) n=\(n) f=\(f)")
         } } }
     }
+    // #54 — the floor. A row too crowded to give every window 120×80 shows the ones that fit and
+    // parks (nil) the rest, instead of handing out slivers.
+    let narrow = CGRect(x: 0, y: 0, width: 500, height: 300)
+    func usable(_ f: CGRect) -> Bool { f.width >= LayoutEngine.minSize.width && f.height >= LayoutEngine.minSize.height }
+
+    @Test func columnOverflowParksInsteadOfShrinking() {
+        // (500 + 10) / (120 + 10) → 3 columns fit.
+        let f = LayoutEngine.frames(.column, count: 8, focused: 0, in: narrow, gap: 10)
+        #expect(f.count == 8)
+        #expect(f.compactMap { $0 }.count == 3)
+        #expect(f.compactMap { $0 }.allSatisfy(usable))
+        #expect(f[0] != nil && f[1] != nil && f[2] != nil)   // first page holds the focused window
+    }
+    @Test func overflowKeepsTheFocusedWindowOnScreen() {
+        for l in Layout.allCases { for n in 1...40 { for foc in 0..<n {
+            let f = LayoutEngine.frames(l, count: n, focused: foc, in: narrow, gap: 6)
+            #expect(f.count == n, "\(l) n=\(n)")
+            #expect(f[foc] != nil, "\(l) n=\(n) focused \(foc) parked")
+            #expect(f.compactMap { $0 }.allSatisfy(usable), "\(l) n=\(n) f=\(foc)")
+            #expect(!overlaps(f), "\(l) n=\(n) f=\(foc)")
+        } } }
+    }
+    @Test func overflowPagesAreContiguousAndLastPageIsFull() {
+        // 3 fit; 8 windows → pages start at 0, 3, then clamp to 5 so the last page is never short.
+        func shown(_ foc: Int) -> [Int] {
+            let f = LayoutEngine.frames(.column, count: 8, focused: foc, in: narrow, gap: 10)
+            return f.indices.filter { f[$0] != nil }
+        }
+        #expect(shown(1) == [0, 1, 2])
+        #expect(shown(4) == [3, 4, 5])
+        #expect(shown(7) == [5, 6, 7])
+        // Shown windows keep their left-to-right order on screen.
+        let f = LayoutEngine.frames(.column, count: 8, focused: 4, in: narrow, gap: 10)
+        #expect(f[3]!.minX < f[4]!.minX && f[4]!.minX < f[5]!.minX)
+    }
+    @Test func fittingRowsAreUnchanged() {
+        // The floor only engages when it must: 4 columns in 1000 pt is the pre-#54 layout exactly.
+        let f = LayoutEngine.frames(.column, count: 4, focused: 2, in: r, gap: 10)
+        #expect(f.allSatisfy { $0 != nil })
+        #expect(eq(f[0], CGRect(x: 0, y: 0, width: 242.5, height: 600)))
+    }
+    @Test func rectBelowTheFloorStillShowsTheFocusedWindow() {
+        // Nothing can meet the floor; the focused window gets what there is rather than nothing.
+        let tiny = CGRect(x: 0, y: 0, width: 100, height: 60)
+        let f = LayoutEngine.frames(.grid, count: 3, focused: 1, in: tiny, gap: 0)
+        #expect(f[0] == nil && f[2] == nil && eq(f[1], tiny))
+    }
     @Test func focusedOutOfRangeIsClamped() {
         #expect(LayoutEngine.frames(.maximize, count: 2, focused: 9, in: r, gap: 0)[1] != nil)
     }

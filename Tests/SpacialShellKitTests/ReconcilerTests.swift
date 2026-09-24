@@ -20,6 +20,21 @@ import Foundation
         #expect(d[a] == .frame(CGRect(x: 10, y: 35, width: 980, height: 654)))
         #expect(d[b] == .parked(CGPoint(x: 999, y: 699)))     // bottom-right sliver of visibleFrame (maxX 1000, maxY 700)
     }
+    @Test func crowdedColumnParksOverflowAndKeepsItsTabs() {
+        // #54: 12 columns in a 980 pt rect would be ~73 pt each. Past the 120×80 floor the row
+        // overflows — the windows that don't fit park, and stay in the row (so they keep tabs).
+        var w = World.empty(screens: ["D1"], defaultLayout: .column)
+        let refs = (1...12).map { WindowRef(id: WindowID($0), pid: 1) }
+        for r in refs { w.adopt(r, kind: .tile, on: "D1") }
+        let d = Reconciler.desired(world: w, displays: [d1], config: cfg, observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
+        let framed = refs.compactMap { r -> CGRect? in if case .frame(let f) = d[r] { return f } else { return nil } }
+        let parked = refs.filter { if case .parked = d[$0] { return true } else { return false } }
+        #expect(framed.count == 7)   // (980 + 10) / (120 + 10)
+        #expect(parked.count == 5)
+        #expect(framed.allSatisfy { $0.width >= LayoutEngine.minSize.width && $0.height >= LayoutEngine.minSize.height })
+        #expect(w.screens["D1"]!.active.windows == refs)
+        if let f = w.focus.window { if case .frame = d[f] {} else { Issue.record("focused \(f) must stay on screen") } }
+    }
     @Test func inactiveWorkspaceWindowsAreParked() {
         var w = world(); w = CommandRunner.apply(.moveWindowToWorkspace(.down), to: w).0   // a → ws1 (active), b stays ws0
         let d = Reconciler.desired(world: w, displays: [d1], config: cfg, observed: obs, prePark: [:], parkedNow: [], zeroSliver: [])
