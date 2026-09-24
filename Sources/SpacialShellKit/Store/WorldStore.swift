@@ -454,6 +454,14 @@ public actor WorldStore {
             let row = world.tiled(in: ws)
             var frames: [WindowRef: CGRect] = [:]
             for r in row { if case .frame(let f)? = desired[r] { frames[r] = f } }
+            // A floating window is `.frame` when it comes back from parking, `.untouched` while it stays.
+            for r in ws.floating where !world.hidden.contains(r) && !world.fullscreen.contains(r) {
+                switch desired[r] {
+                case .frame(let f)?: frames[r] = f
+                case .untouched?: if let f = observed[r] { frames[r] = f }
+                default: break
+                }
+            }
             out[sid] = ShownRow(workspace: ws.id, index: screen.activeIndex, order: screen.workspaces.map(\.id),
                                 row: row, focused: ws.anchor, frames: frames)
         }

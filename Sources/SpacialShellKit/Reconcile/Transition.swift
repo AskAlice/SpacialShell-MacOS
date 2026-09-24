@@ -1,8 +1,9 @@
 import Foundation
 
 /// What one display's tiling showed at the end of a reconcile — enough to tell, at the next one,
-/// which way the user went. Only tiled windows with a frame appear in `frames`: floating, hidden
-/// and fullscreen windows take no place in the strip and are never carried by it (#67).
+/// which way the user went. `frames` holds every window the row shows: tiled windows at their
+/// layout frames, floating ones where they sit, so a floating window (System Settings) travels
+/// with its row on a workspace switch. Hidden and fullscreen windows are never carried (#67).
 public struct ShownRow: Sendable, Equatable {
     public var workspace: UUID
     public var index: Int
@@ -88,8 +89,8 @@ public struct Transition: Sendable, Equatable {
 /// overlay at any moment — a newer switch, Zen, a hot-plug — can never strand one mid-flight.
 public protocol SwitchAnimator: Sendable {
     /// Capture and cover, with every moving window drawn at its `from`. False means "place
-    /// instantly" — no Screen Recording grant, reduce-motion, a capture that failed, or a switch
-    /// arriving while the last one is still in flight (held keys skip, never queue).
+    /// instantly" — no Screen Recording grant, reduce-motion, or a capture that failed. A switch
+    /// arriving while the last is still in flight drops that one and starts over (never queues).
     func prepare(_ transitions: [Transition]) async -> Bool
     /// Start the motion to each `to` and return; the overlay removes itself when it lands.
     func play() async

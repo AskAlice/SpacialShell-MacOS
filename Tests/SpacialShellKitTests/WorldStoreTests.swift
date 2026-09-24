@@ -462,6 +462,19 @@ import Foundation
         #expect(into.map { $0.from.minY < $0.to.minY } == true, "going up the rail, the row arrives from above")
     }
 
+    /// A floating window (System Settings, which is not resizable) is part of its row: it leaves
+    /// with the row and comes back with it, instead of popping in when the slide lands.
+    @Test func aFloatingWindowTravelsWithItsRow() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b, kind: .float)], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))    // a → ws1; ws0 (with float b) leaves
+        let out = (await anim.prepared.last?.first?.moves ?? []).first { $0.ref == b }
+        #expect(out.map { $0.to.minY < $0.from.minY } == true, "going down the rail, the float leaves upward")
+
+        await store.run(.focusWorkspace(.up))
+        let back = (await anim.prepared.last?.first?.moves ?? []).first { $0.ref == b }
+        #expect(back.map { $0.from.minY < $0.to.minY } == true, "going up the rail, the float arrives from above")
+    }
+
     /// `animations = false` places instantly: the animator is never asked.
     @Test func animationsOffNeverPrepares() async {
         var c = m1Config(); c.animations = false

@@ -16,9 +16,10 @@ import SpacialShellProtocol
 /// and drops the overlay on landing, when the pictures sit exactly over the windows they show.
 ///
 /// The overlay is click-through and never key, like every other panel here. Anything that goes
-/// wrong — no Screen Recording grant, reduce-motion, a window ScreenCaptureKit will not hand over,
-/// a second switch while one is in flight — answers "place instantly", which is always safe: the
-/// real windows are at real frames the whole time.
+/// wrong — no Screen Recording grant, reduce-motion, a window ScreenCaptureKit will not hand over —
+/// answers "place instantly", which is always safe: the
+/// real windows are at real frames the whole time. A second switch while one is in flight drops
+/// that flight and animates the new one from where the windows really are.
 public final class SwitchOverlay: SwitchAnimator {
     private let stage: Stage
 
@@ -49,12 +50,13 @@ private final class Stage {
     static let watchdog = Duration.seconds(1)
 
     func prepare(_ transitions: [Transition]) async -> Bool {
-        // Held keys skip, never queue: a switch that arrives mid-flight drops the flight and lands
-        // instantly, so the model is never behind the motion.
-        // ponytail: skip rather than retarget — retargeting needs a fresh capture of the new target
-        // mid-flight; do it if holding Fn+D feels choppy.
+        // A switch that arrives mid-flight drops that flight (its real windows are already at their
+        // final frames) and animates from there, never queueing, so the model is never behind the
+        // motion. Skipping instead meant the second of two quick presses never animated (#66).
+        // ponytail: restart, not a smooth retarget — a held key restarts every repeat and only the
+        // last one slides; blend from the in-flight positions if that feels choppy.
         let moves = transitions.reduce(0) { $0 + $1.moves.count }
-        if busy { teardown(); Self.log.notice("switch instant: previous still in flight"); return false }
+        if busy { teardown(); Self.log.notice("switch restarted: previous still in flight") }
         guard ScreenRecordingAccess.isGranted else {
             Self.log.notice("switch instant: no Screen Recording grant"); return false
         }
