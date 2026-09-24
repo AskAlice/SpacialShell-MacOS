@@ -354,6 +354,11 @@ public actor WorldStore {
             interceptFocus(by: r, behind: fs)
             return
         }
+        // Our own raise of `r` reporting back after the model has already moved on (a quick Fn+D
+        // after Fn+A) is history, not news — in *any* row. Only cross-row echoes were dropped
+        // below, so a late echo inside the row pulled focus back a tab and the next echo pushed it
+        // forward again: fast tab switching stuttered and restarted its slides (#67).
+        if ownEcho && world.focus.window != r { return }
         if world.ephemeral.contains(r) { world.focus.window = r; return }
         guard let loc = world.location(of: r), !world.hidden.contains(r) else { return }
         // An unchanged native focus is news about nothing, and must never drag the active

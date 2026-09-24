@@ -428,6 +428,20 @@ import Foundation
         #expect(await store.world.screens["D1"]!.activeIndex == 1, "a stale focus echo switched the workspace back")
     }
 
+    /// #67: the same within one row. Fn+D, Fn+D quickly: the late focus echo of the first raise
+    /// must not pull focus back a tab (it did, then the second echo pushed it forward again).
+    @Test func aLateEchoInsideTheRowDoesNotStepFocusBack() async {
+        let c = WindowRef(id: 3, pid: 1)
+        let (store, _) = await make(snap([win(a), win(b), win(c)], focused: a))
+        await store.run(.focusWindow(.right))            // raises b
+        await store.run(.focusWindow(.right))            // raises c before b's echo lands
+        #expect(await store.world.focus.window == c)
+        await store.apply(.focusChanged(b))              // b's late echo
+        #expect(await store.world.focus.window == c, "a stale in-row echo stepped focus back")
+        await store.apply(.focusChanged(c))              // c's own echo: still c
+        #expect(await store.world.focus.window == c)
+    }
+
     /// The echo allowance is short-lived: long after the raise, activating that app is a human
     /// choice again and surfaces it (#56 must keep working).
     @Test func anActivationLongAfterOurRaiseStillSurfaces() async {
