@@ -86,9 +86,10 @@ enum Stories {
                          rail: [railItem(0, name: "Web", symbol: "globe", count: items.count, active: true)],
                          tabs: items, layout: layout)
     }
-    static func tab(_ pid: Int32, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
+    /// `window` distinguishes several windows of one app — tabs are keyed by their ref.
+    static func tab(_ pid: Int32, window: Int = 0, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
                     fullscreen: Bool = false) -> WindowTabItem {
-        WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10, pid: pid),
+        WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: pid),
                       isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen)
     }
 
@@ -205,10 +206,22 @@ enum Stories {
         // …and the honest empty case: focus on something with no tiled frame draws nothing at all.
         add("ring-none", CGSize(width: 600, height: 400),
             FocusRingView(frame: nil, color: .accentColor, animation: nil))
-        add("bar-twenty-tabs", CGSize(width: 800, height: 34), WorkspacePanelView(
-            state: tabs((1...20).map { tab(Int32(($0 % 6) + 1), focused: $0 == 1) }, layout: .column),
-            metaFor: meta, sizing: .fit, send: send),
-            knownOverflow: true)   // no "+N" badge yet (T19); the squeeze is the point of the story
+        // Tab overflow (#14), at 800 pt: the tab row gets 628 pt, and each tab at its 88 pt floor
+        // costs 91 with spacing (+16 for the focused tab's close button, +8 end-of-row gap). Six tabs
+        // (570) squeeze toward the floor and still fit; seven (661) are past it and the row scrolls;
+        // twenty scroll to keep the focused tab in view.
+        func row(_ n: Int, focus: Int) -> ScreenShellState {
+            tabs((1...n).map { tab(Int32(($0 % 6) + 1), window: $0, focused: $0 == focus) }, layout: .column)
+        }
+        let narrowBar = CGSize(width: 800, height: 34)
+        add("bar-six-tabs-at-floor", narrowBar, WorkspacePanelView(
+            state: row(6, focus: 1), metaFor: meta, sizing: .fit, send: send))
+        add("bar-seven-tabs-scrolls", narrowBar, WorkspacePanelView(
+            state: row(7, focus: 1), metaFor: meta, sizing: .fit, send: send))
+        add("bar-twenty-tabs", narrowBar, WorkspacePanelView(
+            state: row(20, focus: 1), metaFor: meta, sizing: .fit, send: send))
+        add("bar-twenty-tabs-focus-last", narrowBar, WorkspacePanelView(
+            state: row(20, focus: 20), metaFor: meta, sizing: .fit, send: send))
 
         // Overview
         let windows = [

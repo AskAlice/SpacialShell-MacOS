@@ -194,4 +194,6 @@ New UI **must**:
 - Half-layout glyph is `rectangle.lefthalf.filled`; spec assigns `sidebar.left`.
 - The focus glow is spec'd and `highlight-ms`/`highlight-color` parse, but no highlight panel
   exists yet (M2 T20 / M3 B6) — the keys are honest-but-unwired.
-- Tab "+N" overflow badge and layout-switcher hover names are unbuilt (`knownOverflow` stories).
+- Tab overflow scrolls instead of a "+N" badge: tabs squeeze to the 88 pt floor (focused tab
+  +16 for its close button), then the row scrolls with the focused tab kept in view (#14).
+  Layout-switcher hover names are unbuilt.

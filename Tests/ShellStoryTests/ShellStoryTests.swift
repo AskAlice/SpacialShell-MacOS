@@ -14,7 +14,7 @@ import SnapshotTesting
 ///    container, content fits the geometry it was given (wrap/truncate, don't clip).
 ///
 /// macOS-only, like everything AppKit; stories flagged `knownOverflow` model conditions the
-/// design has not built handling for yet (tab "+N" badge, rail overflow) — their lint runs under
+/// design has not built handling for yet (rail overflow) — their lint runs under
 /// `withKnownIssue` so the gap stays visible without a red suite.
 @MainActor
 @Suite(.serialized) struct ShellStoryTests {
@@ -35,6 +35,10 @@ import SnapshotTesting
         let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: appearance)
         window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        // One runloop turn for work SwiftUI defers past the first layout — the tab bar scrolling
+        // its focused tab into view (#14) — so the snapshot shows the settled state.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         view.layoutSubtreeIfNeeded()
         return view
     }

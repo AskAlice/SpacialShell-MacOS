@@ -21,25 +21,24 @@ struct WorkspacePanelView: View {
     }
 
     @State private var dropSlot: DropSlot?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The narrowest a tab gets: the design system's tab-width floor (88 pt, "tab width 88–220").
+    /// That is 16 pt icon + 5 spacing + 2×9 padding, leaving ~49 pt — seven or eight characters of
+    /// 11.5 pt text, enough to tell "Terminal" from "Mail". Tabs squeeze toward it before anything
+    /// else happens; past it the row scrolls instead of truncating names to "…" (#14).
+    static let minTabWidth: CGFloat = 88
+    /// The focused tab also carries its close button (8 pt glyph + 5 spacing), and a semibold
+    /// name; without this it would be the one tab you can't read — "Ter…".
+    private static func minWidth(_ tab: WindowTabItem) -> CGFloat {
+        tab.isFocused ? minTabWidth + 16 : minTabWidth
+    }
+    private static let tabSpacing: CGFloat = 3
+    private static let endGap: CGFloat = 8
 
     var body: some View {
         HStack(spacing: 3) {
-            ForEach(state.tabs) { tab in
-                tabView(tab)
-            }
-            // The gap after the last tab is itself a drop target: dropping there appends, which is
-            // the only way to move a tab to the end of the row without a tab to aim before.
-            Spacer(minLength: 8)
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .overlay(alignment: .leading) { caret(visible: dropSlot == .endOfRow) }
-                .dropDestination(for: DraggedWindow.self) { items, _ in
-                    guard let dropped = items.first else { return false }
-                    send(.moveWindowRefBefore(dropped.ref, nil))
-                    return true
-                } isTargeted: { over in
-                    dropSlot = over ? .endOfRow : nil
-                }
+            tabRow
             layoutSwitcher
             // Right of the grid glyph and flush to the trailing edge: the layouts on the bar are
             // the five built-in ones, and this is the way to everything else about them.
@@ -59,6 +58,49 @@ struct WorkspacePanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(chrome)
         .overlay(alignment: .bottom) { Rectangle().fill(.separator).frame(height: 1).opacity(0.6) }
+    }
+
+    /// The tabs, in row order — the order `Fn+A`/`Fn+D` walk, scrolled or not. The row is given
+    /// the viewport's width, so tabs squeeze toward `minTabWidth`; once every tab is at the floor it
+    /// is given the floor total instead and scrolls, keeping the focused tab in view.
+    private var tabRow: some View {
+        let floor = state.tabs.reduce(Self.endGap) { $0 + Self.minWidth($1) + Self.tabSpacing }
+        let focused = state.tabs.first(where: \.isFocused)?.ref
+        return GeometryReader { geo in
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: Self.tabSpacing) {
+                        ForEach(state.tabs) { tab in
+                            tabView(tab).id(tab.ref)
+                        }
+                        endOfRowTarget
+                    }
+                    .frame(width: max(geo.size.width, floor), height: geo.size.height, alignment: .leading)
+                }
+                // `initial`: a bar that appears with focus off-screen jumps there; old == new
+                // only on that first call, so only focus *changes* animate.
+                .onChange(of: focused, initial: true) { old, ref in
+                    guard let ref else { return }
+                    withAnimation(old == ref || reduceMotion ? nil : .easeOut(duration: 0.18)) { proxy.scrollTo(ref) }
+                }
+            }
+        }
+    }
+
+    /// The gap after the last tab is itself a drop target: dropping there appends, which is the
+    /// only way to move a tab to the end of the row without a tab to aim before.
+    private var endOfRowTarget: some View {
+        Spacer(minLength: Self.endGap)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .overlay(alignment: .leading) { caret(visible: dropSlot == .endOfRow) }
+            .dropDestination(for: DraggedWindow.self) { items, _ in
+                guard let dropped = items.first else { return false }
+                send(.moveWindowRefBefore(dropped.ref, nil))
+                return true
+            } isTargeted: { over in
+                dropSlot = over ? .endOfRow : nil
+            }
     }
 
     /// Not a `Button`: the close control inside it is one, and nested buttons fight over the
@@ -106,7 +148,7 @@ struct WorkspacePanelView: View {
         .opacity(tab.isHidden ? 0.45 : 1)
         // `fit` leaves the tab at its content width, so one tab sits against the left edge
         // instead of stretching across the bar. `equal` lets every tab claim 1/n and centre.
-        .frame(maxWidth: sizing == .equal ? .infinity : nil)
+        .frame(minWidth: Self.minWidth(tab), maxWidth: sizing == .equal ? .infinity : nil)
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
         .help(meta.name)
