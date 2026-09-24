@@ -56,7 +56,7 @@ public enum BackendEvent: Sendable, Equatable {
     case windowResized(WindowRef, CGRect)
     case focusChanged(WindowRef?)
     /// A human just pressed a key or a mouse button (#28): the hotkey tap's keyDown — ⌘Tab
-    /// included — or the global mouse-down monitor. It carries no time: the store stamps it on
+    /// included — or the global mouse monitors (button down, left drag). It carries no time: the store stamps it on
     /// arrival, and because it travels the same stream as `appActivated` and `focusChanged`, it is
     /// always seen before the focus change it caused.
     case humanInput

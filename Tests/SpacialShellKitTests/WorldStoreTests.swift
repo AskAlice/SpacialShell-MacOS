@@ -884,6 +884,120 @@ import Foundation
         #expect(w.location(of: pushy)?.screen == "D1")
         #expect(w.screens["D2"]!.active.windows.isEmpty)
     }
+
+    // MARK: which display a window belongs to (issue #57)
+
+    var d2: DisplayInfo {
+        DisplayInfo(id: "D2", frame: CGRect(x: 1000, y: 0, width: 1000, height: 700),
+                    visibleFrame: CGRect(x: 1000, y: 25, width: 1000, height: 675), isMain: false)
+    }
+    /// D1's and D2's single-window tile, in `m1Config` geometry.
+    var tileD1: CGRect { CGRect(x: 8, y: 33, width: 984, height: 658) }
+    var tileD2: CGRect { CGRect(x: 1008, y: 33, width: 984, height: 658) }
+    func twoDisplays(_ ws: [WindowSnapshot], focused: WindowRef?) -> Snapshot {
+        Snapshot(displays: [d1, d2], apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false)], windows: ws, focused: focused)
+    }
+    func writes(_ r: WindowRef, _ calls: [FakeBackend.Call]) -> [CGRect] {
+        calls.compactMap { if case .setFrame(r, let f) = $0 { f } else { nil } }
+    }
+
+    /// Rule 1: a new window placed by memory into a workspace on *another* display is moved there
+    /// — the model files it under D2, so the reconciler writes D2's frame, whichever display it
+    /// opened on. In an inactive workspace it is parked in D2's corner: model and write agree.
+    @Test func aWindowPlacedByMemoryOnAnotherDisplayIsMovedThere() async {
+        let seeded = World.seeded(screens: ["D1", "D2"], config: m1Config())
+        let remembered = seeded.screens["D2"]!.active.id
+        let (store, be) = await make(twoDisplays([win(a)], focused: a), world: seeded, placements: ["com.x": remembered])
+
+        var w = await store.world
+        #expect(w.location(of: a)?.screen == "D2")
+        #expect(await writes(a, be.calls) == [tileD2], "opened on D1, filed under D2, but never moved there")
+
+        // Now the remembered workspace is inactive: a second window of the app lands in it, parked on D2.
+        await store.run(.focusWorkspace(.down))
+        #expect(await store.world.screens["D2"]!.active.id != remembered)
+        await be.reset()
+        await store.apply(.snapshot(twoDisplays([win(a), win(b)], focused: nil)))
+        w = await store.world
+        #expect(w.location(of: b)?.screen == "D2" && w.workspace(containing: b)?.id == remembered)
+        let parks = await be.calls.compactMap { if case .setPosition(b, let o) = $0 { o } else { nil } }
+        #expect(parks.count == 1 && parks.allSatisfy { d2.frame.minX...d2.frame.maxX ~= $0.x }, "parked somewhere other than D2: \(parks)")
+        #expect(w.invariantViolations().isEmpty)
+    }
+
+    /// Rule 2: the user drags a tiled window onto D2. The model follows it into D2's active
+    /// workspace, and it is tiled there — not snapped back to D1.
+    @Test func aWindowTheUserDragsToAnotherDisplayIsRehomedThere() async {
+        let clock = Clock()
+        let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _ in })
+        await store.start()
+        #expect(await store.world.location(of: a)?.screen == "D1")
+        await be.reset()
+
+        await store.apply(.humanInput)                          // mouse down on the title bar
+        clock.t = clock.t.advanced(by: .milliseconds(300))
+        await store.apply(.windowMoved(a, tileD1.offsetBy(dx: 700, dy: 0)))   // centre now on D2
+
+        let w = await store.world
+        #expect(w.location(of: a)?.screen == "D2" && w.screens["D2"]!.active.windows == [a])
+        #expect(w.focus == Focus(screen: "D2", window: a))
+        #expect(await writes(a, be.calls) == [tileD2], "the dragged window was snapped back instead of rehomed")
+        #expect(w.invariantViolations().isEmpty)
+    }
+
+    /// Rule 2, floating: the same drag rehomes a floating window, which stays floating and where
+    /// the user dropped it.
+    @Test func aFloatingWindowDraggedToAnotherDisplayIsRehomedAndLeftWhereDropped() async {
+        var c = m1Config(); c.float = [AppRule(bundleId: "com.x")]
+        let clock = Clock()
+        let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
+        let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _ in })
+        await store.start()
+        await be.reset()
+
+        await store.apply(.humanInput)
+        await store.apply(.windowMoved(a, CGRect(x: 1200, y: 100, width: 300, height: 200)))
+
+        let w = await store.world
+        #expect(w.location(of: a)?.screen == "D2" && w.screens["D2"]!.active.floating == [a])
+        #expect(await writes(a, be.calls).isEmpty, "a floating window was moved from where it was dropped")
+    }
+
+    /// Rule 3: the model wins whenever the move is not the user's — no recent input, or a frame
+    /// that changed size (a drag never does; macOS clamping our write to a minimum size does). The
+    /// reconciler puts the window back on the display its tab is on, from a move event or a snapshot.
+    @Test func aWindowFoundOnTheWrongDisplayIsMovedBackUnlessTheUserDraggedIt() async {
+        let clock = Clock()
+        let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _ in })
+        await store.start()
+        await be.reset()
+
+        // Input long ago: not a drag.
+        await store.apply(.humanInput)
+        clock.t = clock.t.advanced(by: .seconds(2))
+        await store.apply(.windowMoved(a, tileD1.offsetBy(dx: 700, dy: 0)))
+        #expect(await store.world.location(of: a)?.screen == "D1")
+        #expect(await be.calls == [.setFrame(a, tileD1)])
+
+        // Recent input, but the frame changed size: not a drag either.
+        await be.reset()
+        await store.apply(.humanInput)
+        await store.apply(.windowMoved(a, CGRect(x: 1100, y: 33, width: 1200, height: 658)))
+        #expect(await store.world.location(of: a)?.screen == "D1")
+        #expect(await be.calls == [.setFrame(a, tileD1)])
+
+        // A snapshot that finds it on D2 with nobody touching it.
+        await be.reset()
+        clock.t = clock.t.advanced(by: .seconds(2))
+        await store.apply(.snapshot(twoDisplays([win(a, tileD2)], focused: a)))
+        #expect(await store.world.location(of: a)?.screen == "D1")
+        #expect(await be.calls.contains(.setFrame(a, tileD1)))
+    }
 }
 extension Snapshot {
     func with(focused: WindowRef?) -> Snapshot { var s = self; s.focused = focused; return s }

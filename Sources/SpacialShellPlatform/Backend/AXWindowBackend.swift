@@ -192,11 +192,13 @@ public final class AXWindowBackend: WindowBackend {
         }
         // #28: every other way a hand leaves fullscreen — a Dock right-click menu, a scroll, a
         // trackpad swipe between Spaces — is human input too, or the guard would put the user
-        // straight back into the fullscreen Space they just swiped out of.
+        // straight back into the fullscreen Space they just swiped out of. A left-button drag keeps
+        // the input fresh for as long as it lasts, which is how the store tells a window the user
+        // is dragging to another display from one that got there by itself (#57).
         // ponytail: whether a three-finger Space swipe reaches a global monitor is unverified;
         // if leaving fullscreen by swipe snaps back, that is the gap.
         if let other = NSEvent.addGlobalMonitorForEvents(
-            matching: [.rightMouseDown, .otherMouseDown, .scrollWheel, .swipe, .gesture, .beginGesture, .magnify],
+            matching: [.leftMouseDragged, .rightMouseDown, .otherMouseDown, .scrollWheel, .swipe, .gesture, .beginGesture, .magnify],
             handler: { [weak self] _ in self?.noteHumanInput() }) {
             eventMonitors.append(other)
         }

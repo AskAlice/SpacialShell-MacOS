@@ -164,8 +164,10 @@ public actor WorldStore {
             applySnapshot(s)
         case .windowMoved(let r, let f), .windowResized(let r, let f):
             if intents.matches(r, frame: f) { observed[r] = f; return }
+            let was = observed[r]
             observed[r] = f
             if locked { return }
+            if case .windowMoved = event, rehomeDragged(r, to: f, was: was) { break }
             if let ws = world.workspace(containing: r), !ws.floating.contains(r) { /* tiled: snap back */ } else { return }
         case .focusChanged(let r):
             if locked { return }
@@ -444,6 +446,31 @@ public actor WorldStore {
               world.focus.window == next.behind || world.location(of: next.behind) == nil else { return }
         Self.log.notice("fullscreen guard: fullscreen ended, focusing deferred \(next.requester.id, privacy: .public)")
         focus(next.requester)
+    }
+
+    /// #57: a window the user drags onto another display moves there in the model — into that
+    /// display's active workspace, focused, exactly as a tab dropped on its rail would — so the tab
+    /// follows the window instead of the window being snapped back. Every other disagreement about
+    /// which display a window is on (placement memory, an app moving its own window) is left to the
+    /// reconciler, which puts the window where its tab is: the model wins.
+    ///
+    /// "The user dragged it" is judged from what the store has: human input within
+    /// `humanInputWindow` (the platform reports mouse-drags as input, so a long drag stays fresh),
+    /// a frame whose size did not change (a drag never resizes; macOS clamping one of our own
+    /// writes to a minimum size does), and a window that was on screen to be dragged — tiled or
+    /// floating in its display's active workspace, not parked, hidden or fullscreen. The display is
+    /// the one under the frame's centre.
+    /// ponytail: input-within-a-second, not a true drag signal — an app moving its own window just
+    /// after a key press would be rehomed too. Upgrade path: a mouse-up event carrying the drag.
+    private func rehomeDragged(_ r: WindowRef, to f: CGRect, was: CGRect?) -> Bool {
+        guard humanRecently, let was, abs(was.width - f.width) < 1, abs(was.height - f.height) < 1,
+              !parked.contains(r), !world.hidden.contains(r), !world.fullscreen.contains(r),
+              let loc = world.location(of: r), world.screens[loc.screen]!.activeIndex == loc.index,
+              let dest = displays.first(where: { $0.frame.contains(CGPoint(x: f.midX, y: f.midY)) })?.id,
+              dest != loc.screen, let target = world.screens[dest]?.active.id else { return false }
+        world = CommandRunner.apply(.moveWindowRefToWorkspace(r, target), to: world).0
+        Self.log.notice("dragged \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
+        return true
     }
 
     /// Puts a retired window back in the model (spec §11 "until it changes"). The app's remembered
