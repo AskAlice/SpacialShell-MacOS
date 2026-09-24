@@ -150,7 +150,7 @@ public final class AXWindowBackend: WindowBackend {
                     ? app?.processIdentifier : nil
                 MainActor.assumeIsolated {
                     guard !fromLoginwindow else { return }
-                    if let pid = activatedPid { self?.continuation.yield(.appActivated(pid: pid)) }
+                    if let pid = activatedPid { self?.resolveActivation(pid) }
                     self?.scheduleRefresh()
                 }
             }
@@ -243,6 +243,39 @@ public final class AXWindowBackend: WindowBackend {
     ) {
         observerTokens.append((center, center.addObserver(forName: name, object: nil, queue: .main, using: body)))
     }
+
+    /// M3a A7 (#56): ⌘Tab and the Dock land within one reconcile, not after the debounced sweep.
+    /// The activated app's focused window is read on the spot and reported as `focusChanged`
+    /// *ahead of* `appActivated`, so the store lands on the window macOS actually brought forward
+    /// (via `applyNativeFocus`: the echo queues and the #28 fullscreen guard apply as ever), and the
+    /// activation that follows finds that app on screen and changes nothing. An app with no focused
+    /// window (all parked or minimized) reports only the activation, which surfaces one.
+    ///
+    /// Deliberately outside `scheduleRefresh`'s mouse-down gate: that gate stops a full sweep
+    /// adopting a tab mid-drag-out, and this reads one attribute of one app, adopting nothing. The
+    /// sweep this notification also schedules stays gated.
+    ///
+    /// Chained, so reports leave in the order macOS activated the apps: the store's echo queues
+    /// retire every raise older than the one matched (#69), and a reordered pair would read our
+    /// own earlier raise as a human switching back. A hung app delays the activations behind it
+    /// by at most one `axTimeoutMs`.
+    private func resolveActivation(_ pid: pid_t) {
+        let previous = activationChain
+        activationChain = Task { @MainActor [weak self, registry, continuation] in
+            await previous?.value
+            guard let self, !stopped else { return }
+            // Not for an activation our own raise caused: it can land before macOS has made the
+            // raised window the app's focused one, and reading focus then reports the app's
+            // *previous* window as the user's choice — the #69 switch-back loop. Those activations
+            // report as before, and the store matches them against its echo queue.
+            let ours = ownRaises.withLock { t in t[pid].map { ContinuousClock.now - $0 < .seconds(1) } ?? false }
+            if !ours, let ref = await registry.get(pid)?.focusedWindowRef() {
+                continuation.yield(.focusChanged(ref))
+            }
+            continuation.yield(.appActivated(pid: pid))
+        }
+    }
+    private var activationChain: Task<Void, Never>?
 
     // MARK: - Refresh sessions (spec §7.6)
 
@@ -363,8 +396,11 @@ public final class AXWindowBackend: WindowBackend {
     }
 
     public nonisolated func raise(_ ref: WindowRef) async -> Result<Void, BackendError> {
-        await registry.get(ref.pid)?.raise(ref.id) ?? .failure(.notFound)
+        ownRaises.withLock { $0[ref.pid] = ContinuousClock.now }
+        return await registry.get(ref.pid)?.raise(ref.id) ?? .failure(.notFound)
     }
+    /// When the shell last raised a window of each pid — see `resolveActivation`.
+    private nonisolated let ownRaises = OSAllocatedUnfairLock<[pid_t: ContinuousClock.Instant]>(initialState: [:])
 
     public nonisolated func close(_ ref: WindowRef) async -> Result<Void, BackendError> {
         await registry.get(ref.pid)?.close(ref.id) ?? .failure(.notFound)
