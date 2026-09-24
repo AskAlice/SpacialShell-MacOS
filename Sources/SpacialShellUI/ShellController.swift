@@ -30,12 +30,13 @@ public final class ShellController: NSObject {
     private let send: @Sendable (Command) -> Void
     private let appMeta: AppMetaCache
     /// One card for the whole shell, not one per display: only one pointer exists.
-    private let hover = RailHoverController()
+    private let hover: RailHoverController
 
     public init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.config = config
         self.appMeta = appMeta
         self.send = send
+        hover = RailHoverController(send: send)
         super.init()
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),

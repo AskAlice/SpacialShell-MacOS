@@ -23,6 +23,7 @@ final class RailHoverController {
     private var captureTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
     private var pointerInCard = false
+    private let send: @Sendable (Command) -> Void
 
     /// Long enough that sweeping the rail to reach the tile you want does not fire a capture per
     /// tile on the way; the same 250 ms the design system gives every other hover label.
@@ -30,7 +31,8 @@ final class RailHoverController {
     /// The pointer needs a moment to cross the gap from tile to card without the card vanishing.
     private static let hideGrace = Duration.milliseconds(180)
 
-    init() {
+    init(send: @escaping @Sendable (Command) -> Void) {
+        self.send = send
         host = NSHostingView(rootView: RailHoverCard(title: "", subtitle: nil,
                                                      content: .message(""), onGrantAccess: {}))
         window.contentView = host
@@ -101,6 +103,17 @@ final class RailHoverController {
         render(title: "", subtitle: nil, content: .message(""))
     }
 
+    /// A preview was clicked: the same command as clicking its tab, which activates the window's
+    /// workspace and focuses it there. The card goes with the click — it describes a workspace
+    /// the user has just left or entered, and would otherwise outlive the switch.
+    func select(_ ref: SpacialShellProtocol.WindowRef) {
+        send(.focusWindowRef(ref))
+        hideNow()
+    }
+
+    /// The workspace the card is about, for tests; nil when hidden.
+    var shownWorkspace: UUID? { shown }
+
     // MARK: - drawing
 
     private func render(title: String, subtitle: String?, content: RailHoverCard.Content) {
@@ -111,7 +124,8 @@ final class RailHoverController {
                 guard let self else { return }
                 self.pointerInCard = inside
                 if inside { self.hideTask?.cancel() } else { self.hideAfterGrace() }
-            })
+            },
+            onSelect: { [weak self] in self?.select($0) })
         host.layoutSubtreeIfNeeded()
     }
 

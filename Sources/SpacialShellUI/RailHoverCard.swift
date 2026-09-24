@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import SpacialShellKit
+import SpacialShellProtocol
 
 /// What the rail shows when you hover a workspace tile: the detail a 48 pt rail has no room for.
 ///
@@ -8,7 +9,7 @@ import SpacialShellKit
 /// miniatures in row order — the same order the tab bar draws them — so a workspace is
 /// recognisable by what is in it rather than by remembering what you put there.
 ///
-/// Pure props in, one closure out, like every other view here: the capture happens in
+/// Pure props in, closures out, like every other view here: the capture happens in
 /// `RailHoverController`, and this draws whatever it was handed, including nothing.
 struct RailHoverCard: View {
     /// The three things a hovered tile can have to say. `needsScreenRecording` is not an error
@@ -28,6 +29,9 @@ struct RailHoverCard: View {
     /// The pointer crossing the gap from tile to card must not dismiss the card, or the
     /// "Open Screen Recording settings…" button could never be clicked.
     var onHoverCard: (Bool) -> Void = { _ in }
+    /// A preview was clicked. The controller turns it into `.focusWindowRef`, the same command a
+    /// tab click sends, so the store switches workspace and focuses the tab (#51).
+    var onSelect: (SpacialShellProtocol.WindowRef) -> Void = { _ in }
 
     /// Past six the card stops being a glance and starts being a window list; the count on the
     /// tile already carries "a lot".
@@ -112,5 +116,7 @@ struct RailHoverCard: View {
             }
             .frame(width: width, alignment: .leading)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect(item.ref) }
     }
 }

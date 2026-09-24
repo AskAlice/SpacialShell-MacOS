@@ -65,4 +65,21 @@ import SwiftUI
     @Test func thePanelAcceptsMouseMovedEvents() {
         #expect(PanelWindow().acceptsMouseMovedEvents)
     }
+
+    /// #51: a preview click is a tab click — `.focusWindowRef`, which activates the window's
+    /// workspace and focuses its tab — and the card does not outlive the switch it caused.
+    @Test func clickingAPreviewFocusesItsWindowAndClosesTheCard() {
+        final class Sent: @unchecked Sendable { var commands: [Command] = [] }
+        let sent = Sent()
+        let hover = RailHoverController(send: { sent.commands.append($0) })
+        let item = railState().rail[0]
+        hover.show(item: item, tile: NSRect(x: 0, y: 400, width: 48, height: 48), railSide: .left,
+                   bounds: NSRect(x: 0, y: 0, width: 1440, height: 900), metaFor: meta)
+        #expect(hover.shownWorkspace == item.id)
+
+        hover.select(WindowRef(id: 1, pid: 1))
+
+        #expect(sent.commands == [.focusWindowRef(WindowRef(id: 1, pid: 1))])
+        #expect(hover.shownWorkspace == nil)
+    }
 }
