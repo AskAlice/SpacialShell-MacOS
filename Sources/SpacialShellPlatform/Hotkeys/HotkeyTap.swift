@@ -141,10 +141,14 @@ public final class HotkeyTap: @unchecked Sendable {
 
     /// Pure: the five modifiers the model knows about, and nothing else. Caps lock, the numeric-pad
     /// flag and the help flag ride along on ordinary keystrokes and must never affect matching.
+    ///
+    /// Arrow keys (123–126) drop the Fn flag: macOS sets it on *every* arrow keyDown, so keeping
+    /// it would make every arrow binding miss (#31). A real Fn+arrow never arrives here as an
+    /// arrow — it is remapped below the tap to Home/End/PgUp/PgDn (`docs/platform-notes.md`).
     static func chord(from flags: CGEventFlags, keyCode: UInt16) -> Chord {
         Chord(
             keyCode: keyCode,
-            fn: flags.contains(.maskSecondaryFn),
+            fn: flags.contains(.maskSecondaryFn) && !(123...126).contains(keyCode),
             control: flags.contains(.maskControl),
             option: flags.contains(.maskAlternate),
             shift: flags.contains(.maskShift),

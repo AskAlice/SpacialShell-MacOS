@@ -15,6 +15,15 @@ import CoreGraphics
         #expect(d == Chord(keyCode: 126, fn: false, control: true, option: true, shift: false, command: false))
     }
 
+    /// #31: macOS sets the Fn flag on every arrow keyDown, so a real ⌃⌥← arrives with Fn set and
+    /// must still match the `ctrl-alt-left` binding.
+    @Test func arrowKeysIgnoreTheHardwareFnFlag() {
+        let hw: CGEventFlags = [.maskSecondaryFn, .maskControl, .maskAlternate]
+        for (code, name) in [(123, "left"), (124, "right"), (125, "down"), (126, "up")] {
+            #expect(HotkeyTap.chord(from: hw, keyCode: UInt16(code)) == KeyBindings.parse("ctrl-alt-\(name)"))
+        }
+    }
+
     @Test func ignoresIrrelevantFlags() {
         // caps lock / numeric pad / help must not affect matching
         let c = HotkeyTap.chord(from: [.maskSecondaryFn, .maskAlphaShift, .maskNumericPad], keyCode: 0)
