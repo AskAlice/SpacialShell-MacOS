@@ -3,7 +3,7 @@ import Foundation
 @testable import SpacialShellKit
 
 @Suite struct CommandTests {
-    let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1), c = WindowRef(id: 3, pid: 1)
+    let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1), c = WindowRef(id: 3, pid: 1), d = WindowRef(id: 4, pid: 1)
     func base() -> World {
         var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
         w.adopt(a, kind: .tile, on: "D1"); w.adopt(b, kind: .tile, on: "D1"); w.adopt(c, kind: .tile, on: "D1")
@@ -38,11 +38,25 @@ import Foundation
         var w = base(); (w, _) = run(w, .focusWorkspaceIndex(2)); #expect(w.screens["D1"]!.activeIndex == 1)
         (w, _) = run(w, .focusWorkspaceIndex(9)); #expect(w.screens["D1"]!.activeIndex == 1)   // no-op
     }
+    /// One display: `a, b, c` all on D1, nowhere to spill to.
+    func single() -> World {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1"); w.adopt(b, kind: .tile, on: "D1"); w.adopt(c, kind: .tile, on: "D1")
+        return w
+    }
+    /// Two displays: `a, b, c` on D1, `d` alone on D2; focus on `a`.
+    func twoDisplays() -> World {
+        var w = base(); w.adopt(d, kind: .tile, on: "D2"); return w
+    }
+
     @Test func moveWindowRightSwapsAndStopsAtEnd() {
-        var w = base()
+        var w = single()
         (w, _) = run(w, .moveWindow(.right)); #expect(w.screens["D1"]!.active.windows == [b, a, c])
-        (w, _) = run(w, .moveWindow(.right)); (w, _) = run(w, .moveWindow(.right))
+        (w, _) = run(w, .moveWindow(.right))
         #expect(w.screens["D1"]!.active.windows == [b, c, a] && w.focus.window == a)
+        // At the edge of the only display: a no-op that changes nothing.
+        let (out, effects) = CommandRunner.apply(.moveWindow(.right), to: w)
+        #expect(out == w && effects.isEmpty)
     }
     /// Under `maximize` only the focused window is painted, and the focus travels with the window
     /// as it moves — so the move was real in the model (the tab row reorders) and invisible on
@@ -68,10 +82,63 @@ import Foundation
     /// A move that cannot happen changes nothing at all — including the layout. Promoting on a
     /// refused move would turn "nudge the leftmost window further left" into a layout change.
     @Test func refusedMoveDoesNotPromoteTheLayout() {
-        var w = base()
-        (w, _) = run(w, .moveWindow(.left))          // `a` is already leftmost
+        for w in [single(), twoDisplays()] {           // `a` is leftmost on the leftmost display
+            let (out, effects) = CommandRunner.apply(.moveWindow(.left), to: w)
+            #expect(out == w && effects.isEmpty)
+            #expect(out.screens["D1"]!.active.layout == .maximize)
+        }
+    }
+
+    // MARK: edge spill (#33) — past the edge of its row, a window moves to the neighbouring display.
+
+    @Test func moveRightPastTheEdgeLandsLeftmostOnTheNextDisplay() {
+        var w = twoDisplays()
+        (w, _) = run(w, .focusWindowRef(c))           // c is rightmost on D1
+        let (out, effects) = run(w, .moveWindow(.right))
+        #expect(out.screens["D1"]!.active.windows == [a, b])
+        #expect(out.screens["D2"]!.active.windows == [c, d])
+        #expect(out.focus == Focus(screen: "D2", window: c))
+        #expect(effects == [.focus(c), .relayout])
+    }
+
+    @Test func moveLeftPastTheEdgeLandsRightmostOnThePreviousDisplay() {
+        var w = twoDisplays()
+        (w, _) = run(w, .focusWindowRef(d))           // d is the only tab on D2
+        (w, _) = run(w, .moveWindow(.left))
+        #expect(w.screens["D1"]!.active.windows == [a, b, c, d])
+        #expect(w.focus == Focus(screen: "D1", window: d))
+    }
+
+    @Test func theOnlyTabSpillsToo() {
+        var w = base()                                // D2 empty
+        (w, _) = run(w, .moveWindowToScreen(.next))   // a alone on D2
+        (w, _) = run(w, .moveWindow(.left))
+        #expect(w.screens["D1"]!.active.windows == [b, c, a])
+        #expect(w.focus == Focus(screen: "D1", window: a))
+    }
+
+    @Test func outermostDisplayIsANoop() {
+        var w = twoDisplays()
+        (w, _) = run(w, .focusWindowRef(d))           // D2 is the rightmost display
+        let (out, effects) = CommandRunner.apply(.moveWindow(.right), to: w)
+        #expect(out == w && effects.isEmpty)
+    }
+
+    @Test func spillKeepsTheWindowFloating() {
+        var w = twoDisplays()
+        (w, _) = run(w, .focusWindowRef(c)); (w, _) = run(w, .toggleFloat)
+        (w, _) = run(w, .moveWindow(.right))
+        #expect(w.screens["D2"]!.active.floating == [c])
+        #expect(w.screens["D1"]!.active.floating.isEmpty)
+    }
+
+    /// The maximize→split promotion is for an in-row swap only; a spill changes neither layout.
+    @Test func spillDoesNotPromoteTheLayout() {
+        var w = twoDisplays()
+        (w, _) = run(w, .focusWindowRef(c))
+        (w, _) = run(w, .moveWindow(.right))
         #expect(w.screens["D1"]!.active.layout == .maximize)
-        #expect(w.screens["D1"]!.active.windows == [a, b, c])
+        #expect(w.screens["D2"]!.active.layout == .maximize)
     }
 
     // MARK: drag targets — a dragged tab names its window and its destination outright, unlike

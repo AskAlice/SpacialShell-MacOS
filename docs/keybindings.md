@@ -66,12 +66,16 @@ Semantics worth knowing:
 - Focus workspace **down** from the last (empty) workspace does nothing; move window **down**
   from it creates a new workspace below (there is always one empty, unpinned workspace at the
   bottom of every screen — that is where new things go).
-- Move window left/right at the end of the row is a no-op (no wrap for moves).
+- Move window left/right at the end of the row (or as the only tab) carries the window to the
+  neighbouring screen in that direction, landing at the near end of its active row (moving right
+  lands leftmost, moving left lands rightmost), keeping its floating flag; focus follows. On the
+  outermost screen in that direction it is a no-op (no wrap for moves).
 - Move window left/right under **maximize** promotes the workspace to **split**. Maximize paints
   only the focused window and the focus travels with it, so the move would reorder the row without
   changing a pixel; the verb means "put this beside that", and split is the narrowest layout that
-  can show the pair. Layouts that already show more than one window are left as you set them, and
-  a move that is refused (either end of the row) changes nothing at all, layout included.
+  can show the pair. Layouts that already show more than one window are left as you set them. Only
+  an in-row swap promotes: a move to another screen leaves both layouts alone, and a refused move
+  (outermost screen) changes nothing at all, layout included.
 - Move to another screen appends the window to that screen's active workspace and focus follows.
 - Close presses the window's close button; the app stays running (macOS convention). Focus goes to
   the left neighbour, else the right.

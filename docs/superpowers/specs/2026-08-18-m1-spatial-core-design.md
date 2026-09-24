@@ -215,7 +215,7 @@ Arrow aliases: `⌃⌥←→↑↓` and `⌃⌥⇧←→↑↓` are bound in **b
 
 Semantics:
 - `focusWindow(.right)` at the last window wraps to the first (material-shell behaviour). `focusWorkspace(.down)` at the trailing empty workspace stays.
-- `moveWindow(.right)` at the end of the row is a no-op; `moveWindowToWorkspace(.down)` from the trailing empty workspace creates a new one below (invariant 4).
+- `moveWindow(.right)` at the end of the row (or as the only tab) moves the window to the next screen in `screenOrder`, inserted at index 0 of its active workspace (`.left` → previous screen, appended), floating flag kept, focus follows, no `maximize`→`split` promotion; on the outermost screen it is a no-op (#33, decision 2026-09-14). `moveWindowToWorkspace(.down)` from the trailing empty workspace creates a new one below (invariant 4).
 - `moveWindowToScreen` appends to the active workspace of the target screen and moves focus with the window. Screens order left→right, top→bottom by rect origin.
 - `closeFocusedWindow` presses the window's close button. The app stays running (macOS convention). Focus moves to the left neighbour, or right if none, or nil.
 - `toggleFloat` on a tiled window floats it at its current frame; on a floating window re-tiles it at its index.

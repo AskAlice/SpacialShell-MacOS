@@ -7,16 +7,18 @@ public enum CommandRunner {
         let sid = w.focus.screen
         guard let screen = w.screens[sid] else { return (w, []) }
 
-        /// Move one window out of the workspace it is in and onto the end of `to`, carrying its
-        /// pin, and follow it. The keyboard verb and a dragged tab differ only in how they name
-        /// the destination, so they share this outright rather than drifting apart.
-        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int)) -> Bool {
+        /// Move one window out of the workspace it is in and into `to` (at the front when
+        /// `atFront`, else the end), carrying its pin, and follow it. Workspace moves, display
+        /// moves, a dragged tab and the edge spill (#33) differ only in how they name the
+        /// destination, so they share this outright rather than drifting apart.
+        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int), atFront: Bool = false) -> Bool {
             guard let from = w.location(of: ref) else { return false }
             guard from.screen != dest.screen || from.index != dest.index else { return false }
             let wasFloating = w.screens[from.screen]!.workspaces[from.index].floating.contains(ref)
             w.screens[from.screen]!.workspaces[from.index].windows.removeAll { $0 == ref }
             w.screens[from.screen]!.workspaces[from.index].floating.remove(ref)
-            w.screens[dest.screen]!.workspaces[dest.index].windows.append(ref)
+            w.screens[dest.screen]!.workspaces[dest.index].windows.insert(
+                ref, at: atFront ? 0 : w.screens[dest.screen]!.workspaces[dest.index].windows.count)
             if wasFloating { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
             w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
             w.screens[dest.screen]!.activeIndex = dest.index
@@ -69,7 +71,18 @@ public enum CommandRunner {
         case .moveWindow(let dir):
             guard let f = w.focus.window, var ws = Optional(screen.active), let i = ws.windows.firstIndex(of: f) else { return (w, []) }
             let j = dir == .right ? i + 1 : i - 1
-            guard (0..<ws.windows.count).contains(j) else { return (w, []) }
+            guard (0..<ws.windows.count).contains(j) else {
+                // Decision 2026-09-14 (#33): past the edge of its row the window spills onto the
+                // neighbouring display, landing at the near end of its active row. The outermost
+                // display has no neighbour that way, so there it stays a no-op.
+                guard let k = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
+                let n = dir == .right ? k + 1 : k - 1
+                guard w.screenOrder.indices.contains(n) else { return (w, []) }
+                let target = w.screenOrder[n]
+                guard move(f, to: (target, w.screens[target]!.activeIndex), atFront: dir == .right) else { return (w, []) }
+                effects.append(.focus(f)); effects.append(.relayout)
+                return (w, effects)
+            }
             ws.windows.swapAt(i, j)
             // `maximize` paints only the focused window (LayoutEngine), and the focus travels with
             // the window as it moves — so the same window stays on screen at the same rect and the
@@ -182,15 +195,7 @@ public enum CommandRunner {
                   let i = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
             let j = n == .next ? (i + 1) % w.screenOrder.count : (i - 1 + w.screenOrder.count) % w.screenOrder.count
             let target = w.screenOrder[j]
-            let wasFloating = screen.active.floating.contains(f)
-            w.screens[sid]!.workspaces[screen.activeIndex].windows.removeAll { $0 == f }
-            w.screens[sid]!.workspaces[screen.activeIndex].floating.remove(f)
-            let ti = w.screens[target]!.activeIndex
-            w.screens[target]!.workspaces[ti].windows.append(f)
-            if wasFloating { w.screens[target]!.workspaces[ti].floating.insert(f) }
-            w.screens[target]!.workspaces[ti].anchor = f
-            w.focus = Focus(screen: target, window: f)
-            w.normalize()
+            guard move(f, to: (target, w.screens[target]!.activeIndex)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
 
         case .toggleFloat:
