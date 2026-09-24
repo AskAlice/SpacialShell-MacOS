@@ -99,7 +99,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// both get wrong. Any table of this kind is permanently incomplete; this is the knob.
     public var appCategories: [String: AppCategory] = [:]
 
-    public static let defaultEphemeral = [AppRule(bundleId: "com.apple.systempreferences"), AppRule(bundleId: "com.apple.calculator")]
+    /// Decision 2026-09-24 (#70): System Settings used to be here, and so never got a tab — but it
+    /// is a window you work in, not a visitor. Calculator is the one app that really is a popup.
+    public static let defaultEphemeral = [AppRule(bundleId: "com.apple.calculator")]
 
     public init() {}
 

@@ -34,7 +34,7 @@ symbol = "terminal"               # SF Symbol name
 layout = "half"
 
 [[ephemeral]]
-bundle-id = "com.apple.systempreferences"
+bundle-id = "com.apple.calculator"
 
 [[float]]
 bundle-id = "com.apple.iphonesimulator"
@@ -103,9 +103,9 @@ checked in this order: `ephemeral`, then `float`, then `ignore`.
 - **`ephemeral`** — Veshell's "visitor" windows: they belong to no workspace, are centred on the
   focused screen when they appear, are never parked, and `Fn+A`/`Fn+D` skip over them entirely.
   **Default** (used whenever `[[ephemeral]]` is absent from your config entirely):
-  `com.apple.systempreferences`, `com.apple.calculator`. Note this is a full **replacement**, not
-  a merge — if you add your own `[[ephemeral]]` entries, System Settings and Calculator stop being
-  ephemeral unless you list them yourself.
+  `com.apple.calculator`. Note this is a full **replacement**, not a merge — if you add your own
+  `[[ephemeral]]` entries, Calculator stops being ephemeral unless you list it yourself. (System
+  Settings was in the default until 2026-09-24; it is now tiled like any other window — #70.)
 - **`float`** — windows that belong to a workspace and are shown/parked with it, but are excluded
   from tiling and keep their own frame (also toggleable per-window at runtime with `Fn+G`). No
   default entries.
