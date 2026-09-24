@@ -41,6 +41,20 @@ public enum CommandRunner {
             if let ref { w.screens[w.focus.screen]!.workspaces[w.screens[w.focus.screen]!.activeIndex].anchor = ref; effects.append(.focus(ref)) }
         }
 
+        /// Activate a row and land on it. #50: a row whose windows are all minimized or app-hidden
+        /// used to activate with nothing focused, so macOS kept the previous app in front and the
+        /// user saw the rail move and nothing else. A row is a promise, like a tab (#48): its
+        /// anchor (else its first window) is brought back and focused.
+        func activateAndLand(_ index: Int, on screen: DisplayID) {
+            w.activate(index: index, on: screen)
+            if w.focus.window == nil, w.focus.screen == screen, let ws = w.screens[screen]?.active,
+               let r = ws.anchor.flatMap({ ws.windows.contains($0) ? $0 : nil }) ?? ws.windows.first,
+               w.hidden.contains(r) {
+                w.hidden.remove(r); effects.append(.unhide(r))
+                setFocus(r)
+            } else if let f = w.focus.window { effects.append(.focus(f)) }
+        }
+
         switch command {
         case .focusWindow(let dir):
             // Decision 2026-09-24 (#71): the keys walk the tab row exactly as the bar draws it,
@@ -58,16 +72,14 @@ public enum CommandRunner {
             let target = screen.activeIndex + (dir == .down ? 1 : -1)
             guard (0..<screen.workspaces.count).contains(target) else { return (w, []) }
             leaveFullscreen(on: sid)
-            w.activate(index: target, on: sid)
-            if let f = w.focus.window { effects.append(.focus(f)) }
+            activateAndLand(target, on: sid)
             effects.append(.relayout)
 
         case .focusWorkspaceIndex(let n):
             let target = n - 1
             guard (0..<screen.workspaces.count).contains(target), target != screen.activeIndex else { return (w, []) }
             leaveFullscreen(on: sid)
-            w.activate(index: target, on: sid)
-            if let f = w.focus.window { effects.append(.focus(f)) }
+            activateAndLand(target, on: sid)
             effects.append(.relayout)
 
         case .closeFocusedWindow:
@@ -160,8 +172,7 @@ public enum CommandRunner {
             // from that workspace's anchor, exactly as the keyboard path does.
             if w.focus.screen != loc.screen { w.focus = Focus(screen: loc.screen, window: nil) }
             if w.screens[loc.screen]?.activeIndex != loc.index { leaveFullscreen(on: loc.screen) }
-            w.activate(index: loc.index, on: loc.screen)
-            if let f = w.focus.window { effects.append(.focus(f)) }
+            activateAndLand(loc.index, on: loc.screen)
             effects.append(.relayout)
 
         case .focusWindowRef(let r):

@@ -44,6 +44,17 @@ import Foundation
         (w, _) = run(w, .focusWorkspace(.down)); #expect(w.screens["D1"]!.activeIndex == 1)
         (w, _) = run(w, .focusWorkspace(.up)); #expect(w.focus.window == a)
     }
+    /// #50: Fn+W onto a row whose windows are all minimized lands on its anchor and brings it
+    /// back, instead of focusing nothing and leaving the previous app in front.
+    @Test func activatingAnAllHiddenRowUnhidesAndFocusesItsAnchor() {
+        var w = base()
+        (w, _) = run(w, .focusWorkspace(.down))
+        for r in w.screens["D1"]!.workspaces[0].windows { w.setHidden(r, true) }
+        let (after, e) = run(w, .focusWorkspace(.up))
+        #expect(after.focus.window == a)
+        #expect(!after.hidden.contains(a))
+        #expect(e.prefix(2) == [.unhide(a), .focus(a)])
+    }
     @Test func focusWorkspaceIndexIsOneBased() {
         var w = base(); (w, _) = run(w, .focusWorkspaceIndex(2)); #expect(w.screens["D1"]!.activeIndex == 1)
         (w, _) = run(w, .focusWorkspaceIndex(9)); #expect(w.screens["D1"]!.activeIndex == 1)   // no-op

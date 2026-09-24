@@ -128,7 +128,7 @@ and logs the error).
   BetterTouchTool, Raycast's Fn hotkeys) wins or loses depending on which tap was installed first —
   run one at a time.
 - Sleep/lock/re-sign can disable an event tap; SpacialShell re-enables its own on wake and unlock
-  and polls its health every 5 s. If hotkeys ever go dead, `killall SpacialShell` and relaunch.
+  and polls its health every second. If hotkeys ever go dead, `killall SpacialShell` and relaunch.
 
 See also: [`docs/config.md`](config.md) (full reference), [`docs/platform-notes.md`](platform-notes.md)
 (what is verified on real hardware and what is still pending), and the spec's §6 for the design

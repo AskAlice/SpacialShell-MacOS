@@ -21,7 +21,7 @@ import os
 /// **Re-enable hygiene.** macOS disables the tap for reasons that are not bugs: a callback that
 /// overran once, `kCGEventTapDisabledByUserInput`, sleep, fast user switching, the lock screen.
 /// Four things put it back: the in-callback re-enable on the two `tapDisabled*` events, the wake /
-/// unlock / session-active notifications, and a 5 s health poll that re-enables and — if the port
+/// unlock / session-active notifications, and a 1 s health poll that re-enables and — if the port
 /// is truly dead — re-creates the tap, behind a circuit breaker so a permanently revoked grant
 /// cannot spin.
 ///
@@ -35,8 +35,10 @@ public final class HotkeyTap: @unchecked Sendable {
 
     private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "hotkeys")
 
-    /// Health poll interval; also how long a tap can stay dead before we notice.
-    private static let healthIntervalSeconds: CFTimeInterval = 5
+    /// Health poll interval; also how long a tap can stay dead before we notice. 1 s, not 5: while
+    /// the tap is off, Globe+S goes to Type to Siri (#37), so every second dead is a second in which
+    /// Fn+S can open Siri. A healthy poll is one `tapIsEnabled` call.
+    private static let healthIntervalSeconds: CFTimeInterval = 1
     /// Ruling 2: a wake re-enable that lands before the window server has finished restoring the
     /// session is a no-op, so wait for it to settle.
     private static let wakeDelaySeconds: TimeInterval = 3
@@ -368,7 +370,7 @@ public final class HotkeyTap: @unchecked Sendable {
         }
     }
 
-    /// The 5 s poll (ruling 2). Cheap when healthy: one `tapIsEnabled` call.
+    /// The 1 s poll (ruling 2; was 5 s until #37). Cheap when healthy: one `tapIsEnabled` call.
     private func healthCheck() {
         lock.lock()
         let port = tapPort
