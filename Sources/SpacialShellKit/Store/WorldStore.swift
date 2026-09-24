@@ -497,10 +497,15 @@ public actor WorldStore {
         // the old rows it would plan this same switch a second time and cancel the first mid-flight.
         lastShown = shownNow
         var animating = false
+        // Once the overlay is up, every way out of this pass plays it — including the early
+        // returns when a newer pass supersedes this one mid-write (the echo of our own raise does,
+        // routinely). That pass compares against the `lastShown` recorded above, plans no motion,
+        // and would never play this one: the pictures sat frozen until the watchdog cut them (#66).
+        defer { if animating, let animator { Task { await animator.play() } } }
         if let animator, config.animations {
             if !transitions.isEmpty {
                 animating = await animator.prepare(transitions)
-                if gen != generation { return }      // a newer pass owns the overlay now
+                if gen != generation { return }      // superseded: the deferred play still lands it
             }
         }
         // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
@@ -550,7 +555,7 @@ public actor WorldStore {
                 Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
             }
         }
-        if animating, let animator { await animator.play() }
+        if animating, let animator { animating = false; await animator.play() }
         // T20: the ring follows the *intent* — the frame the reconciler just decided on — rather
         // than chasing the window across the screen after AX delivers it. A focused window with no
         // tiled frame (floating, fullscreen, parked, hidden) has no ring, which is the honest

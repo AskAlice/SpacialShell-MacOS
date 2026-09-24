@@ -410,9 +410,14 @@ import Foundation
         var prepared: [[Transition]] = []
         var writesAtPrepare: [Int] = []
         var writesAtPlay: [Int] = []
+        /// Runs once, inside the first `prepare` — the seam for "a newer pass lands mid-switch".
+        var duringPrepare: (@Sendable () async -> Void)?
         init(be: FakeBackend, accept: Bool = true) { self.be = be; self.accept = accept }
+        func setDuringPrepare(_ f: @escaping @Sendable () async -> Void) { duringPrepare = f }
         func prepare(_ t: [Transition]) async -> Bool {
-            prepared.append(t); writesAtPrepare.append(await be.calls.count); return accept
+            prepared.append(t); writesAtPrepare.append(await be.calls.count)
+            if let f = duringPrepare { duringPrepare = nil; await f() }
+            return accept
         }
         func play() async { writesAtPlay.append(await be.calls.count) }
     }
@@ -473,6 +478,18 @@ import Foundation
         await store.run(.focusWorkspace(.up))
         let back = (await anim.prepared.last?.first?.moves ?? []).first { $0.ref == b }
         #expect(back.map { $0.from.minY < $0.to.minY } == true, "going up the rail, the float arrives from above")
+    }
+
+    /// A pass superseded after the overlay is up (the echo of its own raise reconciles again,
+    /// routinely) still plays it. It used to return without `play`, and the frozen pictures sat
+    /// over the screen until the watchdog cut them: a switch that "did not animate" (#66).
+    @Test func aSupersededSwitchStillPlays() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        await anim.setDuringPrepare { await store.run(.toggleOverview) }
+        await store.run(.focusWindow(.right))
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(await anim.prepared.count == 1)
+        #expect(await anim.writesAtPlay.count == 1, "the overlay must be played, not left to the watchdog")
     }
 
     /// `animations = false` places instantly: the animator is never asked.
