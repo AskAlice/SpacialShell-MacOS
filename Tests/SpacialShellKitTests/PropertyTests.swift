@@ -104,6 +104,11 @@ import Foundation
             if Int.random(in: 0..<6, using: &rng) == 0, let r = live.randomElement(using: &rng) {
                 w.setFullscreen(r, !w.fullscreen.contains(r))
             }
+            // …and one on another native Space (#55): no write can show it, so it is left alone too.
+            if Int.random(in: 0..<6, using: &rng) == 0, let r = live.randomElement(using: &rng) {
+                w.setOnActiveSpace(r, w.offSpace.contains(r))
+            }
+            func macOSOwns(_ r: WindowRef) -> Bool { w.fullscreen.contains(r) || w.offSpace.contains(r) }
 
             let desired = Reconciler.desired(world: w, displays: displays, config: LayoutConfig(gap: 8),
                                              observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
@@ -112,7 +117,9 @@ import Foundation
             for sid in w.screenOrder {
                 guard let display = byId[sid] else { continue }
                 let ws = w.screens[sid]!.active
-                let tiled = w.tiled(in: ws)
+                // Every non-floating window of the row, not `w.tiled(in:)`: that already drops the
+                // windows 4 is about, and would let a wrongly-skipped one through unexamined.
+                let tiled = ws.windows.filter { !ws.floating.contains($0) }
                 var framed: [WindowRef] = []
 
                 for win in tiled {
@@ -131,8 +138,8 @@ import Foundation
                         continue   // 2 covers whether parking was legitimate for this layout
                     case .untouched:
                         // 4. the only tiled windows the reconciler may skip.
-                        #expect(w.hidden.contains(win) || w.fullscreen.contains(win),
-                                "seed \(seed) step \(step): \(win) untouched but neither hidden nor fullscreen")
+                        #expect(w.hidden.contains(win) || macOSOwns(win),
+                                "seed \(seed) step \(step): \(win) untouched but not hidden, fullscreen or off-Space")
                     case nil:
                         #expect(Bool(false), "seed \(seed) step \(step): \(win) has no placement at all")
                     }
@@ -141,14 +148,14 @@ import Foundation
                 // 1 + 2. Anything reachable in this row means something must be on screen, and the
                 // focused window in particular. Fullscreen windows count as shown: macOS is
                 // painting them full-display, which is the most visible a window gets.
-                let shouldShow = tiled.filter { !w.hidden.contains($0) && !w.fullscreen.contains($0) }
+                let shouldShow = tiled.filter { !w.hidden.contains($0) && !macOSOwns($0) }
                 if !shouldShow.isEmpty {
                     let fullscreenHere = tiled.contains { w.fullscreen.contains($0) }
                     #expect(!framed.isEmpty || fullscreenHere,
                             "seed \(seed) step \(step): \(sid) row has \(shouldShow.count) window(s) and none on screen")
                 }
                 if let f = w.focus.window, sid == w.focus.screen, tiled.contains(f),
-                   !w.hidden.contains(f), !w.fullscreen.contains(f) {
+                   !w.hidden.contains(f), !macOSOwns(f) {
                     #expect(framed.contains(f),
                             "seed \(seed) step \(step): focused \(f) is not on screen (layout \(ws.layout))")
                 }

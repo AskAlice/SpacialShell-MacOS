@@ -41,6 +41,15 @@ import Foundation
         #expect(s.layout == .maximize)
     }
 
+    /// #55: "on another Space" is its own badge — distinct from hidden (dimmed) and fullscreen.
+    @Test func tabsMarkOffSpaceWindows() {
+        var w = base()
+        w.setOnActiveSpace(a, false)
+        let s = ShellUI.state(for: "D1", in: w)!
+        #expect(s.tabs[0].isOffSpace && !s.tabs[0].isHidden && !s.tabs[0].isFullscreen)
+        #expect(!s.tabs[1].isOffSpace)
+    }
+
     @Test func unknownDisplayIsNil() {
         #expect(ShellUI.state(for: "nope", in: base()) == nil)
     }

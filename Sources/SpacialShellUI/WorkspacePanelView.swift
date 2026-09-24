@@ -121,6 +121,10 @@ struct WorkspacePanelView: View {
             }
             if tab.isFullscreen {
                 Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 8, weight: .semibold)).opacity(0.6)
+            } else if tab.isOffSpace && !tab.isHidden {
+                // #55: "elsewhere", not "put away" — hidden already reads as dimmed, and a
+                // fullscreen window is on its own Space by definition, so its marker says it.
+                Image(systemName: "macwindow.on.rectangle").font(.system(size: 8, weight: .semibold)).opacity(0.6)
             }
             if tab.isFocused {
                 Button {

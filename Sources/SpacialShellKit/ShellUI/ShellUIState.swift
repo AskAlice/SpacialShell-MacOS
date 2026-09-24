@@ -34,9 +34,11 @@ public struct WindowTabItem: Identifiable, Equatable, Sendable {
     public let isFloating: Bool      // keeps its row index but no tiling slot; drawn with a pin
     public let isHidden: Bool        // minimized or app-hidden; drawn dimmed, click is a no-op
     public let isFullscreen: Bool    // native fullscreen: no tiling slot; a click returns to its Space
-    public init(ref: WindowRef, isFocused: Bool, isFloating: Bool, isHidden: Bool, isFullscreen: Bool = false) {
+    public let isOffSpace: Bool      // on another native Space (#55): no tiling slot; a click goes there
+    public init(ref: WindowRef, isFocused: Bool, isFloating: Bool, isHidden: Bool, isFullscreen: Bool = false,
+                isOffSpace: Bool = false) {
         self.ref = ref; self.isFocused = isFocused; self.isFloating = isFloating; self.isHidden = isHidden
-        self.isFullscreen = isFullscreen
+        self.isFullscreen = isFullscreen; self.isOffSpace = isOffSpace
     }
 }
 
@@ -82,7 +84,8 @@ public enum ShellUI {
                 isFocused: world.focus.window == w,
                 isFloating: active.floating.contains(w),
                 isHidden: world.hidden.contains(w),
-                isFullscreen: world.fullscreen.contains(w))
+                isFullscreen: world.fullscreen.contains(w),
+                isOffSpace: world.offSpace.contains(w))
         }
         return ScreenShellState(
             display: display,

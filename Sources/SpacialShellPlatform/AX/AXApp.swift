@@ -302,8 +302,9 @@ final class AXApp: @unchecked Sendable {
         }
         let ids = refresh.ids
         let fresh = levels
+        let offSpace = refresh.offSpace
         let built = await runOnAppThread(fallback: { nil as [WindowSnapshot]? }) { [self] job in
-            buildSnapshots(ids, fresh, job)
+            buildSnapshots(ids, fresh, offSpace, job)
         }
         guard let built else { return cachedSnapshots() }
         stateLock.withLock { lastSnapshots = built }
@@ -316,6 +317,8 @@ final class AXApp: @unchecked Sendable {
         /// False when the app didn't answer (timeout, `kAXErrorAPIDisabled`) or we were cancelled.
         var conclusive: Bool
         var needLevels: [WindowID]
+        /// Alive but not enumerated: on another native Space (#55).
+        var offSpace: Set<WindowID> = []
 
         static let inconclusive = RefreshResult(ids: [], dead: [], conclusive: false, needLevels: [])
     }
@@ -356,6 +359,7 @@ final class AXApp: @unchecked Sendable {
             dead: dead,
             conclusive: true,
             needLevels: alive.compactMap { $0.value.windowLevel == nil ? $0.key : nil },
+            offSpace: Set(alive.keys).subtracting(enumeratedIds),
         )
     }
 
@@ -374,6 +378,7 @@ final class AXApp: @unchecked Sendable {
     private func buildSnapshots(
         _ ids: [WindowID],
         _ freshLevels: [WindowID: MacOsWindowLevel],
+        _ offSpace: Set<WindowID>,
         _ job: RunLoopJob,
     ) -> [WindowSnapshot]? {
         let axApp = self.axApp.threadGuarded
@@ -387,7 +392,8 @@ final class AXApp: @unchecked Sendable {
             // A window that stopped answering must not be re-classified from nil reads — every
             // heuristic in §7.3 degrades to "dialog" — so keep the last good observation.
             guard let origin = ax.get(Ax.topLeftCornerAttr), let size = ax.get(Ax.sizeAttr) else {
-                if let last = window.lastSnapshot { result.append(last) }
+                // …except where it is: that came from the enumeration, which did answer.
+                if var last = window.lastSnapshot { last.onActiveSpace = !offSpace.contains(id); result.append(last) }
                 continue
             }
             let snapshot = WindowSnapshot(
@@ -405,6 +411,8 @@ final class AXApp: @unchecked Sendable {
                 parent: parentRef(of: ax, ownId: id),
                 isMinimized: ax.get(Ax.minimizedAttr) ?? false,
                 isFullscreen: ax.get(Ax.isFullscreenAttr) ?? false,
+                // Public API only: the enumeration is the Space test. No CGS/SkyLight Space ids.
+                onActiveSpace: !offSpace.contains(id),
             )
             window.lastSnapshot = snapshot
             result.append(snapshot)
@@ -428,6 +436,7 @@ final class AXApp: @unchecked Sendable {
             let demoted = WindowSnapshot(
                 ref: s.ref, frame: s.frame, title: s.title, bundleID: s.bundleID, kind: .ignore,
                 parent: s.parent, isMinimized: s.isMinimized, isFullscreen: s.isFullscreen,
+                onActiveSpace: s.onActiveSpace,
             )
             // Keep the cache in step: a tab that stops answering later is replayed from here, and
             // replaying it as `.tile` would re-adopt the very window this just demoted.

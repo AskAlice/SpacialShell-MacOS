@@ -16,6 +16,7 @@ public struct WireState: Codable, Equatable, Sendable {
         public var isFloating: Bool
         public var isHidden: Bool
         public var isFullscreen: Bool
+        public var isOffSpace: Bool
         public var isParked: Bool
         public var frame: [Double]?      // x, y, w, h — the last frame the backend observed
     }
@@ -53,6 +54,7 @@ public struct WireState: Codable, Equatable, Sendable {
                                                isFloating: ws.floating.contains(w),
                                                isHidden: world.hidden.contains(w),
                                                isFullscreen: world.fullscreen.contains(w),
+                                               isOffSpace: world.offSpace.contains(w),
                                                isParked: parked.contains(w),
                                                frame: observed[w].map { [$0.minX, $0.minY, $0.width, $0.height] })
                                  })

@@ -134,6 +134,7 @@ deliberately). Binding assignments from the spec:
 | Workspace tile | the workspace's `symbol` (config seed / `WorkspaceRailItem.symbol`); first app's icon when symbol is the default and the workspace has windows |
 | Floating pin | `pin.fill` · close `xmark` |
 | Native-fullscreen tab | `arrow.up.left.and.arrow.down.right` |
+| On-another-Space tab | `macwindow.on.rectangle` (not drawn on hidden tabs, which read as dimmed, nor on fullscreen ones, whose marker already says "own Space") |
 
 Window tabs and overview cells use real app icons via `AppMetaCache`
 (`NSRunningApplication(processIdentifier:).icon`), cached per pid. Exporting icons from Figma is

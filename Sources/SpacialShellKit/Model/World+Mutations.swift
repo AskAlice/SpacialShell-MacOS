@@ -29,9 +29,10 @@ extension World {
         return nil
     }
     public func screenContaining(_ w: WindowRef) -> DisplayID? { location(of: w)?.screen }
-    /// Windows the layout engine positions: not floating, not hidden, not fullscreen.
+    /// Windows the layout engine positions: not floating, not hidden, not fullscreen, not on
+    /// another Space.
     public func tiled(in ws: Workspace) -> [WindowRef] {
-        ws.windows.filter { !ws.floating.contains($0) && !hidden.contains($0) && !fullscreen.contains($0) }
+        ws.windows.filter { !ws.floating.contains($0) && !hidden.contains($0) && !fullscreen.contains($0) && !offSpace.contains($0) }
     }
     /// Windows reachable by left/right navigation: not hidden.
     public func visible(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !hidden.contains($0) } }
@@ -67,7 +68,7 @@ extension World {
     }
 
     public mutating func remove(_ w: WindowRef) {
-        ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); parents[w] = nil
+        ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]
@@ -99,6 +100,13 @@ extension World {
     public mutating func setFullscreen(_ w: WindowRef, _ isFullscreen: Bool) {
         guard location(of: w) != nil, !hidden.contains(w) else { return }
         if isFullscreen { fullscreen.insert(w) } else { fullscreen.remove(w) }
+    }
+
+    /// #55. Independent of hidden and fullscreen: each only ever makes the reconciler leave the
+    /// window alone, so holding more than one of them is harmless.
+    public mutating func setOnActiveSpace(_ w: WindowRef, _ onActiveSpace: Bool) {
+        guard location(of: w) != nil else { return }
+        if onActiveSpace { offSpace.remove(w) } else { offSpace.insert(w) }
     }
 
     public mutating func setFloating(_ w: WindowRef, _ floating: Bool) {

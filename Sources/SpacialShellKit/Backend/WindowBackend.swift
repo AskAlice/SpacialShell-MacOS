@@ -27,9 +27,15 @@ public struct WindowSnapshot: Equatable, Sendable {
     public let parent: WindowRef?
     public let isMinimized: Bool
     public let isFullscreen: Bool
-    public init(ref: WindowRef, frame: CGRect, title: String, bundleID: String?, kind: WindowKind, parent: WindowRef?, isMinimized: Bool, isFullscreen: Bool) {
+    /// False for a window macOS has on another native Space (#55): alive, but not in the app's
+    /// `kAXWindowsAttribute`, which lists only the Spaces on screen. A `var` so a replayed
+    /// observation can be brought up to date without re-reading the window.
+    public var onActiveSpace: Bool
+    public init(ref: WindowRef, frame: CGRect, title: String, bundleID: String?, kind: WindowKind, parent: WindowRef?, isMinimized: Bool, isFullscreen: Bool,
+                onActiveSpace: Bool = true) {
         self.ref = ref; self.frame = frame; self.title = title; self.bundleID = bundleID; self.kind = kind
         self.parent = parent; self.isMinimized = isMinimized; self.isFullscreen = isFullscreen
+        self.onActiveSpace = onActiveSpace
     }
 }
 

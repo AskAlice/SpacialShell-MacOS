@@ -8,8 +8,9 @@ import Foundation
     /// M1 geometry: the frame maths in this suite predates the shell panels, and what it tests
     /// (adoption, echoes, parking, locking) is inset-agnostic — `PanelInsetTests` owns the insets.
     func m1Config() -> Config { var c = Config(); c.showPanels = false; return c }
-    func win(_ r: WindowRef, _ f: CGRect = CGRect(x: 0, y: 0, width: 300, height: 200), kind: WindowKind = .tile, bundle: String? = "com.x", min: Bool = false, fs: Bool = false, parent: WindowRef? = nil) -> WindowSnapshot {
-        WindowSnapshot(ref: r, frame: f, title: "t", bundleID: bundle, kind: kind, parent: parent, isMinimized: min, isFullscreen: fs)
+    func win(_ r: WindowRef, _ f: CGRect = CGRect(x: 0, y: 0, width: 300, height: 200), kind: WindowKind = .tile, bundle: String? = "com.x", min: Bool = false, fs: Bool = false, parent: WindowRef? = nil, onSpace: Bool = true) -> WindowSnapshot {
+        WindowSnapshot(ref: r, frame: f, title: "t", bundleID: bundle, kind: kind, parent: parent, isMinimized: min, isFullscreen: fs,
+                       onActiveSpace: onSpace)
     }
     func snap(_ ws: [WindowSnapshot], focused: WindowRef? = nil, login: Bool = false) -> Snapshot {
         Snapshot(displays: [d1], apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false)], windows: ws, focused: focused, loginwindowFrontmost: login)
@@ -138,6 +139,52 @@ import Foundation
         #expect(await wrote(b, be.calls))
         #expect(w.invariantViolations().isEmpty)
     }
+    /// M3a A6 (#55): a window on another native Space cannot be shown by moving it — the write
+    /// lands on a window nobody can see. It keeps its tab, is never framed or parked (even when its
+    /// workspace goes inactive or AX reports it moved), and is laid out again the moment a snapshot
+    /// finds it back on the active Space.
+    @Test func offSpaceWindowIsNeverWrittenAndReturnsToLayout() async {
+        func wrote(_ r: WindowRef, _ calls: [FakeBackend.Call]) -> Bool {
+            calls.contains { switch $0 { case .setFrame(let w, _), .setPosition(let w, _): w == r; default: false } }
+        }
+        let (store, be) = await make(snap([win(a), win(b, onSpace: false)], focused: a))
+        var w = await store.world
+        #expect(w.screens["D1"]!.active.windows == [a, b] && w.offSpace == [b])
+        #expect(await !wrote(b, be.calls))
+
+        await store.apply(.windowMoved(b, CGRect(x: 90, y: 90, width: 300, height: 200)))
+        await store.run(.focusWindow(.right))
+        await store.run(.moveWindowToWorkspace(.down))          // its workspace going inactive must not park it
+        await store.run(.focusWorkspace(.up))
+        #expect(await !wrote(b, be.calls))
+
+        await be.reset()
+        await store.apply(.snapshot(snap([win(a), win(b)], focused: a)))   // the user switched to its Space
+        w = await store.world
+        #expect(w.offSpace.isEmpty)
+        #expect(await wrote(b, be.calls))
+        #expect(w.invariantViolations().isEmpty)
+    }
+
+    /// A6's "re-adopt" (#55): a window retired while on the active Space keeps its frame while it
+    /// is away, so "until it changes" never fired and it stayed tab-less after the user came back
+    /// to it. Coming back to the active Space is itself the change that revives it.
+    @Test func aRetiredWindowComesBackWithItsSpace() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.fail(b)
+        for y in [100.0, 200.0, 300.0] {
+            await store.apply(.windowMoved(b, CGRect(x: y, y: y, width: 300, height: 200)))
+        }
+        #expect(await store.world.ignored.contains(b))
+        // Same frame as its last snapshot throughout: only the Space changes.
+        await store.apply(.snapshot(snap([win(a), win(b, onSpace: false)], focused: a)))
+        #expect(await store.world.ignored.contains(b))           // away: nothing to do yet
+        await store.apply(.snapshot(snap([win(a), win(b)], focused: a)))
+        let w = await store.world
+        #expect(!w.ignored.contains(b) && w.location(of: b) != nil)
+        #expect(w.invariantViolations().isEmpty)
+    }
+
     /// Spec §11 as amended 2026-09-15. A failed *raise* never retires a window: raising fails for
     /// transient reasons — the window is in its own fullscreen Space, the app is mid-transition —
     /// and retiring on it left a live window on screen with no tab anywhere (#36).
@@ -627,10 +674,10 @@ import Foundation
     /// `World` directly. This drives the actor through `FakeBackend`, so it also exercises
     /// adoption-from-snapshot, vanish-on-refresh, native focus, and the parking side tables —
     /// everything `PropertyTests` cannot see because it never goes through `WorldStore`.
-    struct LiveWindow { var ref: WindowRef; var kind: WindowKind; var minimized = false; var fullscreen = false; var parent: WindowRef? }
+    struct LiveWindow { var ref: WindowRef; var kind: WindowKind; var minimized = false; var fullscreen = false; var offSpace = false; var parent: WindowRef? }
 
     func randomSnapshot(_ live: [LiveWindow], focused: WindowRef?) -> Snapshot {
-        snap(live.map { win($0.ref, kind: $0.kind, min: $0.minimized, fs: $0.fullscreen, parent: $0.parent) }, focused: focused)
+        snap(live.map { win($0.ref, kind: $0.kind, min: $0.minimized, fs: $0.fullscreen, parent: $0.parent, onSpace: !$0.offSpace) }, focused: focused)
     }
 
     @Test(arguments: 0..<50)
@@ -653,7 +700,7 @@ import Foundation
         for step in 0..<30 {
             switch Int.random(in: 0..<10, using: &rng) {
             case 0...3:   // snapshot event: mutate the live-window set, then resend it whole
-                switch Int.random(in: 0..<4, using: &rng) {
+                switch Int.random(in: 0..<5, using: &rng) {
                 case 0 where live.count < 10:
                     let kind: WindowKind = [.tile, .tile, .tile, .float, .ephemeral, .ignore].randomElement(using: &rng)!
                     let parent = Bool.random(using: &rng) ? live.randomElement(using: &rng)?.ref : nil
@@ -665,6 +712,8 @@ import Foundation
                     live[Int.random(in: 0..<live.count, using: &rng)].minimized.toggle()
                 case 3 where !live.isEmpty:
                     live[Int.random(in: 0..<live.count, using: &rng)].fullscreen.toggle()
+                case 4 where !live.isEmpty:
+                    live[Int.random(in: 0..<live.count, using: &rng)].offSpace.toggle()
                 default: break   // list too small/large for the picked mutation: resend unchanged
                 }
                 let focused = live.isEmpty ? nil : (Bool.random(using: &rng) ? live.randomElement(using: &rng)?.ref : nil)

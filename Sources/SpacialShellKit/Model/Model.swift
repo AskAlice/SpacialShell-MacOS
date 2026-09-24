@@ -66,6 +66,9 @@ public struct World: Codable, Equatable, Sendable {
     /// Native fullscreen (spec §4.3, amended 2026-09-14): keeps its slot and its tab and stays
     /// reachable by nav, but macOS owns its frame — skipped by layout and never parked.
     public var fullscreen: Set<WindowRef> = []
+    /// On another native Space (#55): same deal as `fullscreen` — keeps its slot and its tab, but
+    /// no frame write can show it, so layout skips it and it is never framed or parked.
+    public var offSpace: Set<WindowRef> = []
     public var parents: [WindowRef: WindowRef] // dialog → owner
     public var defaultLayout: Layout
     /// Zen mode (M2 design ruling): true hides the shell panels and gives their edges back to the

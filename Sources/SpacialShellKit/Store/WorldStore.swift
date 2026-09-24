@@ -33,7 +33,8 @@ public actor WorldStore {
     private var intents = IntentSet()
     /// Spec §11 as amended 2026-09-15: retirement lasts only "until it changes", so a retired
     /// window's last known state is kept to recognise the change that brings it back (#36).
-    private struct Retired { var frame: CGRect; var fullscreen: Bool }
+    /// `wentAway`: seen on another Space since retirement — coming back is a change too (#55).
+    private struct Retired { var frame: CGRect; var fullscreen: Bool; var wentAway = false }
     private var retired: [WindowRef: Retired] = [:]
     /// The frame each window had in the last *snapshot* — reality, unlike `observed`, which holds the
     /// frame we asked for and which a failed write never delivered. "Changed" is judged against this,
@@ -226,9 +227,12 @@ public actor WorldStore {
             observed[w.ref] = w.frame
             bundleIDs[w.ref] = w.bundleID
             // Spec §11 "until it changes": a retired window that has moved, resized or changed
-            // fullscreen state is alive and ours again — `ignored` is not a one-way door (#36).
+            // fullscreen state is alive and ours again — `ignored` is not a one-way door (#36). So
+            // is one back on the active Space after time away: its frame never changed (#55).
+            if !w.onActiveSpace, world.ignored.contains(w.ref) { retired[w.ref]?.wentAway = true }
             if world.ignored.contains(w.ref), let was = retired[w.ref],
-               !Reconciler.approx(was.frame, w.frame) || was.fullscreen != w.isFullscreen {
+               !Reconciler.approx(was.frame, w.frame) || was.fullscreen != w.isFullscreen
+                || (was.wentAway && w.onActiveSpace) {
                 revive(w.ref, frame: w.frame, reason: "changed")
             }
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
@@ -250,6 +254,10 @@ public actor WorldStore {
                 Self.log.notice("fullscreen \(w.isFullscreen ? "enter" : "exit", privacy: .public) \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public)")
             }
             world.setFullscreen(w.ref, w.isFullscreen)
+            if w.onActiveSpace == world.offSpace.contains(w.ref), world.location(of: w.ref) != nil {
+                Self.log.notice("space \(w.onActiveSpace ? "back" : "away", privacy: .public) \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public)")
+            }
+            world.setOnActiveSpace(w.ref, w.onActiveSpace)
         }
         if !s.loginwindowFrontmost {
             let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }).union(world.ephemeral).union(world.ignored)
@@ -602,7 +610,7 @@ public actor WorldStore {
             var frames: [WindowRef: CGRect] = [:]
             for r in row { if case .frame(let f)? = desired[r] { frames[r] = f } }
             // A floating window is `.frame` when it comes back from parking, `.untouched` while it stays.
-            for r in ws.floating where !world.hidden.contains(r) && !world.fullscreen.contains(r) {
+            for r in ws.floating where !world.hidden.contains(r) && !world.fullscreen.contains(r) && !world.offSpace.contains(r) {
                 switch desired[r] {
                 case .frame(let f)?: frames[r] = f
                 case .untouched?: if let f = observed[r] { frames[r] = f }
@@ -641,6 +649,9 @@ public actor WorldStore {
                                          zeroSliver: [], insets: insets)
         for (ref, frame) in observed.sorted(by: { $0.key.id < $1.key.id }) {
             guard Reconciler.isBeyondReach(frame, displays: displays) else { continue }
+            // #55: never write to a window on another Space. ponytail: only placed windows carry the
+            // flag, so an ignored or ephemeral one away on another Space can still be rescued.
+            guard !world.offSpace.contains(ref) else { continue }
             switch desired[ref] {
             case .frame, .parked: continue          // the reconciler owns this one
             case .untouched, nil: break

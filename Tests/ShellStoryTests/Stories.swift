@@ -88,9 +88,10 @@ enum Stories {
     }
     /// `window` distinguishes several windows of one app — tabs are keyed by their ref.
     static func tab(_ pid: Int32, window: Int = 0, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
-                    fullscreen: Bool = false) -> WindowTabItem {
+                    fullscreen: Bool = false, offSpace: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: pid),
-                      isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen)
+                      isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen,
+                      isOffSpace: offSpace)
     }
 
     static let railGeometry = CGSize(width: 48, height: 800)
@@ -199,6 +200,10 @@ enum Stories {
             metaFor: meta, sizing: .fit, send: send))
         add("bar-fullscreen", barGeometry, WorkspacePanelView(
             state: tabs([tab(3, focused: true), tab(1, fullscreen: true), tab(4)]),
+            metaFor: meta, sizing: .fit, send: send))
+        // #55: on another Space, beside the two states it must not be mistaken for.
+        add("bar-off-space", barGeometry, WorkspacePanelView(
+            state: tabs([tab(3, focused: true), tab(1, offSpace: true), tab(2, hidden: true), tab(4, fullscreen: true)]),
             metaFor: meta, sizing: .fit, send: send))
         // T20 focus ring: the highlight panel's content — one window's frame inside a display.
         add("ring-focused", CGSize(width: 600, height: 400),
