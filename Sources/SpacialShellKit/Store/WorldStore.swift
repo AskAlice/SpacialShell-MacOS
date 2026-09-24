@@ -54,6 +54,19 @@ public actor WorldStore {
     /// Backstop for echoes that never come (raising the app already in front activates nothing):
     /// past this, a report of that window is a human choice again, so #56 keeps surfacing it.
     private static let echoWindow = Duration.seconds(1)
+    /// #28: a focus change this soon after a key press or a click is the human's doing and goes
+    /// through untouched; later than this, while a fullscreen window is in front, it is a window
+    /// grabbing focus by itself. Long enough for ⌘Tab or a Dock click to land as an activation,
+    /// short enough that an app waking up a second later is not mistaken for the user.
+    static let humanInputWindow = Duration.seconds(1)
+    private var lastHumanInput: ContinuousClock.Instant?
+    /// #28: focus requests held back behind a fullscreen window on a display with nowhere else to
+    /// go, oldest first, each with the fullscreen window it was held behind. Drained by
+    /// `drainDeferredFocus` once that window leaves fullscreen.
+    private var deferredFocus: [(requester: WindowRef, behind: WindowRef)] = []
+    /// The shell's own activations (a rename alert, Settings) come from a click on its own panels,
+    /// which the global mouse monitor never sees. They are never intrusions.
+    private let ownPid = ProcessInfo.processInfo.processIdentifier
     private let now: @Sendable () -> ContinuousClock.Instant
     /// #64: draws each switch as motion; nil (tests, headless) places instantly.
     private let animator: (any SwitchAnimator)?
@@ -163,7 +176,15 @@ public actor WorldStore {
             // like any other. Acting on it would raise again, and again. Nothing is lost by
             // ignoring it: the app we just raised is the one already on screen.
             if consumeEcho(&pendingActivationEchoes, { $0.pid == pid }) || pid == lastRaised?.pid { return }
-            surfaceActivatedApp(pid)
+            // The fullscreen window's own app activating is no Space switch, and the check below
+            // already finds it on screen; only another app can pull the user out.
+            if let fs = fullscreenInFront, fs.pid != pid, pid != ownPid, !humanRecently {
+                interceptFocus(by: candidateWindow(ofPid: pid), behind: fs)
+            } else {
+                surfaceActivatedApp(pid)
+            }
+        case .humanInput:
+            lastHumanInput = now(); return
         case .screenLocked:
             // Spec §7.7 freeze. Setting the flag only stops the *next* pass from starting; a plan
             // already mid-flight would keep writing frames at a locked screen, and its writes land
@@ -174,6 +195,7 @@ public actor WorldStore {
             locked = false
             applySnapshot(await backend.currentSnapshot())
         }
+        drainDeferredFocus()
         await reconcile()
     }
 
@@ -310,9 +332,18 @@ public actor WorldStore {
         if world.ignored.contains(r), retired[r] != nil {
             revive(r, frame: observed[r] ?? retired[r]!.frame, reason: "focused")
         }
-        let isEcho = consumeEcho(&pendingFocusEchoes, { $0 == r }) || r == lastNativeFocus
+        let ownEcho = consumeEcho(&pendingFocusEchoes, { $0 == r })
+        let isEcho = ownEcho || r == lastNativeFocus
         lastNativeFocus = r
         Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)")
+        // #28. A repeated report of a requester already intercepted is *not* skipped as an echo:
+        // it means macOS still has it in front, so the fullscreen window goes back again. Windows
+        // the model does not manage (ignored, unknown) are left alone, exactly as below.
+        if !ownEcho, let fs = fullscreenInFront, r != fs, r.pid != ownPid, !humanRecently,
+           world.ephemeral.contains(r) || world.location(of: r) != nil {
+            interceptFocus(by: r, behind: fs)
+            return
+        }
         if world.ephemeral.contains(r) { world.focus.window = r; return }
         guard let loc = world.location(of: r), !world.hidden.contains(r) else { return }
         // An unchanged native focus is news about nothing, and must never drag the active
@@ -325,10 +356,94 @@ public actor WorldStore {
         // for as long as its Space is front, and dropping those left the model with no focused
         // window at all, so the next workspace verb ran from a stale belief on a stale screen.
         if isEcho && !world.fullscreen.contains(r) && world.screens[loc.screen]!.activeIndex != loc.index { return }
+        focus(r)
+    }
+
+    /// Model focus onto `r`: its workspace goes active and `r` becomes its anchor.
+    private func focus(_ r: WindowRef) {
+        if world.ephemeral.contains(r) { world.focus.window = r; return }
+        guard let loc = world.location(of: r), !world.hidden.contains(r) else { return }
         if world.screens[loc.screen]!.activeIndex != loc.index { world.activate(index: loc.index, on: loc.screen) }
         world.focus = Focus(screen: loc.screen, window: r)
         world.screens[loc.screen]!.workspaces[loc.index].anchor = r
         world.normalize()
+    }
+
+    // MARK: fullscreen focus protection (#28)
+
+    private var humanRecently: Bool {
+        guard let t = lastHumanInput else { return false }
+        return now() - t < Self.humanInputWindow
+    }
+
+    /// The fullscreen window the user is in, if any — the model's answer to "is this display
+    /// showing a fullscreen Space?".
+    ///
+    /// `AXFullScreen` cannot answer it: a window keeps reporting fullscreen after the user switches
+    /// away from its Space. The model's focus can. It follows every native focus report, so the
+    /// moment the user goes anywhere else — another Space, window or display — it stops naming the
+    /// fullscreen window; while it still does, that window is what macOS last put in front (or
+    /// what we just raised back there). So: the focused window, if the model has it fullscreen.
+    private var fullscreenInFront: WindowRef? {
+        guard let f = world.focus.window, world.fullscreen.contains(f) else { return nil }
+        return f
+    }
+
+    /// Whether a display the user is *not* on is showing a fullscreen Space. macOS reports one
+    /// focused window, not one per display, so that display's own focus stands in: its active
+    /// workspace's anchor, the window last focused there.
+    ///
+    /// ponytail: a stale anchor (the user swiped that display off its fullscreen Space and focused
+    /// nothing there since) reads as covered. That errs towards deferring rather than moving — the
+    /// safe side. Upgrade path: per-display current-Space ids from the platform.
+    private func showsFullscreen(_ d: DisplayID) -> Bool {
+        guard let a = world.screens[d]?.active.anchor else { return false }
+        return world.fullscreen.contains(a)
+    }
+
+    /// `requester` asked for focus with no human behind it while `fs` is in front (#28). Send it to
+    /// a display that is not showing a fullscreen Space — into that display's active workspace,
+    /// where a new window would land — preferring the display it is already on; with none, hold
+    /// the request until `fs` leaves fullscreen. Either way `fs` goes back in front: macOS has no
+    /// veto for a window manager, so protection can only be this reactive put-back.
+    ///
+    /// ponytail: an app that re-activates itself every time it loses focus will trade places with
+    /// `fs` for as long as it keeps trying. Upgrade path: give up on a requester after N rounds.
+    private func interceptFocus(by requester: WindowRef?, behind fs: WindowRef) {
+        guard let fsScreen = world.screenContaining(fs) else { return }
+        if let r = requester {
+            let free = world.screenOrder.filter { $0 != fsScreen && !showsFullscreen($0) }
+            let own = world.screenContaining(r)
+            // ponytail: an ephemeral window has no workspace to land in, so it is deferred even
+            // when a display is free. Upgrade path: centre it on the free display instead.
+            if own != nil, let dest = free.first(where: { $0 == own }) ?? free.first,
+               let target = world.screens[dest]?.active.id {
+                world = CommandRunner.apply(.moveWindowRefToWorkspace(r, target), to: world).0
+                Self.log.notice("fullscreen guard: moved \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
+            } else {
+                deferredFocus.removeAll { $0.requester == r }
+                deferredFocus.append((r, fs))
+                Self.log.notice("fullscreen guard: deferred \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) behind \(fs.id, privacy: .public)")
+            }
+        }
+        world.focus = Focus(screen: fsScreen, window: fs)
+        world.normalize()
+        // Raise it even if it was the last window we raised: macOS has raised the requester since.
+        lastRaised = nil
+    }
+
+    /// Hands out held-back focus (#28). Requests held behind a window that has left fullscreen, or
+    /// gone away, are settled at once: the newest whose window still exists gets the focus — but
+    /// only if the user is still on the window fullscreen ended in. One who has already gone
+    /// somewhere else has moved on, and the request is dropped; its window keeps its tab.
+    private func drainDeferredFocus() {
+        let ended = deferredFocus.filter { !world.fullscreen.contains($0.behind) }
+        guard !ended.isEmpty else { return }
+        deferredFocus.removeAll { !world.fullscreen.contains($0.behind) }
+        guard let next = ended.last(where: { world.location(of: $0.requester) != nil || world.ephemeral.contains($0.requester) }),
+              world.focus.window == next.behind || world.location(of: next.behind) == nil else { return }
+        Self.log.notice("fullscreen guard: fullscreen ended, focusing deferred \(next.requester.id, privacy: .public)")
+        focus(next.requester)
     }
 
     /// Puts a retired window back in the model (spec §11 "until it changes"). The app's remembered

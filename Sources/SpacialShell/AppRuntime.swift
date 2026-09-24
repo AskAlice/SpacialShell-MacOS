@@ -181,6 +181,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             table: KeyBindings.table(for: config),
             onCommand: { command in route(command) },
             onFlags: { flags in Task { @MainActor in cheatSheet.flagsChanged(flags) } },
+            onKeyDown: { backend.noteHumanInput() },
         )
         self.tap = tap
         termination.arm(tap: tap)

@@ -101,6 +101,25 @@ public final class AXWindowBackend: WindowBackend {
         }
     }
 
+    /// #28: whoever sees a human press a key or a mouse button reports it here — the global
+    /// mouse monitor above, and `HotkeyTap` via `AppRuntime`. It rides the event stream, so the
+    /// store sees it before the activation it causes. Safe from any thread (the tap calls it from
+    /// its own, inside the tap's deadline): one uncontended lock and a yield.
+    ///
+    /// Throttled, because the stream buffers only the newest 64 events: key repeat during a long
+    /// reconcile would otherwise push out the events that matter. Coarsening the stamp by this
+    /// much is nothing against the store's 1 s input window.
+    public nonisolated func noteHumanInput() {
+        let now = ContinuousClock.now
+        let due = lastHumanInput.withLock { last -> Bool in
+            if let last, now - last < Self.humanInputThrottle { return false }
+            last = now; return true
+        }
+        if due { continuation.yield(.humanInput) }
+    }
+    private nonisolated let lastHumanInput = OSAllocatedUnfairLock<ContinuousClock.Instant?>(initialState: nil)
+    private nonisolated static let humanInputThrottle = Duration.milliseconds(100)
+
     // MARK: - Lifecycle
 
     /// Spec §7.6 global observers plus the periodic backstop. Called once, from the main thread;
@@ -161,6 +180,7 @@ public final class AXWindowBackend: WindowBackend {
         // (AeroSpace #1001).
         if let down = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown], handler: { [weak self] _ in
             self?.mouseDown = true
+            self?.noteHumanInput()
         }) {
             eventMonitors.append(down)
         }
@@ -169,6 +189,16 @@ public final class AXWindowBackend: WindowBackend {
             self?.scheduleRefresh()
         }) {
             eventMonitors.append(up)
+        }
+        // #28: every other way a hand leaves fullscreen — a Dock right-click menu, a scroll, a
+        // trackpad swipe between Spaces — is human input too, or the guard would put the user
+        // straight back into the fullscreen Space they just swiped out of.
+        // ponytail: whether a three-finger Space swipe reaches a global monitor is unverified;
+        // if leaving fullscreen by swipe snaps back, that is the gap.
+        if let other = NSEvent.addGlobalMonitorForEvents(
+            matching: [.rightMouseDown, .otherMouseDown, .scrollWheel, .swipe, .gesture, .beginGesture, .magnify],
+            handler: { [weak self] _ in self?.noteHumanInput() }) {
+            eventMonitors.append(other)
         }
 
         signals = Task { @MainActor [weak self, refreshSignals] in

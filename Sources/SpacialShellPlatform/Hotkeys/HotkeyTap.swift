@@ -57,6 +57,9 @@ public final class HotkeyTap: @unchecked Sendable {
     private let onCommand: @Sendable (Command) -> Void
     /// Never consumes the event. Used for the Command-hold cheatsheet.
     private let onFlags: (@Sendable (CGEventFlags) -> Void)?
+    /// Every keyDown, bound or not, before anything else — the "a human did this" signal for
+    /// fullscreen focus protection (#28). Same deadline rule as `onCommand`: must not block.
+    private let onKeyDown: (@Sendable () -> Void)?
     /// `SPACIAL_LOG_KEYS=1` logs every keyDown's keycode and flags — the instrument for the
     /// empirical checks in `docs/platform-notes.md`.
     private let logKeys: Bool
@@ -128,10 +131,12 @@ public final class HotkeyTap: @unchecked Sendable {
         table: [Chord: Command],
         onCommand: @escaping @Sendable (Command) -> Void,
         onFlags: (@Sendable (CGEventFlags) -> Void)? = nil,
+        onKeyDown: (@Sendable () -> Void)? = nil,
     ) {
         self.table = table
         self.onCommand = onCommand
         self.onFlags = onFlags
+        self.onKeyDown = onKeyDown
         self.logKeys = ProcessInfo.processInfo.environment["SPACIAL_LOG_KEYS"] == "1"
     }
 
@@ -457,6 +462,7 @@ public final class HotkeyTap: @unchecked Sendable {
             return passThrough
 
         case .keyDown:
+            onKeyDown?()
             let code = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
             let flags = event.flags
             let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0

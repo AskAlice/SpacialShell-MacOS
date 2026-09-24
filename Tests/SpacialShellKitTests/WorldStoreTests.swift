@@ -765,6 +765,111 @@ import Foundation
         #expect(await be.calls.isEmpty)
         #expect(w.invariantViolations().isEmpty)
     }
+
+    // MARK: fullscreen focus protection (issue #28)
+
+    final class Clock: @unchecked Sendable { var t = ContinuousClock.now }
+    let video = WindowRef(id: 10, pid: 1)       // the fullscreen video, on D1
+    let pushy = WindowRef(id: 20, pid: 9)       // a background app that grabs focus by itself
+
+    /// A fullscreen `video` in front on D1, `pushy` in the same workspace behind it, and — when
+    /// `twoDisplays` — an empty D2. `fullscreen: false` is the same scene with no fullscreen at all.
+    func fullscreenScene(twoDisplays: Bool, fullscreen: Bool = true, clock: Clock = Clock()) async -> (WorldStore, FakeBackend) {
+        let d2 = DisplayInfo(id: "D2", frame: CGRect(x: 1000, y: 0, width: 1000, height: 700),
+                             visibleFrame: CGRect(x: 1000, y: 25, width: 1000, height: 675), isMain: false)
+        let s = Snapshot(displays: twoDisplays ? [d1, d2] : [d1],
+                         apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false),
+                                AppInfo(pid: 9, bundleID: "com.pushy", isHidden: false)],
+                         windows: [win(video, CGRect(x: 0, y: 0, width: 1000, height: 700), fs: fullscreen),
+                                   win(pushy, bundle: "com.pushy")],
+                         focused: video)
+        let be = FakeBackend(snapshot: s)
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _ in })
+        await store.start()
+        #expect(await store.world.focus.window == video)
+        await be.reset()
+        return (store, be)
+    }
+
+    /// The request: a window deciding on its own that it needs focus must not pull the user out of
+    /// fullscreen. With a second display free, it goes there — into that display's active
+    /// workspace — and the fullscreen window is put back in front.
+    @Test func aFocusGrabDuringFullscreenMovesToTheFreeDisplay() async {
+        let (store, be) = await fullscreenScene(twoDisplays: true)
+
+        await store.apply(.appActivated(pid: 9))
+
+        var w = await store.world
+        #expect(w.screens["D2"]!.active.windows == [pushy], "the requester was not moved to the free display")
+        #expect(w.focus.window == video, "the fullscreen window lost the focus")
+        #expect(await be.calls.contains(.raise(video)), "the fullscreen window was not put back in front")
+        #expect(w.invariantViolations().isEmpty)
+
+        // macOS follows the activation with a focus report for the requester. Same answer.
+        await store.apply(.snapshot(await be.currentSnapshot().with(focused: pushy)))
+        w = await store.world
+        #expect(w.screens["D2"]!.active.windows == [pushy] && w.focus.window == video)
+    }
+
+    /// One display: nowhere to send the requester, so the request waits. Fullscreen stays in
+    /// front, and the requester gets its focus once fullscreen ends.
+    @Test func aFocusGrabOnASingleDisplayIsDeferredUntilFullscreenEnds() async {
+        let (store, be) = await fullscreenScene(twoDisplays: false)
+
+        await store.apply(.focusChanged(pushy))
+
+        var w = await store.world
+        #expect(w.focus.window == video && w.fullscreen == [video])
+        #expect(await be.calls.contains(.raise(video)))
+        #expect(w.location(of: pushy)?.screen == "D1", "nothing to move to on one display")
+
+        await be.reset()
+        await store.apply(.snapshot(snap([win(video, CGRect(x: 0, y: 0, width: 1000, height: 700)),
+                                          win(pushy, bundle: "com.pushy")], focused: video)))   // user leaves fullscreen
+        w = await store.world
+        #expect(w.fullscreen.isEmpty)
+        #expect(w.focus.window == pushy, "the deferred request was not honoured when fullscreen ended")
+        #expect(await be.calls.contains(.raise(pushy)))
+        #expect(w.invariantViolations().isEmpty)
+    }
+
+    /// A focus change right after a key press or a click is the user's own doing, and goes through
+    /// exactly as it always has — until the input window runs out.
+    @Test func aFocusChangeRightAfterHumanInputGoesThrough() async {
+        let clock = Clock()
+        let (store, _) = await fullscreenScene(twoDisplays: true, clock: clock)
+
+        await store.apply(.humanInput)
+        clock.t = clock.t.advanced(by: .milliseconds(500))
+        await store.apply(.focusChanged(pushy))
+
+        let w = await store.world
+        #expect(w.focus.window == pushy, "a human focus change was overridden")
+        #expect(w.location(of: pushy)?.screen == "D1", "a human focus change moved the window")
+
+        // Long after the input, the same thing is an intrusion again.
+        let (late, _) = await fullscreenScene(twoDisplays: true, clock: clock)
+        await late.apply(.humanInput)
+        clock.t = clock.t.advanced(by: .seconds(2))
+        await late.apply(.focusChanged(pushy))
+        #expect(await late.world.focus.window == video)
+    }
+
+    /// No fullscreen anywhere: nothing about focus handling changes.
+    @Test func withoutFullscreenAFocusGrabIsHonoured() async {
+        let (store, _) = await fullscreenScene(twoDisplays: true, fullscreen: false)
+
+        await store.apply(.focusChanged(pushy))
+
+        let w = await store.world
+        #expect(w.focus.window == pushy)
+        #expect(w.location(of: pushy)?.screen == "D1")
+        #expect(w.screens["D2"]!.active.windows.isEmpty)
+    }
+}
+extension Snapshot {
+    func with(focused: WindowRef?) -> Snapshot { var s = self; s.focused = focused; return s }
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
