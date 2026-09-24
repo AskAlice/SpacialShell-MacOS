@@ -121,10 +121,18 @@ private final class Stage {
             panel.setFrame(NSRect(x: vp.minX, y: mainHeight - vp.maxY, width: vp.width, height: vp.height),
                            display: false)
             let view = NSView(frame: NSRect(origin: .zero, size: vp.size))
+            // Layer-*hosting*: the layer is assigned before `wantsLayer`, so AppKit never touches
+            // its geometry, and it keeps Core Animation's bottom-left origin. The AX → layer flip is
+            // done explicitly by `local` below. (Setting `isGeometryFlipped` on a layer-*backed*
+            // view did not hold — AppKit owns it — and rows travelled the wrong way vertically:
+            // Fn+S came in from the top, #66.)
+            let root = CALayer()
+            view.layer = root
             view.wantsLayer = true
-            let root = view.layer!
-            // Top-left geometry, so every rect is the AX rect shifted by the viewport's origin.
-            root.isGeometryFlipped = true
+            /// An AX (top-left, global) rect in this layer's bottom-left space.
+            func local(_ r: CGRect) -> CGRect {
+                CGRect(x: r.minX - vp.minX, y: vp.maxY - r.maxY, width: r.width, height: r.height)
+            }
             root.masksToBounds = true
             root.contents = shots.backdrops[t.display]
             root.contentsGravity = .resize
@@ -133,9 +141,9 @@ private final class Stage {
                 let layer = CALayer()
                 layer.contents = image
                 layer.contentsGravity = .resize
-                layer.frame = m.from.offsetBy(dx: -vp.minX, dy: -vp.minY)
+                layer.frame = local(m.from)
                 root.addSublayer(layer)
-                sprites.append(Sprite(layer: layer, to: m.to.offsetBy(dx: -vp.minX, dy: -vp.minY)))
+                sprites.append(Sprite(layer: layer, to: local(m.to)))
             }
             panel.contentView = view
             panel.orderFrontRegardless()
