@@ -7,18 +7,18 @@ public enum CommandRunner {
         let sid = w.focus.screen
         guard let screen = w.screens[sid] else { return (w, []) }
 
-        /// Move one window out of the workspace it is in and into `to` (at the front when
-        /// `atFront`, else the end), carrying its pin, and follow it. Workspace moves, display
-        /// moves, a dragged tab and the edge spill (#33) differ only in how they name the
-        /// destination, so they share this outright rather than drifting apart.
-        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int), atFront: Bool = false) -> Bool {
+        /// Move one window out of the workspace it is in and into `to` (at row position `at`, else
+        /// the end), carrying its pin, and follow it. Workspace moves, display moves, a dragged
+        /// tab and the edge spill (#33) differ only in how they name the destination, so they
+        /// share this outright rather than drifting apart.
+        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int), at position: Int? = nil) -> Bool {
             guard let from = w.location(of: ref) else { return false }
             guard from.screen != dest.screen || from.index != dest.index else { return false }
             let wasFloating = w.screens[from.screen]!.workspaces[from.index].floating.contains(ref)
             w.screens[from.screen]!.workspaces[from.index].windows.removeAll { $0 == ref }
             w.screens[from.screen]!.workspaces[from.index].floating.remove(ref)
             w.screens[dest.screen]!.workspaces[dest.index].windows.insert(
-                ref, at: atFront ? 0 : w.screens[dest.screen]!.workspaces[dest.index].windows.count)
+                ref, at: position ?? w.screens[dest.screen]!.workspaces[dest.index].windows.count)
             if wasFloating { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
             w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
             w.screens[dest.screen]!.activeIndex = dest.index
@@ -79,7 +79,7 @@ public enum CommandRunner {
                 let n = dir == .right ? k + 1 : k - 1
                 guard w.screenOrder.indices.contains(n) else { return (w, []) }
                 let target = w.screenOrder[n]
-                guard move(f, to: (target, w.screens[target]!.activeIndex), atFront: dir == .right) else { return (w, []) }
+                guard move(f, to: (target, w.screens[target]!.activeIndex), at: dir == .right ? 0 : nil) else { return (w, []) }
                 effects.append(.focus(f)); effects.append(.relayout)
                 return (w, effects)
             }
@@ -115,6 +115,16 @@ public enum CommandRunner {
             guard let from = w.location(of: ref) else { return (w, []) }
             var row = w.screens[from.screen]!.workspaces[from.index].windows
             guard let i = row.firstIndex(of: ref) else { return (w, []) }
+            // Decision 2026-09-24 (#32): `before` in another row (another display's bar, or another
+            // workspace) is a drop there, not a reorder here — the window moves into that row just
+            // before it and focus follows, exactly as a rail drop would.
+            if let before, !row.contains(before) {
+                guard let dest = w.location(of: before),
+                      let j = w.screens[dest.screen]!.workspaces[dest.index].windows.firstIndex(of: before),
+                      move(ref, to: dest, at: j) else { return (w, []) }
+                effects.append(.focus(ref)); effects.append(.relayout)
+                return (w, effects)
+            }
             // Resolve the destination before removing, so `before` is still findable; then convert
             // to a post-removal index so the insert cannot be off by one.
             let target: Int

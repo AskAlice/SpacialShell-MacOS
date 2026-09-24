@@ -214,13 +214,66 @@ import Foundation
         #expect(w.focus.window == a)
     }
 
-    /// Two windows in different workspaces have no row in common, so there is nothing to reorder.
-    @Test func dragToReorderAcrossWorkspacesIsARefusal() {
+    // MARK: bar drops across rows (#32) — a tab dropped on another row's bar goes to that row.
+
+    /// Dropped on a tab in another display's bar: the window lands in that tab's workspace,
+    /// immediately before it, and focus follows it there — the same as a rail drop.
+    @Test func dragBeforeATabInAnotherRowMovesItThere() {
+        var w = twoDisplays()                             // D1 [a*, b, c], D2 [d]
+        (w, _) = run(w, .moveWindowRefToWorkspace(a, w.screens["D2"]!.active.id))   // D2 [d, a]
+        (w, _) = run(w, .focusWindowRef(b))
+        let (out, effects) = run(w, .moveWindowRefBefore(b, a))
+        #expect(out.screens["D1"]!.workspaces[0].windows == [c])
+        #expect(out.screens["D2"]!.active.windows == [d, b, a])
+        #expect(out.focus == Focus(screen: "D2", window: b))
+        #expect(effects == [.focus(b), .relayout])
+    }
+
+    @Test func dragBeforeTheFirstTabInAnotherRowLandsFirst() {
+        var w = twoDisplays()
+        (w, _) = run(w, .moveWindowRefBefore(c, d))
+        #expect(w.screens["D1"]!.active.windows == [a, b])
+        #expect(w.screens["D2"]!.active.windows == [c, d])
+    }
+
+    @Test func dragBeforeATabInAnotherRowKeepsItFloating() {
+        var w = twoDisplays()
+        (w, _) = run(w, .focusWindowRef(c)); (w, _) = run(w, .toggleFloat)
+        (w, _) = run(w, .moveWindowRefBefore(c, d))
+        #expect(w.screens["D2"]!.active.floating == [c])
+        #expect(w.screens["D1"]!.active.floating.isEmpty)
+    }
+
+    /// Other workspaces on the same display are other rows too: no display is special.
+    @Test func dragBeforeATabInAnotherWorkspaceMovesItThere() {
         var w = base()
         let target = w.screens["D1"]!.workspaces.last!.id
-        (w, _) = run(w, .moveWindowRefToWorkspace(c, target))
-        let (out, effects) = CommandRunner.apply(.moveWindowRefBefore(c, a), to: w)
-        #expect(out == w && effects.isEmpty)
+        (w, _) = run(w, .moveWindowRefToWorkspace(c, target))   // D1 [[a, b], [c], []]
+        (w, _) = run(w, .moveWindowRefBefore(a, c))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[b], [a, c], []])
+        #expect(w.focus.window == a)
+    }
+
+    /// Dropped on the empty end of another display's bar: the bar names its own workspace, and
+    /// the window is appended there.
+    @Test func dragOntoAnotherBarsEmptySpaceAppendsThere() {
+        var w = twoDisplays()
+        let bar = ShellUI.state(for: "D2", in: w)!
+        (w, _) = run(w, bar.endOfRowDrop(b))
+        #expect(w.screens["D1"]!.active.windows == [a, c])
+        #expect(w.screens["D2"]!.active.windows == [d, b])
+        #expect(w.focus == Focus(screen: "D2", window: b))
+    }
+
+    /// The same drop on the window's own bar is the old row-end reorder, focus untouched.
+    @Test func dragOntoItsOwnBarsEmptySpaceStillReordersToTheEnd() {
+        var w = twoDisplays()
+        let bar = ShellUI.state(for: "D1", in: w)!
+        #expect(bar.endOfRowDrop(a) == .moveWindowRefBefore(a, nil))
+        (w, _) = run(w, bar.endOfRowDrop(a))
+        #expect(w.screens["D1"]!.active.windows == [b, c, a])
+        #expect(w.screens["D2"]!.active.windows == [d])
+        #expect(w.focus.window == a)
     }
 
     @Test func moveWindowDownCreatesWorkspaceAndFollows() {

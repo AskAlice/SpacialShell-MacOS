@@ -88,7 +88,8 @@ struct WorkspacePanelView: View {
     }
 
     /// The gap after the last tab is itself a drop target: dropping there appends, which is the
-    /// only way to move a tab to the end of the row without a tab to aim before.
+    /// only way to move a tab to the end of the row without a tab to aim before — or, for a tab
+    /// dragged from another display's bar, to put it on this one (#32).
     private var endOfRowTarget: some View {
         Spacer(minLength: Self.endGap)
             .frame(maxHeight: .infinity)
@@ -96,7 +97,7 @@ struct WorkspacePanelView: View {
             .overlay(alignment: .leading) { caret(visible: dropSlot == .endOfRow) }
             .dropDestination(for: DraggedWindow.self) { items, _ in
                 guard let dropped = items.first else { return false }
-                send(.moveWindowRefBefore(dropped.ref, nil))
+                send(state.endOfRowDrop(dropped.ref))
                 return true
             } isTargeted: { over in
                 dropSlot = over ? .endOfRow : nil
@@ -153,7 +154,8 @@ struct WorkspacePanelView: View {
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
         .help(meta.name)
         // Drag the tab to send its window somewhere: onto a rail row to move it to that
-        // workspace, or onto another tab to reorder the row.
+        // workspace, or onto another tab to land just before it — a reorder in its own row, a
+        // move when that tab is in another row (#32).
         .draggable(DraggedWindow(ref: tab.ref))
         .overlay(alignment: .leading) { caret(visible: dropSlot == .before(tab.ref)) }
         .dropDestination(for: DraggedWindow.self) { items, _ in

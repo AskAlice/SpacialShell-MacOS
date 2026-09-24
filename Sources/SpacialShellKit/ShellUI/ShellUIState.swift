@@ -51,6 +51,15 @@ public struct ScreenShellState: Equatable, Sendable {
         self.display = display; self.isFocusedScreen = isFocusedScreen
         self.rail = rail; self.tabs = tabs; self.layout = layout
     }
+
+    /// A tab dropped on this bar's empty end (#32). The bar names its own destination: a window
+    /// from another row moves into this bar's workspace; one already in it goes to the end.
+    public func endOfRowDrop(_ ref: WindowRef) -> Command {
+        guard !tabs.contains(where: { $0.ref == ref }), let ws = rail.first(where: \.isActive) else {
+            return .moveWindowRefBefore(ref, nil)
+        }
+        return .moveWindowRefToWorkspace(ref, ws.id)
+    }
 }
 
 public enum ShellUI {
