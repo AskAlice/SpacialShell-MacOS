@@ -43,11 +43,16 @@ public enum CommandRunner {
 
         switch command {
         case .focusWindow(let dir):
-            let vis = w.visible(in: screen.active)
-            guard !vis.isEmpty else { return (w, []) }
-            let i = w.focus.window.flatMap { vis.firstIndex(of: $0) } ?? 0
-            let j = dir == .right ? (i + 1) % vis.count : (i - 1 + vis.count) % vis.count
-            setFocus(vis[j]); effects.append(.relayout)
+            // Decision 2026-09-24 (#71): the keys walk the tab row exactly as the bar draws it,
+            // minimized and app-hidden windows included, and landing on one brings it back — the
+            // same promise a tab click keeps (#48). Walking only the visible windows meant a tab
+            // you could click was one the keyboard stepped straight over.
+            let row = screen.active.windows
+            guard !row.isEmpty else { return (w, []) }
+            let i = w.focus.window.flatMap { row.firstIndex(of: $0) } ?? 0
+            let j = dir == .right ? (i + 1) % row.count : (i - 1 + row.count) % row.count
+            if w.hidden.contains(row[j]) { w.hidden.remove(row[j]); effects.append(.unhide(row[j])) }
+            setFocus(row[j]); effects.append(.relayout)
 
         case .focusWorkspace(let dir):
             let target = screen.activeIndex + (dir == .down ? 1 : -1)

@@ -25,6 +25,16 @@ import Foundation
     @Test func focusLeftFromFirstWraps() {
         var w = base(); (w, _) = run(w, .focusWindow(.left)); #expect(w.focus.window == c)
     }
+    /// #71: "hitting fn+a … didn't focus that tab, but clicking on the tab un-minimized the window".
+    /// Fn+A/Fn+D walk the tab row as drawn — minimized windows included — and landing on one
+    /// brings it back, exactly as its tab click does (#48).
+    @Test func focusStepsOntoAMinimizedTabAndUnhidesIt() {
+        var w = base(); w.setHidden(b, true)
+        let (after, e) = run(w, .focusWindow(.right))
+        #expect(after.focus.window == b)
+        #expect(!after.hidden.contains(b))
+        #expect(e == [.unhide(b), .focus(b), .relayout])
+    }
     @Test func focusEmitsFocusAndRelayout() {
         let (_, e) = run(base(), .focusWindow(.right)); #expect(e == [.focus(b), .relayout])
     }
