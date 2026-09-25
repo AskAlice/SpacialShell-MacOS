@@ -26,12 +26,16 @@ public struct Workspace: Codable, Equatable, Sendable {
     /// `normalize()` as soon as a window lands. Without it the reaper would delete the workspace
     /// between restore and the first snapshot, and the apps would have nowhere to return to.
     public var reserved: Bool
+    /// #74: the category this row was made for by category routing — how the next app of that
+    /// category finds it, wherever a drag has since moved it. Nil for every row routing did not
+    /// make, and for every row in a state file older than #74.
+    public var category: AppCategory?
     public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: Layout,
                 windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil,
-                pinned: Bool = false, reserved: Bool = false) {
+                pinned: Bool = false, reserved: Bool = false, category: AppCategory? = nil) {
         self.id = id; self.name = name; self.symbol = symbol; self.layout = layout
         self.windows = windows; self.floating = floating; self.anchor = anchor
-        self.pinned = pinned; self.reserved = reserved
+        self.pinned = pinned; self.reserved = reserved; self.category = category
     }
     public var isEmpty: Bool { windows.isEmpty }
 }

@@ -15,7 +15,12 @@ public struct AppInfo: Equatable, Sendable, Hashable {
     public let pid: Int32
     public let bundleID: String?
     public let isHidden: Bool
-    public init(pid: Int32, bundleID: String?, isHidden: Bool) { self.pid = pid; self.bundleID = bundleID; self.isHidden = isHidden }
+    /// The app's own `LSApplicationCategoryType`, raw — tier 3 of `AppCategories.category`, read
+    /// by the platform because Kit cannot look at a bundle it only knows by pid (#74).
+    public let systemCategory: String?
+    public init(pid: Int32, bundleID: String?, isHidden: Bool, systemCategory: String? = nil) {
+        self.pid = pid; self.bundleID = bundleID; self.isHidden = isHidden; self.systemCategory = systemCategory
+    }
 }
 
 public struct WindowSnapshot: Equatable, Sendable {

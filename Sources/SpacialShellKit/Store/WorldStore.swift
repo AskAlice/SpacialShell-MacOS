@@ -224,6 +224,7 @@ public actor WorldStore {
         }
         let hiddenApps = Set(s.apps.filter(\.isHidden).map(\.pid))
         let crowds = crowdedApps(s)
+        let systemCategories = Dictionary(s.apps.map { ($0.pid, $0.systemCategory) }, uniquingKeysWith: { a, _ in a })
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
@@ -242,12 +243,20 @@ public actor WorldStore {
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
             if !known {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
-                // #13's ladder: the app's remembered workspace if it still exists, else a workspace
-                // of its own for a crowd arriving at launch, else nil — `adopt`'s ordinary rules.
-                // The crowd's new workspace becomes the app's placement, so its other windows
-                // follow it there by rung 1.
+                // #13's ladder, with #74's category routing: the app's remembered workspace if it
+                // still exists, else its category's row, else a workspace of its own for a crowd
+                // arriving at launch, else a row of its own, else nil — `adopt`'s ordinary rules.
+                // Whichever row it gets becomes the app's placement, so its other windows follow it
+                // there by rung 1. Only a window `adopt` will file on its own is routed: an
+                // ephemeral, ignored or child window would leave its new row empty.
+                let routable = w.bundleID != nil && w.parent == nil && (kind == .tile || kind == .float)
                 let landing = world.landing(remembered: w.bundleID.flatMap { placements[$0] },
-                                            crowdOn: w.bundleID.flatMap { crowds[$0] })
+                                            crowdOn: w.bundleID.flatMap { crowds[$0] },
+                                            routeOn: routable ? screenFor(w.frame) : nil,
+                                            category: AppCategories.category(bundleID: w.bundleID,
+                                                                             systemCategory: systemCategories[w.ref.pid] ?? nil,
+                                                                             overrides: config.appCategories),
+                                            order: config.categoryOrder, maxWorkspaces: config.maxWorkspaces)
                 if let b = w.bundleID, let landing { placements[b] = landing }
                 world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent, workspace: landing)
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")

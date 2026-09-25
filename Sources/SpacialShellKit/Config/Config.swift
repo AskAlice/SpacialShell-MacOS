@@ -75,6 +75,12 @@ public struct Config: Codable, Equatable, Sendable {
     /// gets a workspace of its own instead of piling into the active one (observed: 36 windows in
     /// one tab bar). 8 is about where the tab bar stops being readable.
     public var crowdThreshold: Int = 8
+    /// #74: where an app's first window lands when nothing remembers it. Each category listed
+    /// here gets one row per display, shared by every app of that category, created at its place
+    /// in this order; every other app gets a row of its own after them. Empty turns routing off.
+    public var categoryOrder: [AppCategory] = Config.defaultCategoryOrder
+    /// #74: routing never grows a display past this many rows; past it, new apps join the last row.
+    public var maxWorkspaces: Int = 12
     /// Switching is motion (#64, ruled in #65): windows slide as screenshot proxies when the Screen
     /// Recording grant is present, and are placed instantly without it or with this off.
     public var animations: Bool = true
@@ -103,6 +109,7 @@ public struct Config: Codable, Equatable, Sendable {
     /// Decision 2026-09-24 (#70): System Settings used to be here, and so never got a tab — but it
     /// is a window you work in, not a visitor. Calculator is the one app that really is a popup.
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.calculator")]
+    public static let defaultCategoryOrder: [AppCategory] = [.web, .terminal, .coding, .media, .utilities]
 
     public init() {}
 
@@ -115,6 +122,7 @@ public struct Config: Codable, Equatable, Sendable {
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
         case emptyCheatsheet = "empty-cheatsheet"
+        case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -131,6 +139,8 @@ public struct Config: Codable, Equatable, Sendable {
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
         crowdThreshold = try c.decodeIfPresent(Int.self, forKey: .crowdThreshold) ?? 8
+        categoryOrder = try c.decodeIfPresent([AppCategory].self, forKey: .categoryOrder) ?? Config.defaultCategoryOrder
+        maxWorkspaces = max(1, try c.decodeIfPresent(Int.self, forKey: .maxWorkspaces) ?? 12)
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
@@ -173,6 +183,8 @@ public struct Config: Codable, Equatable, Sendable {
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
         crowd-threshold = \(crowdThreshold)
+        category-order = [\(categoryOrder.map { q($0.rawValue) }.joined(separator: ", "))]
+        max-workspaces = \(maxWorkspaces)
         animations = \(animations)
         empty-cheatsheet = \(emptyCheatsheet)
 

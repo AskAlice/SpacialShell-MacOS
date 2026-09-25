@@ -32,7 +32,7 @@ struct RefreshSession {
         for nsApp in regular {
             guard let app = apps.getOrCreate(nsApp) else { continue }
             visited.insert(app.pid)
-            infos.append(AppInfo(pid: app.pid, bundleID: app.bundleID, isHidden: nsApp.isHidden))
+            infos.append(AppInfo(pid: app.pid, bundleID: app.bundleID, isHidden: nsApp.isHidden, systemCategory: app.systemCategory))
             toSnapshot.append(app)
         }
         // An app already in the registry that has since dropped out of `.regular` (Photos' media
@@ -42,7 +42,7 @@ struct RefreshSession {
         for app in apps.all() where !visited.contains(app.pid) {
             guard let nsApp = aliveByPid[app.pid] else { continue }
             visited.insert(app.pid)
-            infos.append(AppInfo(pid: app.pid, bundleID: app.bundleID, isHidden: nsApp.isHidden))
+            infos.append(AppInfo(pid: app.pid, bundleID: app.bundleID, isHidden: nsApp.isHidden, systemCategory: app.systemCategory))
             toSnapshot.append(app)
         }
 

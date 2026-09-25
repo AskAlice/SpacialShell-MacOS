@@ -79,24 +79,68 @@ extension World {
         normalize()
     }
 
-    /// Where a window seen for the first time lands (#13) — the workspace to hand `adopt`, or nil
-    /// for today's rules. One ladder, highest rung first:
+    /// Where a window seen for the first time lands (#13, #74) — the workspace to hand `adopt`, or
+    /// nil for today's rules. One ladder, highest rung first:
     ///
     /// 1. `remembered`, the app's placement from the state file, if that workspace still exists.
     ///    It is display-aware by construction: a workspace lives on a display keyed by the
     ///    display's UUID, and `PersistedState.restore` puts it back there.
-    /// 2. `crowdOn`, set by the store only for an app arriving at launch with more windows than
+    /// 2. Category routing (#74), for an app whose `category` is in `order`: that category's row
+    ///    on `routeOn`, the display the window opened on. None yet → one is made where the order
+    ///    puts it (see `categoryRowIndex`). Existing rows never move, so a drag sticks.
+    /// 3. `crowdOn`, set by the store only for an app arriving at launch with more windows than
     ///    `Config.crowdThreshold`: a new workspace of its own on that display, inserted above the
     ///    trailing empty one (invariant 4) and `reserved` until its first window lands.
-    /// 3. nil: `adopt`'s ordinary rules, unchanged.
-    public mutating func landing(remembered: UUID?, crowdOn: DisplayID?) -> UUID? {
+    /// 4. "Other" (#74): with routing on, any other app gets a row of its own at the bottom of
+    ///    `routeOn`'s stack.
+    /// 5. nil: `adopt`'s ordinary rules, unchanged. Also what `routeOn == nil` or an empty `order`
+    ///    falls to.
+    ///
+    /// Routing never grows a display past `maxWorkspaces` rows (the trailing empty one does not
+    /// count); past it, the app joins the last row. The store passes `routeOn` only for a window
+    /// `adopt` will actually file — tileable, no parent — so a routed row is never left empty.
+    public mutating func landing(remembered: UUID?, crowdOn: DisplayID?, routeOn: DisplayID? = nil,
+                                 category: AppCategory? = nil, order: [AppCategory] = [],
+                                 maxWorkspaces: Int = 12) -> UUID? {
         if let id = remembered, location(ofWorkspace: id) != nil { return id }
-        guard let d = crowdOn, var s = screens[d] else { return nil }
-        var ws = newWorkspace(); ws.reserved = true
-        let at = s.workspaces.count - 1
-        s.workspaces.insert(ws, at: at)
-        if s.activeIndex >= at { s.activeIndex += 1 }   // the active workspace stays the active one
-        screens[d] = s
+        let route = routeOn.flatMap { screens[$0] == nil || order.isEmpty ? nil : $0 }
+        if let d = route, let c = category, let rank = order.firstIndex(of: c) {
+            if let row = screens[d]!.workspaces.first(where: { $0.category == c }) { return row.id }
+            return newRow(on: d, category: c, at: categoryRowIndex(on: d, rank: rank, order: order), max: maxWorkspaces)
+        }
+        if let d = crowdOn, screens[d] != nil {
+            var ws = newWorkspace(); ws.reserved = true
+            return insertRow(ws, on: d, at: screens[d]!.workspaces.count - 1)
+        }
+        if let d = route { return newRow(on: d, category: category, at: screens[d]!.workspaces.count - 1, max: maxWorkspaces) }
+        return nil
+    }
+
+    /// Where a new row for the category ranked `rank` goes: just after the last row of an earlier
+    /// category, else just before the first row of a later one, else above the first unpinned row
+    /// (ordered rows come before everything routing did not order). Rows are read in their
+    /// current, possibly hand-sorted, order and never moved; the trailing empty is not a row.
+    func categoryRowIndex(on d: DisplayID, rank: Int, order: [AppCategory]) -> Int {
+        let rows = screens[d]!.workspaces.dropLast()
+        func r(_ ws: Workspace) -> Int? { ws.category.flatMap { order.firstIndex(of: $0) } }
+        if let i = rows.lastIndex(where: { r($0).map { $0 < rank } ?? false }) { return i + 1 }
+        return rows.firstIndex { r($0).map { $0 > rank } ?? false }
+            ?? rows.firstIndex { !$0.pinned }
+            ?? rows.endIndex
+    }
+
+    /// A routed row, or — once the display holds `max` rows — the last row instead.
+    private mutating func newRow(on d: DisplayID, category: AppCategory?, at i: Int, max: Int) -> UUID {
+        let ws = screens[d]!.workspaces
+        if ws.count - 1 >= Swift.max(max, 1) { return ws[ws.count - 2].id }
+        var row = newWorkspace(); row.category = category
+        return insertRow(row, on: d, at: i)
+    }
+
+    /// Inserts without disturbing which workspace is active.
+    private mutating func insertRow(_ ws: Workspace, on d: DisplayID, at i: Int) -> UUID {
+        screens[d]!.workspaces.insert(ws, at: i)
+        if screens[d]!.activeIndex >= i { screens[d]!.activeIndex += 1 }
         return ws.id
     }
 

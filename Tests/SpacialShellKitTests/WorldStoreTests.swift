@@ -7,7 +7,7 @@ import Foundation
     let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1)
     /// M1 geometry: the frame maths in this suite predates the shell panels, and what it tests
     /// (adoption, echoes, parking, locking) is inset-agnostic — `PanelInsetTests` owns the insets.
-    func m1Config() -> Config { var c = Config(); c.showPanels = false; return c }
+    func m1Config() -> Config { var c = Config(); c.showPanels = false; c.categoryOrder = []; return c }
     func win(_ r: WindowRef, _ f: CGRect = CGRect(x: 0, y: 0, width: 300, height: 200), kind: WindowKind = .tile, bundle: String? = "com.x", min: Bool = false, fs: Bool = false, parent: WindowRef? = nil, onSpace: Bool = true) -> WindowSnapshot {
         WindowSnapshot(ref: r, frame: f, title: "t", bundleID: bundle, kind: kind, parent: parent, isMinimized: min, isFullscreen: fs,
                        onActiveSpace: onSpace)

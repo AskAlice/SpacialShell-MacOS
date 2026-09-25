@@ -41,6 +41,9 @@ enum AXAppEvent: Sendable {
 final class AXApp: @unchecked Sendable {
     let pid: pid_t
     let bundleID: String?
+    /// `LSApplicationCategoryType` from the app's Info.plist, read once — it cannot change while
+    /// the process lives.
+    let systemCategory: String?
     let nsApp: NSRunningApplication
 
     private let timeoutMs: Int
@@ -80,6 +83,8 @@ final class AXApp: @unchecked Sendable {
         self.nsApp = nsApp
         self.pid = nsApp.processIdentifier
         self.bundleID = nsApp.bundleIdentifier
+        self.systemCategory = nsApp.bundleURL.flatMap(Bundle.init(url:))?
+            .object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
         self.timeoutMs = timeoutMs
         self.onEvent = onEvent
         self.axApp = .init(axApp)

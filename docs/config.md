@@ -28,6 +28,8 @@ launcher-url = "raycast://"
 show-panels = true
 empty-cheatsheet = true           # dimmed cheat sheet behind an empty workspace
 crowd-threshold = 8               # an app arriving at launch with more windows gets its own workspace
+category-order = ["web", "terminal", "coding", "media", "utilities"]   # [] turns routing off
+max-workspaces = 12               # routing never grows a display past this many rows
 
 [[workspace]]                     # pinned, named workspaces seeded on every screen
 name = "Code"                     # (material-shell "categories")
@@ -68,6 +70,8 @@ title-regex = "^Picture in Picture$"
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 | `empty-cheatsheet` | boolean | `true` | When the focused display's active workspace has no windows, the key-binding cheat sheet (the one holding the bare modifier shows) sits dimmed at the bottom of that screen, behind everything and click-through. It goes as soon as a window arrives or focus moves to another display. Also a toggle in the settings window. |
 | `crowd-threshold` | integer | `8` | An app arriving **at launch** with *more* windows than this, and no remembered placement, gets a workspace of its own on the display most of its windows are on, instead of piling into the active workspace. See [Where windows land at launch](#where-windows-land-at-launch). |
+| `category-order` | list of categories | `["web", "terminal", "coding", "media", "utilities"]` | Where an app's first window goes when nothing remembers it: one row per listed category on each display, shared by every app of that category, new rows created in this order. Apps of any other category, or of none, get a row each below them. `[]` turns this off. Category names are the `app-categories` values. See [Where windows land](#where-windows-land-at-launch). |
+| `max-workspaces` | integer | `12` | Category routing never grows a display past this many rows (the empty row at the bottom does not count). Past it, a new app joins the last row. |
 
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
 two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the
@@ -91,15 +95,30 @@ remembered per bundle id — see below.
 
 ## Where windows land at launch
 
-A window seen for the first time goes to the first of these that applies (#13):
+A window seen for the first time goes to the first of these that applies (#13, #74):
 
 1. **Its app's remembered workspace**, if that workspace still exists. The state file remembers
    the workspace each app was last in (#5), and each workspace lives on a display identified by
    its UUID, not by arrangement order, so a two-monitor arrangement comes back on the right
    monitors.
-2. **A workspace of its own**, for an app arriving at launch with more than `crowd-threshold`
+2. **Its category's row**, for an app whose category (resolved as in
+   [Why `app-categories` exists](#why-app-categories-exists)) is in `category-order`, on the
+   display the window opened on. All apps of that category share the row. If the display has no
+   such row yet, one is created at its place in the order: just below the rows of earlier
+   categories, just above rows of later ones, and otherwise above every row that routing did not
+   order. Pinned rows stay where they are.
+3. **A workspace of its own**, for an app arriving at launch with more than `crowd-threshold`
    windows, on the display most of them are on. Its further windows follow it there.
-3. **Otherwise, the active workspace** of the display holding most of the window — unchanged.
+4. **A row of its own**, at the bottom of the stack, for every other app while routing is on: a
+   category not in `category-order`, or no category at all.
+5. **Otherwise, the active workspace** of the display holding most of the window — unchanged.
+   With `category-order = []` this is where every app without a memory lands, as before #74.
+
+Whichever row an app's first window gets becomes the app's remembered workspace, so its later
+windows follow it by rule 1. Rules 2 and 4 never grow a display past `max-workspaces` rows; past
+it, the app joins the last row. The order only decides where **new** rows go: rows are never
+re-sorted, so a row you drag somewhere else (#75) stays there, and the next app of its category
+still finds it. Dialogs, popups and ephemeral windows are never routed.
 
 "At launch" means the first snapshot after SpacialShell starts, plus any app whose windows first
 appear within 10 s of it (login items and macOS's "reopen windows" arrive after the shell is up).

@@ -3,6 +3,8 @@ import Foundation
 public struct PersistedState: Codable, Equatable, Sendable {
     public struct WorkspaceState: Codable, Equatable, Sendable {
         public var id: UUID; public var name: String; public var symbol: String; public var layout: Layout; public var pinned: Bool
+        /// #74's row marker. Optional, so a state file from before it decodes as nil.
+        public var category: AppCategory?
     }
     public struct ScreenState: Codable, Equatable, Sendable {
         public var workspaces: [WorkspaceState]; public var activeIndex: Int
@@ -26,7 +28,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
 
     public init(world: World, placements: [String: UUID] = [:]) {
         screens = world.screens.mapValues { s in
-            ScreenState(workspaces: s.workspaces.map { WorkspaceState(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: $0.pinned) },
+            ScreenState(workspaces: s.workspaces.map { WorkspaceState(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: $0.pinned, category: $0.category) },
                         activeIndex: s.activeIndex)
         }
         zen = world.zen
@@ -73,7 +75,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
         func kept(_ ss: ScreenState) -> [Workspace] {
             ss.workspaces.filter { $0.pinned || wanted.contains($0.id) }.map {
                 Workspace(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout,
-                          pinned: $0.pinned, reserved: wanted.contains($0.id))
+                          pinned: $0.pinned, reserved: wanted.contains($0.id), category: $0.category)
             }
         }
         for (id, ss) in screens {
