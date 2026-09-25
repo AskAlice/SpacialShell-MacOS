@@ -37,6 +37,7 @@ public enum AppCategories {
         "com.google.Chrome.canary": .web,
         "com.brave.Browser": .web,
         "com.brave.Browser.nightly": .web,
+        "com.brave.Browser.origin": .web,
         "org.mozilla.firefox": .web,
         "org.mozilla.com.zilla.firefox": .web,
         "org.torproject.torbrowser": .web,
@@ -83,6 +84,11 @@ public enum AppCategories {
         // Media and design.
         "org.videolan.vlc": .media,
         "com.spotify.client": .media,
+        "io.mpv": .media,
+        // The user's order puts these together after media (#74). Apple files Finder under no
+        // category and System Settings under utilities only sometimes, so they are stated here.
+        "com.apple.finder": .utilities,
+        "com.apple.systempreferences": .utilities,
         "com.apple.Music": .media,
         "com.figma.Desktop": .design,
         "com.canva.CanvaDesktop": .design,
