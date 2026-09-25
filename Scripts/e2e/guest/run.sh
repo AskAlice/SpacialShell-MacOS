@@ -27,7 +27,7 @@ sudo cp -R build/SpacialShell.app "$APP"
 #    the cdhash, which changes every build, so the app's rows are rewritten each run with the
 #    build's own csreq (the golden image cannot bake them). The runner's own grants
 #    (tart-guest-agent, osascript) are baked in by golden.sh. Needs SIP off — golden.sh checks.
-REQ="$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^designated => //p')"
+REQ="$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^#\{0,1\} *designated => //p')"
 echo "$REQ" | csreq -r- -b /tmp/spacial.csreq
 HEX="$(xxd -p /tmp/spacial.csreq | tr -d '\n')"
 for svc in kTCCServiceAccessibility kTCCServiceScreenCapture; do
