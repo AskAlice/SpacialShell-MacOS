@@ -481,6 +481,54 @@ import Foundation
             return accept
         }
         func play() async { writesAtPlay.append(await be.calls.count) }
+        var prefetched: [[[Transition]]] = []
+        func prefetch(_ predicted: [[Transition]]) async { prefetched.append(predicted) }
+    }
+
+    /// #77: the prediction is the planner's own output — Fn+D in a row of three predicts exactly
+    /// the transition the real `.focusWindow(.right)` then prepares, and likewise Fn+A (which wraps).
+    @Test func thePredictedTabSwitchIsTheOneThatRuns() async {
+        let c = WindowRef(id: 3, pid: 1)
+        for (slot, command) in [(1, Command.focusWindow(.right)), (0, .focusWindow(.left))] {
+            let (store, _, anim) = await makeAnimated(snap([win(a), win(b), win(c)], focused: a))
+            let predicted = await anim.prefetched.last?[slot]
+            #expect(predicted?.isEmpty == false)
+            await store.run(command)
+            #expect(await anim.prepared.last == predicted, "\(command)")
+        }
+    }
+
+    /// Fn+S predicts the slide into the empty row below; Fn+W on the top row has nothing above it,
+    /// so it predicts no transition at all. Then, from the lower row, Fn+W is the way back.
+    @Test func thePredictedRowSwitchesAreTheOnesThatRun() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        #expect(await store.world.screens["D1"]!.activeIndex == 0)
+        let atTop = await anim.prefetched.last
+        #expect(atTop?[2] == [], "no row above: nothing to prefetch")
+        await store.run(.moveWindowToWorkspace(.down))    // a → ws1, which leaves a row both ways
+        let fromBelow = await anim.prefetched.last
+        #expect(fromBelow?[2].isEmpty == false)
+        await store.run(.focusWorkspace(.up))
+        #expect(await anim.prepared.last == fromBelow?[2])
+        let back = await anim.prefetched.last
+        await store.run(.focusWorkspace(.down))
+        #expect(await anim.prepared.last == back?[3])
+    }
+
+    /// A finished pass hands the overlay the four predictions; a superseded one does not (the
+    /// newer pass that superseded it speaks for the screen). `animations = false` never prefetches.
+    @Test func onlyAFinishedPassPrefetches() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        #expect(await anim.prefetched.last?.count == WorldStore.predictedCommands.count)
+        let before = await anim.prefetched.count
+        await anim.setDuringPrepare { await store.run(.toggleOverview) }
+        await store.run(.focusWindow(.right))
+        #expect(await anim.prefetched.count == before + 1, "the inner pass prefetches; the superseded outer one must not")
+
+        var off = m1Config(); off.animations = false
+        let (quiet, _, idle) = await makeAnimated(snap([win(a), win(b)], focused: a), config: off)
+        await quiet.run(.focusWindow(.right))
+        #expect(await idle.prefetched.isEmpty)
     }
 
     func makeAnimated(_ s: Snapshot, config: Config? = nil, accept: Bool = true) async -> (WorldStore, FakeBackend, FakeAnimator) {

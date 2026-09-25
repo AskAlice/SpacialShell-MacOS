@@ -94,4 +94,13 @@ public protocol SwitchAnimator: Sendable {
     func prepare(_ transitions: [Transition]) async -> Bool
     /// Start the motion to each `to` and return; the overlay removes itself when it lands.
     func play() async
+    /// #77: the switches the keys could make next, as the planner would draw them from here (see
+    /// `WorldStore.predictedCommands`; an entry is empty when that key moves nothing). Take their
+    /// pictures ahead of time, in the background, so the next `prepare` has nothing to capture.
+    /// Only a hint: it must never delay a `prepare`.
+    func prefetch(_ predicted: [[Transition]]) async
+}
+
+extension SwitchAnimator {
+    public func prefetch(_ predicted: [[Transition]]) async {}
 }

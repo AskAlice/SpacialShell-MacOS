@@ -600,8 +600,8 @@ public actor WorldStore {
                                          insets: insets)
         // #64: a switch is motion. The overlay goes up *before* the first write, so the real windows
         // jump to their final frames underneath it; `play` then slides the proxies after them.
-        let shownNow = shownRows(desired: desired, insets: insets)
-        let transitions = self.transitions(to: shownNow, insets: insets)
+        let shownNow = shownRows(world, desired: desired, insets: insets)
+        let transitions = self.transitions(world, to: shownNow, insets: insets)
         // Recorded *before* the first await: an event that lands while the overlay is being
         // prepared (the echo of this very raise) re-enters and reconciles again, and compared to
         // the old rows it would plan this same switch a second time and cancel the first mid-flight.
@@ -667,11 +667,32 @@ public actor WorldStore {
         }
         if animating, let animator { animating = false; await animator.play() }
         onChange(world)
+        // #77: only a pass that finished speaks for what is on screen; a superseded one returned above.
+        if let animator, config.animations, gen == generation {
+            await animator.prefetch(predictedSwitches(insets: insets, zero: zero))
+        }
+    }
+
+    /// #77: the keys the overlay prefetches for — Fn+A, Fn+D, Fn+W, Fn+S — in `prefetch`'s order.
+    static let predictedCommands: [Command] = [.focusWindow(.left), .focusWindow(.right),
+                                               .focusWorkspace(.up), .focusWorkspace(.down)]
+
+    /// What each of `predictedCommands` would draw from here: the real command on a copy of the
+    /// world, the real reconciler, and the planner against `lastShown` — the same path `run` takes,
+    /// so the prediction is exactly what the next `prepare` will ask for. Nothing is written.
+    private func predictedSwitches(insets: [DisplayID: ShellInsets], zero: Set<WindowRef>) -> [[Transition]] {
+        Self.predictedCommands.map { command in
+            let next = CommandRunner.apply(command, to: world).0
+            let desired = Reconciler.desired(world: next, displays: displays, config: LayoutConfig(gap: config.gap),
+                                             observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
+                                             insets: insets)
+            return transitions(next, to: shownRows(next, desired: desired, insets: insets), insets: insets)
+        }
     }
 
     /// Each display's active row as `desired` is about to show it: the tiled windows that get a
     /// frame, in tab order, and which of them the row is focused on.
-    private func shownRows(desired: [WindowRef: Placement], insets: [DisplayID: ShellInsets]) -> [DisplayID: ShownRow] {
+    private func shownRows(_ world: World, desired: [WindowRef: Placement], insets: [DisplayID: ShellInsets]) -> [DisplayID: ShownRow] {
         var out: [DisplayID: ShownRow] = [:]
         for sid in world.screenOrder {
             guard let screen = world.screens[sid] else { continue }
@@ -693,7 +714,7 @@ public actor WorldStore {
         return out
     }
 
-    private func transitions(to shownNow: [DisplayID: ShownRow], insets: [DisplayID: ShellInsets]) -> [Transition] {
+    private func transitions(_ world: World, to shownNow: [DisplayID: ShownRow], insets: [DisplayID: ShellInsets]) -> [Transition] {
         world.screenOrder.compactMap { sid in
             guard let before = lastShown[sid], let after = shownNow[sid], let screen = world.screens[sid],
                   let display = displays.first(where: { $0.id == sid }) else { return nil }
