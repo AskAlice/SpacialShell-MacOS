@@ -27,10 +27,10 @@ a window went. Veshell calls this a **"not-desktop"**: a place you inhabit rathe
 you tidy.
 
 M1 is the headless spatial core. **M2** is the face: a left workspace rail, a top window tab bar,
-five tiling layouts, and a focus glow that lands on the tile.
+tiling layouts (five built in, plus your own from the layout editor), and switches that slide.
 
 <p align="center">
-  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split, focus glow (render)">
+  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split (render)">
 </p>
 <p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
@@ -109,8 +109,6 @@ Two panels, one job: show *where you are*.
   there; `+` opens the overview so the new workspace starts with something in it.
 - **Workspace panel** (top bar, 34 pt): a tab per window on the active row, plus the layout
   switcher.
-- **Focus glow**: a 3 pt accent stroke at the window's *desired* frame — it arrives before the
-  window does.
 
 ## Layouts
 
@@ -138,7 +136,7 @@ apps — the fallback when `launcher-url` has no handler), a **hold-`Fn` cheat s
 live bindings, `Fn+,` opening the config file, and the control surface: unix-socket IPC,
 `spacialctl`, and the Raycast extension under [`raycast/`](raycast/). Panels are Apple-native
 materials, never take key focus (the overview's search field is the one exception), and every
-click re-enters the same command pipeline as a hotkey. Still to come: the focus glow, `Fn+Drag`
+click re-enters the same command pipeline as a hotkey. Still to come: `Fn+Drag` window
 reordering, workspace rename/menus, and window titles in tabs (app name + icon until then).
 
 Loops are served as animated **webp** (and **gif** next to them) from
@@ -220,8 +218,8 @@ for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/c
 - **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
   the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
   keyboard) or the `ctrl-alt` preset instead.
-- **The shell UI is young.** The rail, tab bar, and overview are in; the focus glow and `Fn+Drag`
-  reordering are not yet, and tabs show app names, not window titles. `show-panels = false` in
+- **The shell UI is young.** The rail, tab bar, and overview are in; `Fn+Drag` window
+  reordering is not yet, and tabs show app names, not window titles. `show-panels = false` in
   config brings back the panel-less behaviour (the overview and `spacialctl` stay).
 
 ## Licence and attribution
