@@ -212,11 +212,16 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     }
 
     /// A missing or unreadable settings file means "nothing overridden" — the file is ours, so a
-    /// corrupt one is our problem to shrug off, not the user's config to reject.
+    /// corrupt one is our problem to shrug off, not the user's config to reject. An unreadable one
+    /// is moved aside first: the next save would otherwise overwrite it, destroying every setting
+    /// in it for one bad byte.
     private func loadOverrides() {
         guard let data = try? Data(contentsOf: Paths.settingsFile) else { return }
         guard let decoded = try? JSONDecoder().decode(SettingsOverrides.self, from: data) else {
-            log.error("settings.json unreadable; ignoring it")
+            let aside = Paths.settingsFile.deletingPathExtension()
+                .appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.moveItem(at: Paths.settingsFile, to: aside)
+            log.error("settings.json unreadable; moved to \(aside.lastPathComponent, privacy: .public) and starting from defaults")
             return
         }
         overrides = decoded
