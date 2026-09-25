@@ -1,0 +1,39 @@
+# Three scratch windows in one workspace; walk the tab row and check focus and frames.
+# Assumes the workspace they land in holds only them (true in the VM; on this Mac TextEdit lands
+# on a row of its own unless the state file remembers it elsewhere — workspace-count says so).
+open 3 as t
+settle
+# require: on this Mac, never walk a row that holds the user's own windows.
+require same-workspace t1 t2 t3
+require workspace-count t1 3
+focus t1
+settle
+require active t1
+expect layout t1 maximize
+note focused as A
+note frame A as full
+expect onscreen A
+shot start
+
+run focus-window-right
+settle
+note focused as B
+expect differs A B
+expect frame B full
+expect not-parked B
+expect parked A
+
+run focus-window-right
+settle
+note focused as C
+expect differs A B C
+expect frame C full
+expect parked B
+
+# Three steps round a three-tab row wraps back to the start.
+run focus-window-right
+settle
+expect focused A
+expect frame A full
+expect parked C
+expect onscreen A

@@ -6,6 +6,8 @@ dev.sh      swift build (debug) + run .build/debug/SpacialShell in the foregroun
             of its screen before exiting (spec §7.4).
 bundle.sh   swift build -c release + assemble build/SpacialShell.app, ad-hoc signed.
 package-dmg.sh  bundle.sh + UDZO DMG (Applications symlink). VERSION= overrides the name.
+e2e/        end-to-end scenarios against the real shell, on this Mac or in a Tart VM;
+            see e2e/README.md (#38).
 
 TCC identity — read this before wondering why the Accessibility checkbox "doesn't work"
 --------------------------------------------------------------------------------------

@@ -1,0 +1,50 @@
+# Native fullscreen (#38 acceptance): the panels are hidden on the fullscreen display, the window
+# keeps its tab, and it never vanishes across focus-workspace-down/up (Fn+S / Fn+W).
+# Needs the runner to hold Accessibility + Automation (System Events) for `fullscreen`.
+open 1 as f
+settle
+require workspace-count f1 1
+focus f1
+settle
+require active f1
+expect onscreen f1
+shot windowed
+
+fullscreen f1 on
+settle
+expect fullscreen f1
+expect tab f1
+expect onscreen f1
+expect panels-hidden f1
+shot fullscreen
+
+run focus-workspace-down
+settle
+expect tab f1
+expect fullscreen f1
+shot away
+
+run focus-workspace-up
+settle
+expect tab f1
+expect fullscreen f1
+expect active f1
+expect onscreen f1
+expect panels-hidden f1
+shot back
+
+# Down/up again: the vanishing bug showed on the second round trip as often as the first.
+run focus-workspace-down
+settle
+run focus-workspace-up
+settle
+expect tab f1
+expect onscreen f1
+
+fullscreen f1 off
+settle
+expect tab f1
+expect not-fullscreen f1
+expect not-parked f1
+expect onscreen f1
+shot exited
