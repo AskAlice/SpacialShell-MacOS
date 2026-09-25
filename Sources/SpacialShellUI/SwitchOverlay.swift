@@ -320,6 +320,7 @@ private final class Stage {
             case .window(let i, let id): windows[i, default: [:]][id] = image
             }
         }
+        WindowThumbnails.shared.ingest(windows.values.joined())   // #90: rail hover thumbnails, no extra capture
         var out: [Pictures] = []
         for (i, t) in transitions.enumerated() {
             guard let back = backdrops[i] else { return nil }

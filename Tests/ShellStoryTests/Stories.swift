@@ -215,6 +215,18 @@ enum Stories {
                                 preview(3, image: shot(.systemGray)),
                                 preview(1, image: shot(.systemBlue))]),
             onGrantAccess: {}), truncates: true)
+        // #90: the first frame of a hover — thumbnails from the cache, at the cache's downscaled
+        // size, and the icon placeholder only for the window the shell has never seen.
+        func cached(_ color: NSColor) -> NSImage? {
+            shot(color).cgImage(forProposedRect: nil, context: nil, hints: nil)
+                .flatMap(WindowThumbnails.downscale).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
+        }
+        add("rail-hover-cached", nil, RailHoverCard(
+            title: "Code (1)", subtitle: "3 windows · coding",
+            content: .previews([preview(5, image: cached(.systemPink)),
+                                preview(3, image: cached(.systemGray)),
+                                preview(1, image: nil)]),
+            onGrantAccess: {}), truncates: true)
         // One window gets the big frame; the capture has not landed yet on the second tile, so
         // this also covers the icon placeholder.
         add("rail-hover-one-window", nil, RailHoverCard(

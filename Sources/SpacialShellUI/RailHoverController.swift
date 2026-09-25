@@ -11,9 +11,10 @@ import SpacialShellProtocol
 /// the window the user is actually working in, which is the one thing the shell must never do.
 /// A second non-activating panel has no such effect, so the card is furniture like the rail.
 ///
-/// Everything is per hover and nothing survives it: leaving the tile cancels the capture, hides
-/// the window and drops the images. There is no cache and no stream, so a rail nobody is pointing
-/// at costs nothing.
+/// The card draws `WindowThumbnails` in its first frame (#90), stale or not, and only after the
+/// hover delay re-captures what is stale and swaps it in. Leaving the tile cancels that capture and
+/// hides the window. No stream and no timer, so a rail nobody is pointing at costs nothing but the
+/// thumbnails' memory.
 @MainActor
 final class RailHoverController {
     private let window = PanelWindow()
@@ -53,9 +54,10 @@ final class RailHoverController {
         shown = item.id
 
         let apps = distinctApps(item, metaFor: metaFor)
+        let thumbs = WindowThumbnails.shared
         let items = item.windows.map { ref in
             let meta = metaFor(ref.pid)
-            return WindowPreviewItem(ref: ref, name: meta.name, icon: meta.icon, image: nil)
+            return WindowPreviewItem(ref: ref, name: meta.name, icon: meta.icon, image: thumbs.image(for: ref.id))
         }
         let card = content(for: item, items: items)
         render(title: title(item), subtitle: subtitle(item, apps: apps), content: card)
@@ -63,16 +65,18 @@ final class RailHoverController {
         window.orderFrontRegardless()
 
         guard case .previews = card else { return }
-        let refs = Array(items.prefix(RailHoverCard.maxPreviews)).map(\.ref)
+        let stale = items.prefix(RailHoverCard.maxPreviews).map(\.ref).filter { thumbs.isStale($0.id) }
+        guard !stale.isEmpty else { return }
         captureTask = Task { [weak self] in
             try? await Task.sleep(for: Self.hoverDelay)
             guard !Task.isCancelled else { return }
-            // Two points of the frame's height: Retina, and a miniature that still reads when the
-            // one-window card draws it at 304 pt wide.
-            let images = await WindowPreviewCapture.images(for: refs, pixelHeight: 400)
+            let taken = ContinuousClock.now
+            let images = await WindowPreviewCapture.images(for: stale, longSide: WindowThumbnails.longSide)
+            // Kept even if the hover has moved on: the next hover over this workspace is instant.
+            await thumbs.add(Array(images), taken: taken)
             guard !Task.isCancelled, let self, self.shown == item.id else { return }
             var filled = items
-            for i in filled.indices { filled[i].image = images[filled[i].ref.id] }
+            for i in filled.indices { filled[i].image = thumbs.image(for: filled[i].ref.id) }
             self.render(title: self.title(item), subtitle: self.subtitle(item, apps: apps),
                         content: .previews(filled))
         }
@@ -130,7 +134,7 @@ final class RailHoverController {
         shown = nil
         pointerInCard = false
         window.orderOut(nil)
-        // Drop the captured frames with the card: the images are the only thing here with a size.
+        // Let go of the card's images; the thumbnails themselves stay in `WindowThumbnails`.
         render(title: "", subtitle: nil, content: .message(""))
     }
 

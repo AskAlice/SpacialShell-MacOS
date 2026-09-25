@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import ScreenCaptureKit
+import SpacialShellKit
 import SpacialShellPlatform
 import SpacialShellProtocol
 
@@ -47,7 +48,7 @@ enum WindowPreviewCapture {
     /// Cancellation is checked between windows: sweeping down the rail starts and abandons a
     /// capture per tile, and the abandoned ones must stop at the next boundary rather than run on.
     static func images(for refs: [SpacialShellProtocol.WindowRef],
-                       pixelHeight: CGFloat) async -> [WindowID: NSImage] {
+                       longSide: CGFloat) async -> [WindowID: CGImage] {
         guard !refs.isEmpty, ScreenRecordingAccess.isGranted else { return [:] }
         // onScreenWindowsOnly: false — a window in an inactive workspace is parked in a corner
         // sliver, and an inactive workspace is exactly the one worth previewing.
@@ -65,7 +66,7 @@ enum WindowPreviewCapture {
         // the name and icon it already has. A missing thumbnail is the whole cost.
         let captureIDs = WindowIdentities.captureIDs(for: refs.map(\.id))
 
-        var out: [WindowID: NSImage] = [:]
+        var out: [WindowID: CGImage] = [:]
         for ref in refs {
             if Task.isCancelled { break }
             guard let cgID = captureIDs[ref.id], let window = candidates[cgID] else { continue }
@@ -73,17 +74,68 @@ enum WindowPreviewCapture {
             guard size.width > 0, size.height > 0 else { continue }
 
             let config = SCStreamConfiguration()
-            let scale = min(1, pixelHeight / size.height)
+            let scale = min(1, longSide / max(size.width, size.height))
             config.width = max(1, Int((size.width * scale).rounded()))
             config.height = max(1, Int((size.height * scale).rounded()))
             config.showsCursor = false
             guard let cgImage = try? await SCScreenshotManager.captureImage(
                 contentFilter: SCContentFilter(desktopIndependentWindow: window),
                 configuration: config) else { continue }
-            out[ref.id] = NSImage(cgImage: cgImage,
-                                  size: NSSize(width: config.width, height: config.height))
+            out[ref.id] = cgImage
         }
         return out
+    }
+}
+
+/// #90: the last downscaled picture of every window, so the rail hover card draws in its first
+/// frame. The policy (LRU, the cap, staleness, eviction) is `ThumbnailCache` in Kit; this holds the
+/// pixels. Fed by captures taken anyway — #77's switch pictures via `ingest`, the hover's own
+/// refresh via `add` — and never by a capture of its own: no stream, no timer.
+@MainActor
+final class WindowThumbnails {
+    static let shared = WindowThumbnails()
+    /// Pixels on the long side: sharp in the card's 148 pt grid tile on Retina and close enough in
+    /// the one-window 304 pt frame; 256 looked soft there. The cap in `ThumbnailCache` bounds memory.
+    nonisolated static let longSide: CGFloat = 400
+    private var cache = ThumbnailCache<CGImage>()
+
+    func image(for id: WindowID) -> NSImage? {
+        cache.image(for: id).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
+    }
+    func isStale(_ id: WindowID) -> Bool { cache.isStale(id) }
+    /// Every window the store still knows; the rest have closed.
+    func retain(_ live: Set<WindowID>) { cache.retain(live) }
+
+    /// Fire and forget: the one-line hook for pictures taken for something else. Returns at once;
+    /// the downscale runs at utility priority, off the main actor.
+    func ingest(_ images: some Sequence<(key: WindowID, value: CGImage)>) {
+        let batch = Array(images), taken = ContinuousClock.now
+        Task { await add(batch, taken: taken) }
+    }
+
+    func add(_ images: [(key: WindowID, value: CGImage)], taken: ContinuousClock.Instant) async {
+        guard !images.isEmpty else { return }
+        let small = await Task.detached(priority: .utility) {
+            images.compactMap { e in Self.downscale(e.value).map { (e.key, $0) } }
+        }.value
+        for (id, image) in small { cache.insert(image, for: id, taken: taken) }
+    }
+
+    /// `longSide` pixels on the long side, in the source's own colour space (sRGB if that is not
+    /// an RGB space a bitmap context can draw into). Nil rather than the full-size original on
+    /// failure, so the cache's memory bound holds.
+    nonisolated static func downscale(_ image: CGImage) -> CGImage? {
+        let long = CGFloat(max(image.width, image.height))
+        guard long > longSide else { return image }
+        let s = longSide / long
+        let w = max(1, Int((CGFloat(image.width) * s).rounded())), h = max(1, Int((CGFloat(image.height) * s).rounded()))
+        let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
     }
 }
 
