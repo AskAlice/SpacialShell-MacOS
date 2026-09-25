@@ -239,6 +239,7 @@ public actor WorldStore {
                 if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
             }
             let nowHidden = w.isMinimized || hiddenApps.contains(w.ref.pid)
+            rehomeIfMacOSOwnsFrame(w, hidden: nowHidden)
             if nowHidden != world.hidden.contains(w.ref), world.location(of: w.ref) != nil {
                 Self.log.notice("hidden \(nowHidden ? "on" : "off", privacy: .public) \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public) minimized=\(w.isMinimized) appHidden=\(hiddenApps.contains(w.ref.pid))")
             }
@@ -490,6 +491,38 @@ public actor WorldStore {
         let kind = config.kindOverride(bundleID: bundle, title: "") ?? .tile
         world.adopt(r, kind: kind, on: screenFor(frame), workspace: bundle.flatMap { placements[$0] })
         Self.log.notice("revive \(r.id, privacy: .public) pid=\(r.pid) \(bundle ?? "-", privacy: .public) \(reason, privacy: .public)")
+    }
+
+    /// Which display a window belongs to is decided by whoever owns its frame (#72, #57).
+    ///
+    /// The shell owns a *tiled* window's frame: the model wins and the reconciler moves the window
+    /// to its tab. macOS owns a *fullscreen* window's frame (it picks the display and the Space),
+    /// and nothing moves a *floating* window — so for those the display under the frame is the
+    /// truth and the model follows it, into that display's active workspace. Otherwise the tab sits
+    /// on one display with its window on another, and everything that asks "which display is this
+    /// on?" — the fullscreen panel check, the #28 guard, a tab click — answers wrong. Parked and
+    /// hidden windows are skipped: a parking corner or a minimized window's frame says nothing —
+    /// except a fullscreen one's, which is macOS's word even if we parked it before it went fullscreen.
+    private func rehomeIfMacOSOwnsFrame(_ w: WindowSnapshot, hidden: Bool) {
+        guard !hidden, let loc = world.location(of: w.ref) else { return }
+        let floating = world.screens[loc.screen]!.workspaces[loc.index].floating.contains(w.ref)
+        // A fullscreen window's frame is always macOS's word, even one we once parked (a window in
+        // an inactive row that went fullscreen); a parked floating window's frame is our corner.
+        guard w.isFullscreen || (floating && !parked.contains(w.ref)),
+              let d = displayUnder(w.frame), d != loc.screen, world.screens[d] != nil else { return }
+        let focused = world.focus.window == w.ref
+        world.remove(w.ref)
+        world.adopt(w.ref, kind: floating ? .float : .tile, on: d)
+        if focused { world.focus = Focus(screen: d, window: w.ref) }
+        world.normalize()
+        Self.log.notice("rehome \(w.ref.id, privacy: .public) \(w.bundleID ?? "-", privacy: .public) to \(String(d.prefix(8)), privacy: .public): macOS owns its frame (\(w.isFullscreen ? "fullscreen" : "floating", privacy: .public))")
+    }
+
+    /// The display holding most of `frame`, or nil when it is on none.
+    private func displayUnder(_ frame: CGRect) -> DisplayID? {
+        displays.map { d -> (DisplayID, CGFloat) in
+            let a = d.frame.intersection(frame); return (d.id, a.isNull ? 0 : a.width * a.height)
+        }.filter { $0.1 > 0 }.max { $0.1 < $1.1 }?.0
     }
 
     private func screenFor(_ frame: CGRect) -> DisplayID {

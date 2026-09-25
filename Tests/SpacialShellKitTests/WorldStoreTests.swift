@@ -944,6 +944,28 @@ import Foundation
         calls.compactMap { if case .setFrame(r, let f) = $0 { f } else { nil } }
     }
 
+    /// #72: macOS owns a fullscreen window's display. Found fullscreen on D2 while the model files
+    /// it under D1, the model follows — so D2 (not D1) is the display showing fullscreen, and D1's
+    /// panels stay up.
+    @Test func aFullscreenWindowIsFiledUnderTheDisplayItIsOn() async {
+        let (store, _) = await make(twoDisplays([win(a), win(b)], focused: a))
+        #expect(await store.world.location(of: b)?.screen == "D1")
+        await store.apply(.snapshot(twoDisplays([win(a), win(b, d2.frame, fs: true)], focused: a)))
+        let w = await store.world
+        #expect(w.location(of: b)?.screen == "D2")
+        #expect(w.showsFullscreenSpace("D2") && !w.showsFullscreenSpace("D1"))
+    }
+
+    /// Nothing moves a floating window back, so one found on another display takes its tab there.
+    @Test func aFloatingWindowFoundOnAnotherDisplayTakesItsTabThere() async {
+        let (store, be) = await make(twoDisplays([win(a), win(b, kind: .float)], focused: a))
+        await be.reset()
+        let there = CGRect(x: 1200, y: 100, width: 300, height: 200)
+        await store.apply(.snapshot(twoDisplays([win(a), win(b, there, kind: .float)], focused: a)))
+        #expect(await store.world.location(of: b)?.screen == "D2")
+        #expect(writes(b, await be.calls).isEmpty, "a floating window is never moved")
+    }
+
     /// Rule 1: a new window placed by memory into a workspace on *another* display is moved there
     /// — the model files it under D2, so the reconciler writes D2's frame, whichever display it
     /// opened on. In an inactive workspace it is parked in D2's corner: model and write agree.
