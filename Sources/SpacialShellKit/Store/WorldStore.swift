@@ -7,7 +7,12 @@ public actor WorldStore {
     private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "store")
     public private(set) var world: World
     private let backend: any WindowBackend
-    private var config: Config
+    private var config: Config { didSet { layouts = LayoutCatalogue(config: config) } }
+    /// #9: the layout ids' meaning, rebuilt whenever the config is — the one place every
+    /// `Reconciler.desired` and `CommandRunner.apply` call here gets it from.
+    private var layouts: LayoutCatalogue
+    /// Unresolved layout ids already logged: once per id, not once per reconcile (design §8).
+    private var loggedUnresolved: Set<LayoutID> = []
     private let zeroSliverBundleIDs: Set<String>
     private let onChange: @Sendable (World) -> Void
 
@@ -98,6 +103,7 @@ public actor WorldStore {
                 onChange: @escaping @Sendable (World) -> Void) {
         self.now = now
         self.animator = animator
+        self.layouts = LayoutCatalogue(config: config)
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
         self.placements = placements
         self.world = world ?? World.seeded(screens: [], config: config)
@@ -135,14 +141,14 @@ public actor WorldStore {
     /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
     /// window belongs to, whether the shell has it parked, and the last frame it observed.
     public func wireState() -> WireState {
-        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed)
+        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed, layouts: layouts)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
     public func run(_ command: Command) async {
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
         let before = world.focus
-        let (next, effects) = CommandRunner.apply(command, to: world)
+        let (next, effects) = CommandRunner.apply(command, to: world, layouts: layouts)
         world = next
         Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
         for e in effects {
@@ -599,7 +605,8 @@ public actor WorldStore {
         // screen — each screen carries both panels).
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
-        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
+        logUnresolvedLayouts()
+        let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
                                          insets: insets)
         // #64: a switch is motion. The overlay goes up *before* the first write, so the real windows
@@ -677,6 +684,19 @@ public actor WorldStore {
         }
     }
 
+    private var layoutConfig: LayoutConfig { LayoutConfig(gap: config.gap, layouts: layouts) }
+
+    /// Design §8: a workspace whose layout was deleted (or mistyped) keeps its id and draws the
+    /// fallback; the switcher badges it, and the log says so once per id.
+    private func logUnresolvedLayouts() {
+        for sid in world.screenOrder {
+            for ws in world.screens[sid]?.workspaces ?? [] {
+                guard let warning = layouts.warning(for: ws.layout), loggedUnresolved.insert(ws.layout).inserted else { continue }
+                Self.log.notice("\(warning, privacy: .public)")
+            }
+        }
+    }
+
     /// #77: the keys the overlay prefetches for — Fn+A, Fn+D, Fn+W, Fn+S — in `prefetch`'s order.
     static let predictedCommands: [Command] = [.focusWindow(.left), .focusWindow(.right),
                                                .focusWorkspace(.up), .focusWorkspace(.down)]
@@ -686,8 +706,8 @@ public actor WorldStore {
     /// so the prediction is exactly what the next `prepare` will ask for. Nothing is written.
     private func predictedSwitches(insets: [DisplayID: ShellInsets], zero: Set<WindowRef>) -> [[Transition]] {
         Self.predictedCommands.map { command in
-            let next = CommandRunner.apply(command, to: world).0
-            let desired = Reconciler.desired(world: next, displays: displays, config: LayoutConfig(gap: config.gap),
+            let next = CommandRunner.apply(command, to: world, layouts: layouts).0
+            let desired = Reconciler.desired(world: next, displays: displays, config: layoutConfig,
                                              observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
                                              insets: insets)
             return transitions(next, to: shownRows(next, desired: desired, insets: insets), insets: insets)
@@ -739,7 +759,7 @@ public actor WorldStore {
         guard !locked, !displays.isEmpty else { return }
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
-        let desired = Reconciler.desired(world: world, displays: displays, config: LayoutConfig(gap: config.gap),
+        let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked,
                                          zeroSliver: [], insets: insets)
         for (ref, frame) in observed.sorted(by: { $0.key.id < $1.key.id }) {

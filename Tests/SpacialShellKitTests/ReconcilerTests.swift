@@ -89,7 +89,7 @@ import Foundation
     @Test func railLeftInsetShiftsEveryLayoutXAndNarrowsBy48() {
         let left = ShellInsets(top: 0, left: 48, right: 0, bottom: 0)
         for layout in Layout.allCases {
-            var w = world(); w.screens["D1"]!.workspaces[0].layout = layout
+            var w = world(); w.screens["D1"]!.workspaces[0].layout = LayoutID(layout)
             guard case .frame(let f) = desired(w, insets: ["D1": left])[a] else {
                 Issue.record("\(layout) should frame a"); continue
             }

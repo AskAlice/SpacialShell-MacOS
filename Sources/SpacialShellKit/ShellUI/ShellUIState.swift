@@ -47,14 +47,17 @@ public struct ScreenShellState: Equatable, Sendable {
     public let isFocusedScreen: Bool
     public let rail: [WorkspaceRailItem]     // top→bottom, same order as Screen.workspaces
     public let tabs: [WindowTabItem]         // left→right, the active workspace's row
-    public let layout: Layout                // the active workspace's layout
+    public let layout: LayoutID              // the active workspace's layout, as stored
+    /// Design §8: set when `layout` does not resolve (a deleted or mistyped layout) and the shell
+    /// is drawing the fallback — "layout "code-3" is missing — using maximize". Nil otherwise.
+    public let layoutWarning: String?
     /// The rail tray (#73): windows no tab brings back on its own, in `ShellUI.tray(in:)` order.
     /// The same list on every display — hidden windows and popups are the user's, not a screen's.
     public let tray: [WindowRef]
     public init(display: DisplayID, isFocusedScreen: Bool, rail: [WorkspaceRailItem],
-                tabs: [WindowTabItem], layout: Layout, tray: [WindowRef] = []) {
+                tabs: [WindowTabItem], layout: LayoutID, layoutWarning: String? = nil, tray: [WindowRef] = []) {
         self.display = display; self.isFocusedScreen = isFocusedScreen
-        self.rail = rail; self.tabs = tabs; self.layout = layout; self.tray = tray
+        self.rail = rail; self.tabs = tabs; self.layout = layout; self.layoutWarning = layoutWarning; self.tray = tray
     }
 
     /// A tab dropped on this bar's empty end (#32). The bar names its own destination: a window
@@ -79,7 +82,8 @@ public struct ScreenShellState: Equatable, Sendable {
 
 public enum ShellUI {
     /// Nil when the world does not know this display (mid hot-plug); the caller just skips it.
-    public static func state(for display: DisplayID, in world: World) -> ScreenShellState? {
+    public static func state(for display: DisplayID, in world: World,
+                             layouts: LayoutCatalogue = .builtins) -> ScreenShellState? {
         guard let screen = world.screens[display] else { return nil }
         let rail = screen.workspaces.enumerated().map { i, ws in
             WorkspaceRailItem(
@@ -103,7 +107,8 @@ public enum ShellUI {
         return ScreenShellState(
             display: display,
             isFocusedScreen: world.focus.screen == display,
-            rail: rail, tabs: tabs, layout: active.layout, tray: tray(in: world))
+            rail: rail, tabs: tabs, layout: active.layout,
+            layoutWarning: layouts.warning(for: active.layout), tray: tray(in: world))
     }
 
     /// #73: what the rail tray lists — every hidden (minimized or ⌘H) window, then every popup

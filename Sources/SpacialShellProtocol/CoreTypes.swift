@@ -15,6 +15,25 @@ public struct WindowRef: Hashable, Codable, Sendable, CustomStringConvertible {
     public var description: String { "w\(id)@\(pid)" }
 }
 
+/// A layout's identity (#9, custom grid layouts design §2/§4.1): any string, never a closed set.
+/// It encodes as the bare string, byte-for-byte what the `Layout` enum wrote, so every existing
+/// `config.toml`, `state.json` and wire payload loads unchanged — and a string no build has seen
+/// decodes too, instead of rejecting the whole file. Whether an id *means* anything is decided
+/// late, by Kit's `LayoutCatalogue`. The static members keep `== .maximize` call sites compiling.
+public struct LayoutID: RawRepresentable, Codable, Hashable, Sendable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+    /// #9 bridge for the switcher, which still iterates the enum; goes with the enum in #11.
+    public init(_ layout: Layout) { rawValue = layout.rawValue }
+    public init(from d: Decoder) throws { rawValue = try d.singleValueContainer().decode(String.self) }
+    public func encode(to e: Encoder) throws { var c = e.singleValueContainer(); try c.encode(rawValue) }
+    public static let maximize: LayoutID = "maximize", split: LayoutID = "split",
+                      column: LayoutID = "column", half: LayoutID = "half", grid: LayoutID = "grid"
+}
+
+/// The five built-ins as a closed set. Since #9 only the switcher's `allCases` and Kit's
+/// `BuiltinLayout` use it; storage speaks `LayoutID`. Removed by #11.
 public enum Layout: String, Codable, CaseIterable, Sendable {
     case maximize, split, column, half, grid
     public var next: Layout {

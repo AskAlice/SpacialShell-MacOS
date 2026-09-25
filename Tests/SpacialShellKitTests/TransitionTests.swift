@@ -87,6 +87,30 @@ import Foundation
         #expect(move(ms, w2)?.from == full.offsetBy(dx: 0, dy: viewport.height))
     }
 
+    /// Custom grid layouts design §9 (#9): a page flip — a page of several windows replaced by a
+    /// wholly different one, as a 2×2 zone page or a #54 column page does — slides one whole
+    /// viewport, so leaving and arriving windows never cross inside the clip.
+    @Test func aPageFlipSlidesOneWholeViewport() {
+        let w4 = WindowRef(id: 4, pid: 1), w5 = WindowRef(id: 5, pid: 1), w6 = WindowRef(id: 6, pid: 1)
+        let tl = CGRect(x: 8, y: 8, width: 488, height: 288), tr = CGRect(x: 504, y: 8, width: 488, height: 288)
+        let bl = CGRect(x: 8, y: 304, width: 488, height: 288)
+        let all = [w1, w2, w3, w4, w5, w6]
+        // Focus w3 → w4 crosses the page edge: page [w1 w2 w3] becomes page [w4 w5 w6].
+        let before = row(wsA, 0, all, focused: w3, frames: [w1: tl, w2: tr, w3: bl])
+        let after = row(wsA, 0, all, focused: w4, frames: [w4: tl, w5: tr, w6: bl])
+        let ms = Transition.moves(before: before, after: after, viewport: viewport, gap: 8)
+        let page = viewport.width + 8
+        #expect(move(ms, w1)?.to == tl.offsetBy(dx: -page, dy: 0))
+        #expect(move(ms, w3)?.to == bl.offsetBy(dx: -page, dy: 0))
+        #expect(move(ms, w4)?.from == tl.offsetBy(dx: page, dy: 0))
+        #expect(move(ms, w6)?.from == bl.offsetBy(dx: page, dy: 0))
+        #expect(ms.count == 6)
+        // And back: the mirror.
+        let back = Transition.moves(before: after, after: before, viewport: viewport, gap: 8)
+        #expect(move(back, w4)?.to == tl.offsetBy(dx: page, dy: 0))
+        #expect(move(back, w1)?.from == tl.offsetBy(dx: -page, dy: 0))
+    }
+
     /// Nothing moved on screen (a backstop snapshot, a layout-neutral command): no transition.
     @Test func anUnchangedRowPlansNothing() {
         let r = row(wsA, 0, [w1, w2], focused: w1, frames: [w1: full])

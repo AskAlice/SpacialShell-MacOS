@@ -1,7 +1,7 @@
 import Foundation
 import TOMLDecoder
-// `Layout` (used below as a default-argument shorthand, e.g. `= .maximize`) is now a
-// `SpacialShellProtocol.Layout` typealias (M2 D4); Swift requires the declaring module to be
+// `LayoutID` (used below as a default-argument shorthand, e.g. `= .maximize`) is a
+// `SpacialShellProtocol.LayoutID` typealias (M2 D4, #9); Swift requires the declaring module to be
 // imported in any file that resolves an implicit-member default argument against it, even though
 // the typealias itself is visible through `SpacialShellKit`.
 import SpacialShellProtocol
@@ -21,13 +21,13 @@ public struct AppRule: Codable, Equatable, Sendable {
 public struct WorkspaceSeed: Codable, Equatable, Sendable {
     public var name: String
     public var symbol: String
-    public var layout: Layout
-    public init(name: String, symbol: String = "square.grid.2x2", layout: Layout = .maximize) { self.name = name; self.symbol = symbol; self.layout = layout }
+    public var layout: LayoutID
+    public init(name: String, symbol: String = "square.grid.2x2", layout: LayoutID = .maximize) { self.name = name; self.symbol = symbol; self.layout = layout }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         symbol = try c.decodeIfPresent(String.self, forKey: .symbol) ?? "square.grid.2x2"
-        layout = try c.decodeIfPresent(Layout.self, forKey: .layout) ?? .maximize
+        layout = try c.decodeIfPresent(LayoutID.self, forKey: .layout) ?? .maximize
     }
 }
 
@@ -61,7 +61,9 @@ public enum HexColor {
 public struct Config: Codable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
     public var gap: Double = 8
-    public var defaultLayout: Layout = .maximize
+    /// Any id: a built-in, a `[[layout]]`, or one drawn in the editor. An id nothing defines is
+    /// kept, and resolves to maximize (#9).
+    public var defaultLayout: LayoutID = .maximize
     public var axTimeoutMs: Int = 1000
     public var refreshIntervalMs: Int = 2000
     public var startAtLogin: Bool = false
@@ -93,6 +95,11 @@ public struct Config: Codable, Equatable, Sendable {
     public var panelColor: String = "system"
     public var panelOpacity: Double = 1
     public var workspaces: [WorkspaceSeed] = []
+    /// #9: `[[layout]]` — drawn zone layouts. Decoded one entry at a time, so a bad one is
+    /// dropped with a log line instead of rejecting the file.
+    public var layouts: [LayoutDef] = []
+    /// #9: what Fn+Space cycles and the switcher's bar shows (≤ 8; ids that resolve).
+    public var layoutBar: [LayoutID] = Config.defaultLayoutBar
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
@@ -114,6 +121,7 @@ public struct Config: Codable, Equatable, Sendable {
     /// is a window you work in, not a visitor. Calculator is the one app that really is a popup.
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.calculator")]
     public static let defaultTile = [AppRule(bundleId: "com.apple.systempreferences")]
+    public static let defaultLayoutBar: [LayoutID] = LayoutDef.builtins.map(\.id)
     public static let defaultCategoryOrder: [AppCategory] = [.web, .terminal, .coding, .media, .utilities]
 
     public init() {}
@@ -128,12 +136,13 @@ public struct Config: Codable, Equatable, Sendable {
              keybindingOverrides = "keybinding-overrides"
         case emptyCheatsheet = "empty-cheatsheet"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
+        case layouts = "layout", layoutBar = "layout-bar"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         keybindingPreset = try c.decodeIfPresent(KeybindingPreset.self, forKey: .keybindingPreset) ?? .fn
         gap = try c.decodeIfPresent(Double.self, forKey: .gap) ?? 8
-        defaultLayout = try c.decodeIfPresent(Layout.self, forKey: .defaultLayout) ?? .maximize
+        defaultLayout = try c.decodeIfPresent(LayoutID.self, forKey: .defaultLayout) ?? .maximize
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
         startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
@@ -159,6 +168,8 @@ public struct Config: Codable, Equatable, Sendable {
         panelOpacity = min(1, max(0, try c.decodeIfPresent(Double.self, forKey: .panelOpacity) ?? 1))
         appCategories = try c.decodeIfPresent([String: AppCategory].self, forKey: .appCategories) ?? [:]
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
+        layouts = try LayoutDef.lossy(c, .layouts) ?? []
+        layoutBar = try c.decodeIfPresent([LayoutID].self, forKey: .layoutBar) ?? Config.defaultLayoutBar
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
         ignore = try c.decodeIfPresent([AppRule].self, forKey: .ignore) ?? []
@@ -193,6 +204,7 @@ public struct Config: Codable, Equatable, Sendable {
         max-workspaces = \(maxWorkspaces)
         animations = \(animations)
         empty-cheatsheet = \(emptyCheatsheet)
+        layout-bar = [\(layoutBar.map { q($0.rawValue) }.joined(separator: ", "))]
 
         """
         func rules(_ name: String, _ items: [AppRule]) {
@@ -203,6 +215,12 @@ public struct Config: Codable, Equatable, Sendable {
         }
         for w in workspaces {
             o += "\n[[workspace]]\nname = \(q(w.name))\nsymbol = \(q(w.symbol))\nlayout = \(q(w.layout.rawValue))\n"
+        }
+        for l in layouts {
+            guard case .zones(let zones) = l.body else { continue }
+            o += "\n[[layout]]\nid = \(q(l.id.rawValue))\nname = \(q(l.name))\n"
+            if let s = l.symbol { o += "symbol = \(q(s))\n" }
+            o += "zones = [\n" + zones.map { "  { x = \($0.x), y = \($0.y), w = \($0.w), h = \($0.h) },\n" }.joined() + "]\n"
         }
         rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore); rules("tile", tile)
         if !keybindings.isEmpty {

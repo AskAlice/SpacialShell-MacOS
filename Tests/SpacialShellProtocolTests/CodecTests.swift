@@ -159,3 +159,22 @@ import Foundation
         #expect(IPCProtocol.socketFileName == "spacialshell.sock")
     }
 }
+
+/// #9: `LayoutID` encodes exactly as the `Layout` enum did, so nothing on disk or on the wire
+/// changes, and decodes strings no build has seen instead of throwing.
+@Suite struct LayoutIDCodecTests {
+    @Test func builtinsEncodeByteForByteAsTheEnum() throws {
+        for l in Layout.allCases {
+            let id = LayoutID(l)
+            #expect(try JSONEncoder().encode(id) == JSONEncoder().encode(l))
+            #expect(try JSONEncoder().encode([id]) == JSONEncoder().encode([l]))
+            #expect(try JSONDecoder().decode(LayoutID.self, from: JSONEncoder().encode(l)) == id)
+        }
+        #expect(LayoutID.maximize == LayoutID(.maximize) && LayoutID.grid.rawValue == "grid")
+    }
+
+    @Test func anUnseenIdDecodes() throws {
+        #expect(try JSONDecoder().decode(LayoutID.self, from: Data(#""code-3""#.utf8)) == "code-3")
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(Layout.self, from: Data(#""code-3""#.utf8)) }
+    }
+}

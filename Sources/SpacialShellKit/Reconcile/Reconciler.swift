@@ -2,7 +2,10 @@ import Foundation
 
 public struct LayoutConfig: Sendable, Equatable {
     public var gap: CGFloat
-    public init(gap: CGFloat) { self.gap = gap }
+    /// #9: what a workspace's layout id means. Every caller builds this from the effective config,
+    /// so the #77 prediction and the real switch can never disagree about a layout.
+    public var layouts: LayoutCatalogue
+    public init(gap: CGFloat, layouts: LayoutCatalogue = .builtins) { self.gap = gap; self.layouts = layouts }
 }
 
 public enum Placement: Sendable, Equatable { case frame(CGRect), parked(CGPoint), untouched }
@@ -41,7 +44,7 @@ public enum Reconciler {
                 let active = i == screen.activeIndex
                 let tiled = world.tiled(in: ws)
                 let focusedIndex = ws.anchor.flatMap { tiled.firstIndex(of: $0) } ?? 0
-                let frames = active ? LayoutEngine.frames(ws.layout, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap) : []
+                let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap) : []
                 for w in ws.windows {
                     if suspended.contains(w) { out[w] = .untouched; continue }
                     // macOS owns a fullscreen window's frame and Space: never frame it, never park it.

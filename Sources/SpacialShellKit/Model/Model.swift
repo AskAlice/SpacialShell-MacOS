@@ -9,6 +9,7 @@ public typealias DisplayID = SpacialShellProtocol.DisplayID
 public typealias WindowID = SpacialShellProtocol.WindowID
 public typealias WindowRef = SpacialShellProtocol.WindowRef
 public typealias Layout = SpacialShellProtocol.Layout
+public typealias LayoutID = SpacialShellProtocol.LayoutID
 
 public enum WindowKind: String, Codable, Sendable { case tile, float, ephemeral, ignore }
 
@@ -16,7 +17,7 @@ public struct Workspace: Codable, Equatable, Sendable {
     public var id: UUID
     public var name: String
     public var symbol: String
-    public var layout: Layout
+    public var layout: LayoutID
     public var windows: [WindowRef]      // ordered left→right; tiled + floating
     public var floating: Set<WindowRef>
     public var anchor: WindowRef?         // last focused window here; maximize/split anchor
@@ -30,7 +31,7 @@ public struct Workspace: Codable, Equatable, Sendable {
     /// category finds it, wherever a drag has since moved it. Nil for every row routing did not
     /// make, and for every row in a state file older than #74.
     public var category: AppCategory?
-    public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: Layout,
+    public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: LayoutID,
                 windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil,
                 pinned: Bool = false, reserved: Bool = false, category: AppCategory? = nil) {
         self.id = id; self.name = name; self.symbol = symbol; self.layout = layout
@@ -74,7 +75,7 @@ public struct World: Codable, Equatable, Sendable {
     /// no frame write can show it, so layout skips it and it is never framed or parked.
     public var offSpace: Set<WindowRef> = []
     public var parents: [WindowRef: WindowRef] // dialog → owner
-    public var defaultLayout: Layout
+    public var defaultLayout: LayoutID
     /// Zen mode (M2 design ruling): true hides the shell panels and gives their edges back to the
     /// layout. Lives in the model because the layout rect depends on it — the reconciler reads it
     /// via `ShellInsets(config:hidden:)`, so a toggle is an ordinary command → relayout round
@@ -82,7 +83,7 @@ public struct World: Codable, Equatable, Sendable {
     public var zen: Bool
     public init(screens: [DisplayID: Screen], screenOrder: [DisplayID], focus: Focus,
                 ephemeral: Set<WindowRef>, ignored: Set<WindowRef>, hidden: Set<WindowRef>,
-                parents: [WindowRef: WindowRef], defaultLayout: Layout, zen: Bool = false) {
+                parents: [WindowRef: WindowRef], defaultLayout: LayoutID, zen: Bool = false) {
         self.screens = screens; self.screenOrder = screenOrder; self.focus = focus
         self.ephemeral = ephemeral; self.ignored = ignored; self.hidden = hidden
         self.parents = parents; self.defaultLayout = defaultLayout; self.zen = zen

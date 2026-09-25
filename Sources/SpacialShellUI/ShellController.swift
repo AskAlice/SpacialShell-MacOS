@@ -68,7 +68,7 @@ public final class ShellController: NSObject {
 
         for nsScreen in NSScreen.screens {
             let id = DisplayTopology.uuid(for: nsScreen)
-            guard let state = ShellUI.state(for: id, in: world) else { continue }
+            guard let state = ShellUI.state(for: id, in: world, layouts: LayoutCatalogue(config: config)) else { continue }
             seen.insert(id)
             let p = panels[id] ?? makePanels(for: id)
             panels[id] = p

@@ -1,0 +1,63 @@
+{
+  "placements" : {
+    "com.example.app" : "00000000-0000-0000-0000-000000000001"
+  },
+  "screens" : {
+    "D1" : {
+      "activeIndex" : 0,
+      "workspaces" : [
+        {
+          "id" : "00000000-0000-0000-0000-000000000001",
+          "layout" : "maximize",
+          "name" : "Max",
+          "pinned" : true,
+          "symbol" : "rectangle"
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000002",
+          "layout" : "split",
+          "name" : "Split",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2"
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000003",
+          "layout" : "column",
+          "name" : "Column",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2"
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000004",
+          "layout" : "half",
+          "name" : "Half",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2"
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000005",
+          "layout" : "grid",
+          "name" : "Grid",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2"
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000006",
+          "layout" : "maximize",
+          "name" : "Default",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2"
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000007",
+          "layout" : "column",
+          "name" : "Workspace 1",
+          "pinned" : false,
+          "symbol" : "square.grid.2x2"
+        }
+      ]
+    }
+  },
+  "version" : 1,
+  "zen" : false
+}

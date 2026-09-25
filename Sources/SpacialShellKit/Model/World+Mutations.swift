@@ -1,7 +1,7 @@
 import Foundation
 
 extension World {
-    public static func empty(screens ids: [DisplayID], defaultLayout: Layout) -> World {
+    public static func empty(screens ids: [DisplayID], defaultLayout: LayoutID) -> World {
         var screens: [DisplayID: Screen] = [:]
         for id in ids {
             screens[id] = Screen(display: id, workspaces: [Workspace(name: "Workspace 1", layout: defaultLayout)], activeIndex: 0)

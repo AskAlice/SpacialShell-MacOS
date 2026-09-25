@@ -1,0 +1,28 @@
+# Captured before #9 (custom grid layouts, expand step): every layout-bearing key in the
+# pre-#9 format, one workspace per built-in. It must keep decoding, unchanged, through #11.
+default-layout = "column"
+gap = 8
+
+[[workspace]]
+name = "Max"
+symbol = "rectangle"
+layout = "maximize"
+
+[[workspace]]
+name = "Split"
+layout = "split"
+
+[[workspace]]
+name = "Column"
+layout = "column"
+
+[[workspace]]
+name = "Half"
+layout = "half"
+
+[[workspace]]
+name = "Grid"
+layout = "grid"
+
+[[workspace]]
+name = "Default"

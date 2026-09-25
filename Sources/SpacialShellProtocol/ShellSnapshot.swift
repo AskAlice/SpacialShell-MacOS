@@ -12,14 +12,14 @@ public struct ShellSnapshot: Codable, Sendable, Equatable {
         public var id: UUID
         public var name: String
         public var symbol: String
-        public var layout: Layout
+        public var layout: LayoutID
         public var pinned: Bool
         public var isActive: Bool
         public var windowCount: Int
         public var isTrailingEmpty: Bool
 
         public init(
-            id: UUID, name: String, symbol: String, layout: Layout, pinned: Bool, isActive: Bool,
+            id: UUID, name: String, symbol: String, layout: LayoutID, pinned: Bool, isActive: Bool,
             windowCount: Int, isTrailingEmpty: Bool
         ) {
             self.id = id; self.name = name; self.symbol = symbol; self.layout = layout

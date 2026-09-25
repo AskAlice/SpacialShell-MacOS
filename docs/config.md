@@ -16,7 +16,7 @@ below.
 ```toml
 keybinding-preset = "fn"          # or "ctrl-alt"
 gap = 8                           # pt between windows and to the screen edge
-default-layout = "maximize"       # maximize | split | column | half | grid
+default-layout = "maximize"       # maximize | split | column | half | grid | a [[layout]] id
 ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
@@ -56,7 +56,7 @@ title-regex = "^Picture in Picture$"
 |---|---|---|---|
 | `keybinding-preset` | `"fn"` \| `"ctrl-alt"` | `"fn"` | Which modifier the built-in bindings (`KeyBindings.core`) are prefixed with. `fn` uses the Globe key; `ctrl-alt` (`⌃⌥`) is for keyboards without one. The arrow-key bindings are always on `⌃⌥` regardless of this setting. |
 | `gap` | number (pt) | `8` | Space left between tiled windows and between a window and the screen edge, in every layout. |
-| `default-layout` | layout name | `"maximize"` | The layout a newly created workspace starts with (see below for the five names). |
+| `default-layout` | layout id | `"maximize"` | The layout a newly created workspace starts with: one of the five built-ins or a `[[layout]]` id (see below). |
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
 | `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
@@ -88,10 +88,43 @@ makes a named category usable before window-to-workspace persistence exists (tha
 |---|---|---|---|
 | `name` | string | *(required)* | Display name — "Workspace N" if you don't seed one. |
 | `symbol` | string | `"square.grid.2x2"` | SF Symbol name, for the M2 shell UI. |
-| `layout` | layout name | `"maximize"` | This workspace's starting layout, independent of `default-layout`. |
+| `layout` | layout id | `"maximize"` | This workspace's starting layout, independent of `default-layout`. |
 
 Pinned workspaces are restored from `state.json` on launch; which app was in which workspace is
 remembered per bundle id — see below.
+
+## `[[layout]]` — drawn layouts
+
+Besides the five built-ins, a layout can be a fixed list of zones (#9). Zones are unit rects —
+`0…1`, origin top-left — and their order is the order windows fill them:
+
+```toml
+layout-bar = ["maximize", "split", "column", "code-3"]   # what Fn+Space cycles; default the five, at most 8
+
+[[layout]]
+id = "code-3"
+name = "Code, three"
+# symbol = "sidebar.left"            # optional SF Symbol
+zones = [
+  { x = 0.0, y = 0.0, w = 0.5, h = 1.0 },
+  { x = 0.5, y = 0.0, w = 0.5, h = 0.5 },
+  { x = 0.5, y = 0.5, w = 0.5, h = 0.5 },
+]
+```
+
+`default-layout` and a workspace's `layout` take any id: a built-in or a `[[layout]]`. Built-in
+layouts adapt to the number of windows; drawn layouts have a fixed number of zones and, with more
+windows than zones, show the page of windows holding the focused one (the rest keep their tabs).
+A zone too small for a 120 × 80 pt window on the current display drops out of the page. Fewer
+windows than zones leave the trailing zones empty.
+
+Mistakes do not disarm the file: a `[[layout]]` block with no usable zones is skipped (logged),
+zones are clamped into `0…1`, a block reusing a built-in's id is ignored, and a layout id nothing
+defines — a typo, a deleted layout — keeps the workspace and draws `default-layout` (else
+`maximize`) until the layout comes back.
+
+**Downgrade:** a build older than #9 cannot read a `state.json` that names a drawn layout; it
+starts with fresh workspaces. Upgrading is lossless.
 
 ## Where windows land at launch
 

@@ -26,7 +26,9 @@ let package = Package(
         .target(name: "SpacialShellUI", dependencies: ["SpacialShellKit", "SpacialShellPlatform", "SpacialShellProtocol"]),
         .executableTarget(name: "SpacialShell", dependencies: ["SpacialShellKit", "SpacialShellPlatform", "SpacialShellProtocol", "SpacialShellUI"]),
         .executableTarget(name: "SpacialCtl", dependencies: ["SpacialShellProtocol"]),
-        .testTarget(name: "SpacialShellKitTests", dependencies: ["SpacialShellKit"]),
+        // Fixtures: pre-#9 config/state/wire payloads and built-in frames, captured before #9 changed
+        // a line, decoded by every later build (custom grid layouts design §11).
+        .testTarget(name: "SpacialShellKitTests", dependencies: ["SpacialShellKit"], resources: [.copy("Fixtures")]),
         .testTarget(name: "SpacialShellProtocolTests", dependencies: ["SpacialShellProtocol"]),
         .testTarget(name: "SpacialShellPlatformTests", dependencies: ["SpacialShellPlatform"]),
         .testTarget(name: "PlatformIntegrationTests", dependencies: ["SpacialShellPlatform", "SpacialShellKit"]),

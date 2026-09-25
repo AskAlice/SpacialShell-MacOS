@@ -85,7 +85,7 @@ public enum Hint {
     public static func after(_ command: Command, before: World, after: World, config: Config) -> String? {
         switch command {
         case .cycleLayout:
-            let name = after.screens[after.focus.screen]?.active.layout.rawValue.capitalized ?? "Layout"
+            let name = after.screens[after.focus.screen].map { LayoutCatalogue(config: config).resolve($0.active.layout).def.name } ?? "Layout"
             let chord = CheatSheet.primaryDisplay(for: .cycleLayout, config: config) ?? ""
             return chord.isEmpty ? name : "\(name)  ·  \(chord)"
         case .moveWindowToWorkspace:

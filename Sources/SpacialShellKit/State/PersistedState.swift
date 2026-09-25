@@ -2,7 +2,7 @@ import Foundation
 
 public struct PersistedState: Codable, Equatable, Sendable {
     public struct WorkspaceState: Codable, Equatable, Sendable {
-        public var id: UUID; public var name: String; public var symbol: String; public var layout: Layout; public var pinned: Bool
+        public var id: UUID; public var name: String; public var symbol: String; public var layout: LayoutID; public var pinned: Bool
         /// #74's row marker. Optional, so a state file from before it decodes as nil.
         public var category: AppCategory?
     }

@@ -66,7 +66,11 @@ public struct Transition: Sendable, Equatable {
     }
 
     /// How far the content travels: a row switch moves one viewport, up or down; a tab switch
-    /// moves one slot per place, where a slot is the focused window's width plus the gap.
+    /// moves one slot per place, where a slot is the focused window's width plus the gap — unless
+    /// it flips a page (#54 paging, custom grid layouts design §9): a page of several windows
+    /// replaced by a wholly different one slides one whole viewport, so a 2×2 zone page or a
+    /// column page never has its leaving and arriving windows cross inside the clip. A one-window
+    /// page (maximize) is the strip itself and keeps travelling by places.
     static func direction(before: ShownRow, after: ShownRow, viewport: CGRect, gap: CGFloat) -> CGVector {
         if before.workspace != after.workspace {
             let target = before.order.firstIndex(of: after.workspace) ?? after.index
@@ -77,6 +81,11 @@ public struct Transition: Sendable, Equatable {
         guard let old = before.focused, let new = after.focused, old != new,
               let i = before.row.firstIndex(of: old),
               let j = before.row.firstIndex(of: new) ?? after.row.firstIndex(of: new) else { return .zero }
+        let shownBefore = before.row.filter { before.frames[$0] != nil }
+        let shownAfter = after.row.filter { after.frames[$0] != nil }
+        if shownAfter.count > 1, Set(shownBefore).isDisjoint(with: shownAfter) {
+            return CGVector(dx: j > i ? -(viewport.width + gap) : viewport.width + gap, dy: 0)
+        }
         let slot = (after.frames[new]?.width).map { $0 + gap } ?? viewport.width
         return CGVector(dx: -CGFloat(j - i) * slot, dy: 0)
     }

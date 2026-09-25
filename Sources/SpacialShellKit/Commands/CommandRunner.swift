@@ -1,7 +1,9 @@
 import Foundation
 
 public enum CommandRunner {
-    public static func apply(_ command: Command, to input: World) -> (World, [Effect]) {
+    /// `layouts` gives the layout ids meaning: what `cycleLayout` rings through and how many
+    /// windows a layout shows (#9). Defaults to the five built-ins.
+    public static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue = .builtins) -> (World, [Effect]) {
         var w = input
         var effects: [Effect] = []
         let sid = w.focus.screen
@@ -106,8 +108,10 @@ public enum CommandRunner {
             // move is invisible, however real it is in the row. The verb means "put this beside
             // that", so it promotes to `split`, the narrowest layout that can show the pair.
             // Layouts that already show more than one window are the user's choice; leave them.
+            // #9 generalises "maximize" to "any layout that shows fewer than two here" (a one-zone
+            // drawn layout gets the same courtesy).
             // Placed after the bounds guard: a refused move must change nothing, layout included.
-            if ws.layout == .maximize { ws.layout = .split }
+            if LayoutEngine.capacity(layouts.resolve(ws.layout).def, count: ws.windows.count) < 2 { ws.layout = .split }
             w.screens[sid]!.workspaces[screen.activeIndex] = ws
             effects.append(.relayout)
 
@@ -183,7 +187,7 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .cycleLayout:
-            w.screens[sid]!.workspaces[screen.activeIndex].layout = screen.active.layout.next
+            w.screens[sid]!.workspaces[screen.activeIndex].layout = layouts.next(after: screen.active.layout)
             effects.append(.relayout)
 
         case .toggleShellUI:

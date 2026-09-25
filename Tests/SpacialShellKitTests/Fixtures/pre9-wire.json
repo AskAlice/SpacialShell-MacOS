@@ -1,0 +1,122 @@
+{
+  "capabilities" : [
+    "run",
+    "state",
+    "version",
+    "window-rows"
+  ],
+  "screens" : [
+    {
+      "activeIndex" : 0,
+      "display" : "D1",
+      "isFocused" : true,
+      "workspaces" : [
+        {
+          "id" : "00000000-0000-0000-0000-000000000001",
+          "isActive" : true,
+          "layout" : "maximize",
+          "name" : "Max",
+          "pinned" : true,
+          "symbol" : "rectangle",
+          "windowCount" : 2,
+          "windows" : [
+            {
+              "bundleID" : "com.example.app",
+              "id" : 11,
+              "isFloating" : false,
+              "isFocused" : true,
+              "isFullscreen" : false,
+              "isHidden" : false,
+              "isOffSpace" : false,
+              "isParked" : false,
+              "pid" : 7
+            },
+            {
+              "id" : 12,
+              "isFloating" : false,
+              "isFocused" : false,
+              "isFullscreen" : false,
+              "isHidden" : false,
+              "isOffSpace" : false,
+              "isParked" : false,
+              "pid" : 7
+            }
+          ]
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000002",
+          "isActive" : false,
+          "layout" : "split",
+          "name" : "Split",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2",
+          "windowCount" : 0,
+          "windows" : [
+
+          ]
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000003",
+          "isActive" : false,
+          "layout" : "column",
+          "name" : "Column",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2",
+          "windowCount" : 0,
+          "windows" : [
+
+          ]
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000004",
+          "isActive" : false,
+          "layout" : "half",
+          "name" : "Half",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2",
+          "windowCount" : 0,
+          "windows" : [
+
+          ]
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000005",
+          "isActive" : false,
+          "layout" : "grid",
+          "name" : "Grid",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2",
+          "windowCount" : 0,
+          "windows" : [
+
+          ]
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000006",
+          "isActive" : false,
+          "layout" : "maximize",
+          "name" : "Default",
+          "pinned" : true,
+          "symbol" : "square.grid.2x2",
+          "windowCount" : 0,
+          "windows" : [
+
+          ]
+        },
+        {
+          "id" : "00000000-0000-0000-0000-000000000007",
+          "isActive" : false,
+          "layout" : "column",
+          "name" : "Workspace 1",
+          "pinned" : false,
+          "symbol" : "square.grid.2x2",
+          "windowCount" : 0,
+          "windows" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "v" : 2
+}

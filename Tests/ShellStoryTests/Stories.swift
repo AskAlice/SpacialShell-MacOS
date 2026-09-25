@@ -81,7 +81,7 @@ enum Stories {
                           windows: pids.map { WindowRef(id: WindowID($0) * 10, pid: $0) },
                           isActive: active, isPinned: pinned, isTrailingEmpty: trailing)
     }
-    static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.Layout = .split) -> ScreenShellState {
+    static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.LayoutID = .split) -> ScreenShellState {
         ScreenShellState(display: "D1", isFocusedScreen: true,
                          rail: [railItem(0, name: "Web", symbol: "globe", count: items.count, active: true)],
                          tabs: items, layout: layout)

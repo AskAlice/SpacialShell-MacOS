@@ -185,17 +185,17 @@ struct WorkspacePanelView: View {
         HStack(spacing: 2) {
             ForEach(Layout.allCases, id: \.self) { l in
                 Button {
-                    if let ws = state.rail.first(where: \.isActive) { send(.setWorkspaceLayout(ws.id, l)) }
+                    if let ws = state.rail.first(where: \.isActive) { send(.setWorkspaceLayout(ws.id, LayoutID(l))) }
                 } label: {
                     Image(systemName: Self.symbol(for: l))
                         .font(.system(size: 12))
                         .frame(width: 24, height: 22)
                         .background(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(l == state.layout ? AnyShapeStyle(Color.accentColor.opacity(0.3))
+                                .fill(LayoutID(l) == state.layout ? AnyShapeStyle(Color.accentColor.opacity(0.3))
                                                         : AnyShapeStyle(Color.primary.opacity(0.001)))
                         )
-                        .foregroundStyle(l == state.layout ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(LayoutID(l) == state.layout ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                 }
                 .buttonStyle(.plain)
                 .help("\(l.rawValue) layout")
