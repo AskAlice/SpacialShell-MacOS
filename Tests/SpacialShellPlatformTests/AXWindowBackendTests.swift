@@ -75,7 +75,9 @@ import SpacialShellKit
         #expect(drained)
     }
 
-    @Test(.timeLimit(.minutes(1))) func currentSnapshotCarriesTheDisplayTopology() async {
+    // #91: it talks to the real window server, so under heavy load (VM runs, parallel builds) one
+    // minute was not enough while the whole suite took 77–94 s. Three still fails a real hang.
+    @Test(.timeLimit(.minutes(3))) func currentSnapshotCarriesTheDisplayTopology() async {
         guard !DisplayTopology.current().isEmpty else { return } // headless session
         let snapshot = await backend().currentSnapshot()
         // Windows and apps depend on the Accessibility grant this process may not have; the
