@@ -1034,6 +1034,22 @@ import Foundation
         #expect(writes(b, await be.calls).isEmpty, "a floating window is never moved")
     }
 
+    /// Moving a floating window to another display moves the window, not just its tab: it is
+    /// written centred onto the new display, so the frame-owner rule does not file it straight
+    /// back (System Settings bounced between displays and ended up parked out of sight).
+    @Test func movingAFloatingWindowToAnotherDisplayCarriesItThere() async {
+        let (store, be) = await make(twoDisplays([win(a), win(b, kind: .float)], focused: b))
+        await store.run(.focusWindowRef(b))
+        await be.reset()
+        await store.run(.moveWindowToScreen(.next))
+        #expect(await store.world.location(of: b)?.screen == "D2")
+        let landed = writes(b, await be.calls).last
+        #expect(landed.map { d2.frame.contains(CGPoint(x: $0.midX, y: $0.midY)) } == true, "the window must be written onto D2")
+        // The next snapshot finds it there: it stays filed on D2.
+        await store.apply(.snapshot(twoDisplays([win(a), win(b, landed!, kind: .float)], focused: b)))
+        #expect(await store.world.location(of: b)?.screen == "D2")
+    }
+
     /// Rule 1: a new window placed by memory into a workspace on *another* display is moved there
     /// — the model files it under D2, so the reconciler writes D2's frame, whichever display it
     /// opened on. In an inactive workspace it is parked in D2's corner: model and write agree.

@@ -96,6 +96,10 @@ public struct Config: Codable, Equatable, Sendable {
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
+    /// Tile these even when macOS calls them dialogs. System Settings is one: it only resizes
+    /// vertically, so the AX heuristics file it as a floating dialog, and it then sat outside the
+    /// layout — the user expects it in its row, sized to it.
+    public var tile: [AppRule] = Config.defaultTile
     /// chord -> command, *added* to the defaults. Hand-edited, additive, and cannot unbind.
     public var keybindings: [String: String] = [:]
     /// command -> chord, *replacing* the default for that command. This is what the settings
@@ -109,6 +113,7 @@ public struct Config: Codable, Equatable, Sendable {
     /// Decision 2026-09-24 (#70): System Settings used to be here, and so never got a tab — but it
     /// is a window you work in, not a visitor. Calculator is the one app that really is a popup.
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.calculator")]
+    public static let defaultTile = [AppRule(bundleId: "com.apple.systempreferences")]
     public static let defaultCategoryOrder: [AppCategory] = [.web, .terminal, .coding, .media, .utilities]
 
     public init() {}
@@ -116,7 +121,7 @@ public struct Config: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
-             ephemeral, float, ignore, keybindings,
+             ephemeral, float, ignore, tile, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
              launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
@@ -157,6 +162,7 @@ public struct Config: Codable, Equatable, Sendable {
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
         ignore = try c.decodeIfPresent([AppRule].self, forKey: .ignore) ?? []
+        tile = try c.decodeIfPresent([AppRule].self, forKey: .tile) ?? Config.defaultTile
         keybindings = try c.decodeIfPresent([String: String].self, forKey: .keybindings) ?? [:]
         keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides) ?? [:]
     }
@@ -198,7 +204,7 @@ public struct Config: Codable, Equatable, Sendable {
         for w in workspaces {
             o += "\n[[workspace]]\nname = \(q(w.name))\nsymbol = \(q(w.symbol))\nlayout = \(q(w.layout.rawValue))\n"
         }
-        rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore)
+        rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore); rules("tile", tile)
         if !keybindings.isEmpty {
             o += "\n[keybindings]\n"
             for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }
@@ -211,11 +217,12 @@ public struct Config: Codable, Equatable, Sendable {
         try render().write(to: url, atomically: true, encoding: .utf8)
     }
 
-    /// Spec §7.3 rule 0: config wins over heuristics. Order: ephemeral, float, ignore.
+    /// Spec §7.3 rule 0: config wins over heuristics. Order: ephemeral, float, ignore, tile.
     public func kindOverride(bundleID: String?, title: String) -> WindowKind? {
         if ephemeral.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .ephemeral }
         if float.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .float }
         if ignore.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .ignore }
+        if tile.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .tile }
         return nil
     }
 }

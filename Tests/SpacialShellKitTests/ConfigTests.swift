@@ -78,4 +78,13 @@ import Foundation
     @Test func unknownRailSideRejects() {
         #expect(throws: (any Error).self) { try Config.parse(toml: #"rail-side = "middle""#) }
     }
+
+    /// System Settings only resizes vertically, so AX calls it a dialog; the default `[[tile]]`
+    /// rule puts it in its row anyway, and a file's own `[[tile]]` replaces the default.
+    @Test func systemSettingsTilesByDefault() throws {
+        #expect(Config().kindOverride(bundleID: "com.apple.systempreferences", title: "") == .tile)
+        let c = try Config.parse(toml: "[[tile]]\nbundle-id = \"com.example.x\"\n")
+        #expect(c.kindOverride(bundleID: "com.example.x", title: "") == .tile)
+        #expect(c.kindOverride(bundleID: "com.apple.systempreferences", title: "") == nil)
+    }
 }

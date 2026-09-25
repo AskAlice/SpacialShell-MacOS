@@ -133,7 +133,7 @@ brings its workspaces to the main display, appended to the bottom of its stack, 
 still come back to them; a display that is new starts with an empty stack (just the
 `[[workspace]]` seeds).
 
-## `[[ephemeral]]`, `[[float]]`, `[[ignore]]` — app rules
+## `[[ephemeral]]`, `[[float]]`, `[[ignore]]`, `[[tile]]` — app rules
 
 Each entry matches windows by bundle id and, optionally, a regex against the window title:
 
@@ -143,7 +143,7 @@ Each entry matches windows by bundle id and, optionally, a regex against the win
 | `title-regex` | string, optional | If present, the window title must also match this regex (`NSString.range(of:options:.regularExpression)`). Omit it to match every window of that app. |
 
 Config rules always win over SpacialShell's own heuristic window classifier (spec §7.3 rule 0),
-checked in this order: `ephemeral`, then `float`, then `ignore`.
+checked in this order: `ephemeral`, then `float`, then `ignore`, then `tile`.
 
 - **`ephemeral`** — Veshell's "visitor" windows: they belong to no workspace, are centred on the
   focused screen when they appear, are never parked, and `Fn+A`/`Fn+D` skip over them entirely.
@@ -156,6 +156,9 @@ checked in this order: `ephemeral`, then `float`, then `ignore`.
   default entries.
 - **`ignore`** — windows SpacialShell never touches at all: no placement, no parking, no tiling.
   No default entries.
+- **`tile`** — tile these even when macOS reports them as dialogs. **Default** (used whenever
+  `[[tile]]` is absent): `com.apple.systempreferences` — System Settings only resizes vertically,
+  so it reads as a dialog, but it belongs in its row. A full replacement, like `ephemeral`.
 
 ## `[keybindings]` — overrides and additions
 

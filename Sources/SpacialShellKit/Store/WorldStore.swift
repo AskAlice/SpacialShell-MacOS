@@ -566,11 +566,7 @@ public actor WorldStore {
     }
 
     /// The display holding most of `frame`, or nil when it is on none.
-    private func displayUnder(_ frame: CGRect) -> DisplayID? {
-        displays.map { d -> (DisplayID, CGFloat) in
-            let a = d.frame.intersection(frame); return (d.id, a.isNull ? 0 : a.width * a.height)
-        }.filter { $0.1 > 0 }.max { $0.1 < $1.1 }?.0
-    }
+    private func displayUnder(_ frame: CGRect) -> DisplayID? { Reconciler.mostlyOn(frame, displays) }
 
     private func screenFor(_ frame: CGRect) -> DisplayID {
         var best: (DisplayID, CGFloat)? = nil

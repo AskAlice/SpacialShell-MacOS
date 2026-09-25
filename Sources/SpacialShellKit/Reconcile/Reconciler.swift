@@ -54,6 +54,12 @@ public enum Reconciler {
                         if parkedNow.contains(w) {
                             let restored = prePark[w] ?? centered(size: observed[w]?.size ?? fallbackSize, in: rect)
                             out[w] = .frame(restored)
+                        } else if let o = observed[w], mostlyOn(o, displays) != sid {
+                            // The model filed it on this display (a move-to-screen, a spill) but
+                            // it is sitting on another: carry it here, centred. Floating windows
+                            // are otherwise never written, so the move stayed model-only and the
+                            // store's frame-owner rule (#72) filed it straight back.
+                            out[w] = .frame(centered(size: o.size, in: rect))
                         } else { out[w] = .untouched }
                         continue
                     }
@@ -106,6 +112,13 @@ public enum Reconciler {
             return i.isNull ? 0 : i.width * i.height
         }.max() ?? 0
         return visible / area < minVisible
+    }
+
+    /// The display holding most of `frame`, nil when it is on none.
+    static func mostlyOn(_ frame: CGRect, _ displays: [DisplayInfo]) -> DisplayID? {
+        displays.map { d -> (DisplayID, CGFloat) in
+            let a = d.frame.intersection(frame); return (d.id, a.isNull ? 0 : a.width * a.height)
+        }.filter { $0.1 > 0 }.max { $0.1 < $1.1 }?.0
     }
 
     static func centered(size: CGSize, in rect: CGRect) -> CGRect {
