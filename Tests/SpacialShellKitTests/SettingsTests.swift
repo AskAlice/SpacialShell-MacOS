@@ -67,20 +67,19 @@ import Foundation
     }
 
     @Test func appearanceKnobsAreOverridable() {
-        var file = Config(); file.panelOpacity = 1
         var gui = SettingsOverrides()
-        gui.panelOpacity = 0.6
-        gui.panelColor = "#112233"
+        gui.panelColor = "#11223399"     // the colour well carries opacity as alpha
         gui.gap = 16
-        let out = Settings.effective(config: file, overrides: gui)
-        #expect(out.panelOpacity == 0.6 && out.panelColor == "#112233" && out.gap == 16)
+        let out = Settings.effective(config: Config(), overrides: gui)
+        #expect(out.panelColor == "#11223399" && out.gap == 16)
+        #expect(HexColor.rgba(out.panelColor)?.3 == 0x99 / 255.0)
     }
 
     // MARK: persistence — the store the settings window writes instead of config.toml
 
     @Test func overridesRoundTripThroughJSON() throws {
         var gui = SettingsOverrides()
-        gui.panelWidth = 64; gui.panelOpacity = 0.6; gui.tabSizing = .equal; gui.panelColor = "#112233"
+        gui.panelWidth = 64; gui.tabSizing = .equal; gui.panelColor = "#112233"
         let data = try JSONEncoder().encode(gui)
         #expect(try JSONDecoder().decode(SettingsOverrides.self, from: data) == gui)
     }

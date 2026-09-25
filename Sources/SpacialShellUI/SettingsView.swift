@@ -92,15 +92,6 @@ struct SettingsView: View {
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
             header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, and switch motion.")
-            row("Panel opacity", overridden: overrides.panelOpacity != nil) {
-                HStack(spacing: 8) {
-                    Slider(value: binding(\.panelOpacity, default: file.panelOpacity), in: 0.2...1)
-                        .frame(width: 170)
-                    Text(String(format: "%.0f%%", (overrides.panelOpacity ?? file.panelOpacity) * 100))
-                        .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
-                }
-            } reset: { overrides.panelOpacity = nil }
-
             row("Panel colour", overridden: overrides.panelColor != nil) {
                 HStack(spacing: 8) {
                     ColorPicker("", selection: colorBinding).labelsHidden()
@@ -264,13 +255,16 @@ struct SettingsView: View {
         Binding(
             get: {
                 guard let rgba = HexColor.rgba(overrides[keyPath: key] ?? fallback) else { return system }
-                return Color(.sRGB, red: rgba.0, green: rgba.1, blue: rgba.2, opacity: 1)
+                return Color(.sRGB, red: rgba.0, green: rgba.1, blue: rgba.2, opacity: rgba.3)
             },
             set: { new in
+                // The well's opacity slider is the panel's opacity: written as #RRGGBBAA. It used
+                // to be dropped here, so that slider did nothing.
                 guard let c = NSColor(new).usingColorSpace(.sRGB) else { return }
-                overrides[keyPath: key] = String(format: "#%02X%02X%02X",
-                                                 Int(c.redComponent * 255), Int(c.greenComponent * 255),
-                                                 Int(c.blueComponent * 255))
+                func byte(_ v: CGFloat) -> Int { Int((v * 255).rounded()) }
+                var hex = String(format: "#%02X%02X%02X", byte(c.redComponent), byte(c.greenComponent), byte(c.blueComponent))
+                if byte(c.alphaComponent) < 255 { hex += String(format: "%02X", byte(c.alphaComponent)) }
+                overrides[keyPath: key] = hex
             })
     }
 }

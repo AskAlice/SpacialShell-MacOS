@@ -11,7 +11,6 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var panelHeight: Double?
     public var gap: Double?
     public var panelColor: String?
-    public var panelOpacity: Double?
     public var railSide: RailSide?
     public var tabSizing: TabSizing?
     public var keybindingPreset: KeybindingPreset?
@@ -33,7 +32,6 @@ public enum Settings {
         if let v = overrides.panelHeight { c.panelHeight = v }
         if let v = overrides.gap { c.gap = v }
         if let v = overrides.panelColor { c.panelColor = v }
-        if let v = overrides.panelOpacity { c.panelOpacity = v }
         if let v = overrides.railSide { c.railSide = v }
         if let v = overrides.tabSizing { c.tabSizing = v }
         if let v = overrides.keybindingPreset { c.keybindingPreset = v }
