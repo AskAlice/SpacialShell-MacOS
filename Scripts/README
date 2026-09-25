@@ -133,6 +133,6 @@ Debugging keys
 `SPACIAL_LOG_KEYS=1 Scripts/dev.sh` logs every keyDown's keycode and flags at .info under
 subsystem `sh.emu.SpacialShell`, category `hotkeys`. Read it live with:
 
-    log stream --predicate 'subsystem == "sh.emu.SpacialShell"' --info
+    /usr/bin/log stream --predicate 'subsystem == "sh.emu.SpacialShell"' --info
 
 That is the instrument for the checklist in docs/platform-notes.md.

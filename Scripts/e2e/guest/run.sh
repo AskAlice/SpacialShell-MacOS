@@ -54,6 +54,6 @@ python3 Scripts/e2e/runner.py --mode vm --out "$OUT" $RECORD "${SCN[@]}" || stat
 if [ -n "$RECORD" ] && [ -d Scripts/e2e/references ]; then
     mkdir -p "$OUT/references" && cp -R Scripts/e2e/references/. "$OUT/references/"
 fi
-log show --last 10m --style compact --predicate 'subsystem == "sh.emu.SpacialShell"' --info \
+/usr/bin/log show --last 10m --style compact --predicate 'subsystem == "sh.emu.SpacialShell"' --info \
     > "$OUT/shell-full.log" 2>/dev/null || true
 exit $status
