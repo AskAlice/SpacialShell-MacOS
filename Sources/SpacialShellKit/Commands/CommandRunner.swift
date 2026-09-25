@@ -157,6 +157,23 @@ public enum CommandRunner {
             w.screens[from.screen]!.workspaces[from.index].windows = row
             effects.append(.relayout)
 
+        case .moveWorkspace(let id, let to):
+            // Decision 2026-09-25 (#75): reorder by id, keep the active workspace by id. normalize()
+            // then does what it always does, which covers the edge cases: moving a workspace past
+            // the trailing "+" leaves that "+" empty mid-stack, so it is reaped and a fresh one is
+            // grown at the end — the same result as dropping just before it. An empty unpinned
+            // row can only be here if it is active or reserved, and both survive normalize().
+            guard let loc = w.location(ofWorkspace: id) else { return (w, []) }
+            var s = w.screens[loc.screen]!
+            let target = min(max(to, 0), s.workspaces.count - 1)
+            guard target != loc.index else { return (w, []) }
+            let activeID = s.active.id
+            s.workspaces.insert(s.workspaces.remove(at: loc.index), at: target)
+            s.activeIndex = s.workspaces.firstIndex { $0.id == activeID }!
+            w.screens[loc.screen] = s
+            w.normalize()
+            effects.append(.relayout)
+
         case .cycleLayout:
             w.screens[sid]!.workspaces[screen.activeIndex].layout = screen.active.layout.next
             effects.append(.relayout)

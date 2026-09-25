@@ -17,6 +17,7 @@ import Foundation
         if let r = live.randomElement(using: &rng) {
             let workspaces = screens.flatMap { world.screens[$0]!.workspaces.map(\.id) }
             if let ws = workspaces.randomElement(using: &rng) { cmds.append(.moveWindowRefToWorkspace(r, ws)) }
+            if let ws = workspaces.randomElement(using: &rng) { cmds.append(.moveWorkspace(ws, toIndex: Int.random(in: -1...5, using: &rng))) }
             cmds.append(.moveWindowRefBefore(r, Bool.random(using: &rng) ? live.randomElement(using: &rng) : nil))
         }
         switch Int.random(in: 0..<10, using: &rng) {

@@ -297,6 +297,96 @@ import Foundation
         #expect(w.focus.window == a)
     }
 
+    // MARK: workspace reorder (#75) — a rail tile dragged to a new place in its display's stack.
+
+    /// D1 [[a], [c], [b*], +]: three rows to shuffle, the last-made one active.
+    func stack() -> World {
+        var w = base()
+        (w, _) = run(w, .moveWindowRefToWorkspace(c, w.screens["D1"]!.workspaces.last!.id))
+        (w, _) = run(w, .moveWindowRefToWorkspace(b, w.screens["D1"]!.workspaces.last!.id))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[a], [c], [b], []])
+        return w
+    }
+
+    @Test func moveWorkspaceUpKeepsTheActiveOneActive() {
+        var w = stack()
+        let id = w.screens["D1"]!.workspaces[2].id
+        let effects: [Effect]
+        (w, effects) = run(w, .moveWorkspace(id, toIndex: 0))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[b], [a], [c], []])
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus == Focus(screen: "D1", window: b))
+        #expect(effects == [.relayout])
+    }
+
+    @Test func moveWorkspaceDownKeepsTheActiveOneActive() {
+        var w = stack()
+        (w, _) = run(w, .moveWorkspace(w.screens["D1"]!.workspaces[0].id, toIndex: 2))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[c], [b], [a], []])
+        #expect(w.screens["D1"]!.activeIndex == 1 && w.focus.window == b)
+        // Fn+W / Fn+S walk the new order.
+        (w, _) = run(w, .focusWorkspace(.down))
+        #expect(w.focus.window == a)
+    }
+
+    @Test func moveWorkspaceToWhereItIsOrToNowhereChangesNothing() {
+        let w = stack()
+        let id = w.screens["D1"]!.workspaces[1].id
+        for cmd: Command in [.moveWorkspace(id, toIndex: 1), .moveWorkspace(UUID(), toIndex: 0)] {
+            let (out, effects) = CommandRunner.apply(cmd, to: w)
+            #expect(out == w && effects.isEmpty, "\(cmd) should be a no-op")
+        }
+    }
+
+    /// An empty pinned row is not reaped by being moved: normalize() keeps pinned rows anywhere.
+    @Test func movePinnedWorkspace() {
+        var w = base()
+        w.screens["D1"]!.workspaces.insert(Workspace(name: "Chat", layout: .maximize, pinned: true), at: 0)
+        w.screens["D1"]!.activeIndex = 1
+        w.normalize()
+        let chat = w.screens["D1"]!.workspaces[0].id
+        (w, _) = run(w, .moveWorkspace(chat, toIndex: 1))
+        #expect(w.screens["D1"]!.workspaces.map(\.id)[1] == chat)
+        #expect(w.screens["D1"]!.workspaces[1].pinned && w.screens["D1"]!.workspaces.count == 3)
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == a)
+    }
+
+    /// Past the trailing "+" (or an out-of-range index, clamped): the stranded "+" is reaped and
+    /// a fresh one grown underneath, so the result is the same as dropping just before it.
+    @Test func moveWorkspacePastTheEndLandsLast() {
+        var w = stack()
+        (w, _) = run(w, .moveWorkspace(w.screens["D1"]!.workspaces[0].id, toIndex: 99))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[c], [b], [a], []])
+        #expect(w.focus.window == b)
+    }
+
+    /// The order survives a restart with no persistence change: the state file stores each
+    /// screen's workspaces as an array, and `restore` rebuilds them in that order.
+    @Test func reorderedStackSurvivesARestart() throws {
+        var w = stack()
+        (w, _) = run(w, .moveWorkspace(w.screens["D1"]!.workspaces[2].id, toIndex: 0))
+        let order = w.screens["D1"]!.workspaces.dropLast().map(\.id)
+        let placements = PersistedState.placements(world: w, bundleIDs: [a: "x", b: "y", c: "z"])
+        let saved = try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(
+            PersistedState(world: w, placements: placements)))
+        let back = saved.restore(into: World.empty(screens: ["D1", "D2"], defaultLayout: .maximize))
+        // Restored rows are held open empty until their apps come back, so none is dropped as "+".
+        #expect(Array(back.screens["D1"]!.workspaces.map(\.id).prefix(order.count)) == order)
+    }
+
+    /// The rail's drop: land before the tile dropped on, "+" meaning last, within one display.
+    @Test func railReorderLandsBeforeTheTargetTile() {
+        let w = stack()
+        let rail = ShellUI.state(for: "D1", in: w)!
+        let ids = rail.rail.map(\.id)
+        #expect(rail.railReorder(ids[2], before: ids[0]) == .moveWorkspace(ids[2], toIndex: 0))
+        #expect(rail.railReorder(ids[0], before: ids[2]) == .moveWorkspace(ids[0], toIndex: 1))
+        #expect(rail.railReorder(ids[0], before: ids[3]) == .moveWorkspace(ids[0], toIndex: 2))   // "+"
+        #expect(rail.railReorder(ids[0], before: ids[0]) == nil)
+        #expect(rail.railReorder(ids[0], before: ids[1]) == nil)   // already there
+        let other = ShellUI.state(for: "D2", in: w)!.rail[0].id
+        #expect(rail.railReorder(other, before: ids[0]) == nil)     // another display's tile
+    }
+
     @Test func moveWindowDownCreatesWorkspaceAndFollows() {
         var w = base()
         (w, _) = run(w, .moveWindowToWorkspace(.down))

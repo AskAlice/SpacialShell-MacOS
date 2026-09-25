@@ -126,6 +126,14 @@ enum Stories {
                                   pids: [5, 3, 1, 6, 4, 2], active: true),
                          railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
             launcherURL: "raycast://", metaFor: meta, send: send))
+        // #75: "Chat" mid-drag over "Code" — the insertion line in the gap above where it lands.
+        let reorder = [railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
+                       railItem(1, name: "Web", symbol: "globe", count: 2, pids: [1, 1], active: true),
+                       railItem(2, name: "Chat", symbol: "bubble.left.and.bubble.right", count: 1, pids: [6]),
+                       railItem(3, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]
+        add("rail-reorder-insertion", railGeometry, ScreenPanelView(
+            state: rail(reorder), launcherURL: "raycast://", metaFor: meta, send: send,
+            dropTarget: reorder[0].id, reordering: reorder[2].id))
         // No cog on a secondary display — one way into settings, not one per monitor.
         add("rail-secondary-screen", railGeometry, ScreenPanelView(
             state: rail([railItem(0, name: "Code", symbol: "terminal", count: 1, pids: [5], active: true),

@@ -33,6 +33,10 @@ public enum Command: Sendable, Hashable {
     /// end of the row when the second is nil. Reference-based rather than index-based because an
     /// index means something different before and after the removal — a classic off-by-one.
     case moveWindowRefBefore(WindowRef, WindowRef?)
+    /// Rail tile dragged to a new place in its own display's stack (#75): the workspace ends up at
+    /// `toIndex` of the reordered stack (clamped). The same workspace stays active and focused.
+    /// There is no display in the payload on purpose: a workspace only moves within its own.
+    case moveWorkspace(UUID, toIndex: Int)
     /// Spec §13.3 / M3a A4 (#52): put every window that has ended up off every display back where
     /// a human can reach it. The model says nothing about geometry, so this changes nothing here —
     /// `WorldStore` does the work — but it is a `Command` so it arrives by the same door as a

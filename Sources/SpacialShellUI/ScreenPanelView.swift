@@ -26,8 +26,15 @@ struct ScreenPanelView: View {
     var onHoverTile: (WorkspaceRailItem, Bool, CGRect) -> Void = { _, _, _ in }
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
-    /// re-enters through `Command` like every other interaction.
-    @State private var dropTarget: UUID?
+    /// re-enters through `Command` like every other interaction. Settable for the stories.
+    @State var dropTarget: UUID?
+
+    /// The tile this rail is dragging, if any (#75). Set when the drag begins (SwiftUI builds the
+    /// payload then), because a hover cannot tell a tile from a tab otherwise — both arrive as
+    /// `public.data` — and the two get different indicators: an insertion line, or a ring.
+    /// ponytail: a drag cancelled outside the rail leaves this set until the next drop or click
+    /// on the rail, so a tab dragged over it meanwhile shows the line; the drop is still right.
+    @State var reordering: UUID?
 
     /// Where each tile is, so a hover can tell the controller what to put the card next to.
     @State private var tileFrames: [UUID: CGRect] = [:]
@@ -55,6 +62,7 @@ struct ScreenPanelView: View {
 
             ForEach(state.rail) { item in
                 Button {
+                    reordering = nil
                     send(.focusWorkspaceID(item.id))
                     // "+" is "start a new workspace", and a workspace with nothing in it is a
                     // dead end — so opening one opens the overview to put something in it. The
@@ -76,12 +84,25 @@ struct ScreenPanelView: View {
                 .onHover { inside in
                     onHoverTile(item, inside, tileFrames[item.id] ?? .zero)
                 }
+                .modifier(Reorderable(item: item) { reordering = item.id })
                 // Dropping a tab here sends its window to this workspace. The trailing "+" row is
                 // not special-cased: it is a workspace, and moving into it grows a new one.
-                .dropDestination(for: DraggedWindow.self) { items, _ in
-                    guard let dropped = items.first else { return false }
-                    send(.moveWindowRefToWorkspace(dropped.ref, item.id))
-                    return true
+                // Dropping a tile here puts it just before this one (#75). Only within this
+                // display: a tile from another display's rail is not in `state.rail`, so
+                // `railReorder` refuses it — moving a workspace across displays is out of scope.
+                .dropDestination(for: RailDrop.self) { items, _ in
+                    defer { reordering = nil }
+                    switch items.first {
+                    case .window(let dropped)?:
+                        send(.moveWindowRefToWorkspace(dropped.ref, item.id))
+                        return true
+                    case .workspace(let dragged)?:
+                        guard let command = state.railReorder(dragged.workspace, before: item.id) else { return false }
+                        send(command)
+                        return true
+                    case nil:
+                        return false
+                    }
                 } isTargeted: { over in
                     dropTarget = over ? item.id : (dropTarget == item.id ? nil : dropTarget)
                 }
@@ -141,8 +162,18 @@ struct ScreenPanelView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.accentColor, lineWidth: 2)
-                .opacity(dropTarget == item.id ? 1 : 0)
+                .opacity(dropTarget == item.id && reordering == nil ? 1 : 0)
         )
+        // A tile being reordered lands *between* tiles, so it gets the tab bar's insertion caret,
+        // turned horizontal and centred in the gap above this tile — not the ring, which says
+        // "into". Hidden where the drop would change nothing (over itself or the tile below it).
+        .overlay(alignment: .top) {
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.accentColor)
+                .frame(height: 2)
+                .offset(y: -3)
+                .opacity(dropTarget == item.id && reordering.flatMap { state.railReorder($0, before: item.id) } != nil ? 1 : 0)
+        }
         .foregroundStyle(item.isActive ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
     }
 
@@ -173,4 +204,20 @@ struct ScreenPanelView: View {
         return item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid) : nil }
     }
 
+}
+
+/// A tile drags to reorder its display's stack (#75); "+" does not — it is the way down, not a
+/// workspace with a place of its own. `began` runs when the drag starts: the payload is built then.
+private struct Reorderable: ViewModifier {
+    let item: WorkspaceRailItem
+    let began: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if item.isTrailingEmpty {
+            content
+        } else {
+            content.draggable({ began(); return DraggedWorkspace(workspace: item.id) }())
+        }
+    }
 }

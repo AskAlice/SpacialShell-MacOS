@@ -105,6 +105,17 @@ import UniformTypeIdentifiers
         #expect(tabType.conforms(to: .item))
     }
 
+    /// #75: a tile and a tab share `public.data`, so the rail tells them apart by decoding. Each
+    /// must come back as what it is, and neither may decode as the other.
+    @Test func railDropsTellATileFromATab() throws {
+        let tab = try JSONEncoder().encode(DraggedWindow(ref: WindowRef(id: 1, pid: 1)))
+        let tile = try JSONEncoder().encode(DraggedWorkspace(workspace: UUID()))
+        guard case .window = try JSONDecoder().decode(RailDrop.self, from: tab) else { Issue.record("tab"); return }
+        guard case .workspace = try JSONDecoder().decode(RailDrop.self, from: tile) else { Issue.record("tile"); return }
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(DraggedWindow.self, from: tile) }
+        #expect(throws: (any Error).self) { try JSONDecoder().decode(DraggedWorkspace.self, from: tab) }
+    }
+
     /// Why a private type cannot be used here, recorded so nobody re-introduces one: a UTI
     /// invented at runtime has no conformance unless the bundle declares it, and the dev binary
     /// (Scripts/dev.sh) has no Info.plist to declare it in.

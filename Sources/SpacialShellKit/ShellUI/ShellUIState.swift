@@ -62,6 +62,16 @@ public struct ScreenShellState: Equatable, Sendable {
         }
         return .moveWindowRefToWorkspace(ref, ws.id)
     }
+
+    /// A rail tile dropped on another tile of this rail (#75) lands just before it, like a tab in
+    /// the bar; dropping on "+" puts it last. Nil for a no-op, or for a workspace from another
+    /// display's rail: reordering stays within one display.
+    public func railReorder(_ workspace: UUID, before target: UUID) -> Command? {
+        guard let i = rail.firstIndex(where: { $0.id == workspace }),
+              let j = rail.firstIndex(where: { $0.id == target }) else { return nil }
+        let to = j > i ? j - 1 : j     // an index into the stack with the dragged tile removed
+        return to == i ? nil : .moveWorkspace(workspace, toIndex: to)
+    }
 }
 
 public enum ShellUI {
