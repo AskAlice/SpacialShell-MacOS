@@ -52,8 +52,9 @@ enum WindowPreviewCapture {
         guard !refs.isEmpty, ScreenRecordingAccess.isGranted else { return [:] }
         // onScreenWindowsOnly: false — a window in an inactive workspace is parked in a corner
         // sliver, and an inactive workspace is exactly the one worth previewing.
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(
-            true, onScreenWindowsOnly: false) else { return [:] }
+        guard let content = await CaptureGate.listing({
+            try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+        }) else { return [:] }
 
         let ownPID = ProcessInfo.processInfo.processIdentifier
         var candidates: [CGWindowID: SCWindow] = [:]
@@ -78,9 +79,10 @@ enum WindowPreviewCapture {
             config.width = max(1, Int((size.width * scale).rounded()))
             config.height = max(1, Int((size.height * scale).rounded()))
             config.showsCursor = false
-            guard let cgImage = try? await SCScreenshotManager.captureImage(
-                contentFilter: SCContentFilter(desktopIndependentWindow: window),
-                configuration: config) else { continue }
+            let filter = SCContentFilter(desktopIndependentWindow: window)
+            guard let cgImage = await CaptureGate.image({
+                try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
+            }) else { continue }
             out[ref.id] = cgImage
         }
         return out

@@ -215,6 +215,7 @@ private final class Stage {
         let wanted = predicted.joined().map(Key.init)
         prefetched.removeAll { !wanted.contains($0.key) }
         prefetchTask = Task(priority: .utility) { [weak self] in
+            guard await CaptureGate.shared.admitsPrefetch else { return }   // #92: never the first capture
             for ts in predicted {
                 guard let self, !Task.isCancelled, !self.busy else { return }
                 let missing = ts.filter { self.cached(Key($0)) == nil }
@@ -231,8 +232,9 @@ private final class Stage {
     /// of windows it no longer has.
     private func listing(refresh: Bool) async -> SCShareableContent? {
         if !refresh, let content, ContinuousClock.now - content.at < Self.listingFreshFor { return content.listing }
-        guard let listing = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        else { return nil }
+        guard let listing = await CaptureGate.listing({
+            try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        }) else { return nil }
         content = (listing, .now)
         let live = Set(listing.windows.map(\.windowID))
         func alive(_ p: Pictures) -> Bool {
@@ -310,7 +312,7 @@ private final class Stage {
         // All at once: the backdrop and every window, on every display.
         let images = await withTaskGroup(of: (Slot, CGImage?).self) { group in
             for s in shots {
-                group.addTask { (s.slot, try? await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.config)) }
+                group.addTask { (s.slot, await CaptureGate.image { try await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.config) }) }
             }
             var out: [(Slot, CGImage?)] = []
             for await r in group { out.append(r) }
