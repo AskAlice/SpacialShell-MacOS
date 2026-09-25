@@ -1,0 +1,182 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1280px; height: 800px; overflow: hidden; font: 13px -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif; color: #eee;
+         background: radial-gradient(1200px 700px at 70% 30%, #3b4f7a 0%, #1d2536 55%, #10131b 100%); }
+  .menubar { height: 24px; background: rgba(20,22,28,.75); display: flex; align-items: center; padding: 0 14px; gap: 18px; font-size: 13px; }
+  .menubar b { font-weight: 600; }
+  .rail { position: absolute; left: 0; top: 24px; width: 48px; bottom: 0; background: rgba(28,30,38,.82); border-right: 1px solid rgba(255,255,255,.06);
+          display: flex; flex-direction: column; align-items: center; padding-top: 8px; gap: 8px; }
+  .tile { width: 36px; height: 36px; border-radius: 9px; background: rgba(255,255,255,.07); display: grid; place-items: center; font-size: 16px; }
+  .tile.on { background: rgba(10,132,255,.35); outline: 1.5px solid #0a84ff; }
+  .bar { position: absolute; left: 48px; right: 0; top: 24px; height: 34px; background: rgba(28,30,38,.82); border-bottom: 1px solid rgba(255,255,255,.06);
+         display: flex; align-items: center; padding: 0 8px; gap: 6px; }
+  .tab { height: 24px; padding: 0 12px; border-radius: 6px; background: rgba(255,255,255,.06); display: flex; align-items: center; gap: 6px; min-width: 120px; font-size: 12px; color: #ccc; }
+  .tab.on { background: rgba(255,255,255,.16); color: #fff; }
+  .spacer { flex: 1; }
+  .glyph { width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center; position: relative; }
+  .glyph.on { background: rgba(10,132,255,.4); }
+  .glyph svg { width: 16px; height: 12px; }
+  .glyph .warn { position: absolute; right: -3px; top: -4px; font-size: 10px; }
+  .cog { width: 24px; height: 24px; display: grid; place-items: center; font-size: 14px; border-radius: 5px; }
+  .cog.hot { background: rgba(255,255,255,.15); }
+  .area { position: absolute; left: 48px; right: 0; top: 58px; bottom: 0; padding: 8px; }
+  .win { position: absolute; border-radius: 10px; background: #1e1e24; box-shadow: 0 10px 40px rgba(0,0,0,.45); overflow: hidden; border: 1px solid rgba(255,255,255,.08); }
+  .win .tb { height: 28px; background: #2a2a31; display: flex; align-items: center; padding: 0 10px; gap: 6px; font-size: 12px; color: #aaa; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .win .body { padding: 14px; color: #8a8f99; font: 12px Menlo, monospace; line-height: 1.6; }
+  .pop, .menu, .editor, .tip { position: absolute; display: none; }
+  .pop { right: 10px; top: 60px; width: 300px; background: rgba(40,42,52,.97); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 10px; box-shadow: 0 20px 50px rgba(0,0,0,.5); }
+  .pop h4 { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: .04em; margin: 6px 6px 6px; }
+  .row { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; }
+  .row.sel { background: rgba(10,132,255,.3); }
+  .row .name { flex: 1; }
+  .row .chk { width: 14px; color: #0a84ff; }
+  .toggle { width: 26px; height: 15px; border-radius: 8px; background: #555; position: relative; }
+  .toggle.on { background: #30d158; }
+  .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; }
+  .toggle.on::after { left: 13px; }
+  .btns { display: flex; gap: 8px; margin-top: 8px; padding: 0 4px; }
+  .btn { flex: 1; height: 26px; border-radius: 6px; background: rgba(255,255,255,.12); display: grid; place-items: center; font-size: 12px; }
+  .btn.pri { background: #0a84ff; }
+  .menu { right: 42px; top: 60px; width: 250px; background: rgba(40,42,52,.97); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 5px; box-shadow: 0 20px 50px rgba(0,0,0,.5); }
+  .menu .row { height: 24px; }
+  .sep { height: 1px; background: rgba(255,255,255,.12); margin: 5px 6px; }
+  .menu .hdr { font-size: 11px; color: #888; padding: 4px 10px 2px; }
+  .editor { left: 250px; top: 110px; width: 780px; height: 560px; background: #2b2c34; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; box-shadow: 0 30px 80px rgba(0,0,0,.6); overflow: hidden; }
+  .editor .tb { height: 36px; background: #34353e; display: flex; align-items: center; padding: 0 12px; gap: 8px; font-weight: 600; }
+  .editor .side { position: absolute; left: 0; top: 36px; bottom: 0; width: 190px; border-right: 1px solid rgba(255,255,255,.08); padding: 12px; }
+  .editor .side h4 { font-size: 11px; color: #999; text-transform: uppercase; margin: 4px 0 8px; }
+  .preset { display: inline-grid; width: 48px; height: 32px; margin: 0 6px 8px 0; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; gap: 2px; padding: 2px; }
+  .preset.on { border-color: #0a84ff; box-shadow: 0 0 0 1px #0a84ff; }
+  .preset i { background: rgba(255,255,255,.25); border-radius: 1px; }
+  .field { height: 26px; border-radius: 6px; background: #1d1e24; border: 1px solid rgba(255,255,255,.15); padding: 0 8px; display: flex; align-items: center; margin-bottom: 10px; color: #ddd; }
+  .field.focus { border-color: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.35); }
+  .canvas { position: absolute; left: 206px; top: 52px; right: 16px; bottom: 60px; background: #17181d; border-radius: 8px; }
+  .zone { position: absolute; background: rgba(10,132,255,.18); border: 1.5px solid rgba(10,132,255,.8); border-radius: 6px; display: grid; place-items: center; font-size: 30px; font-weight: 700; color: rgba(255,255,255,.75); }
+  .zone.pick { background: rgba(255,214,10,.2); border-color: #ffd60a; }
+  .split { position: absolute; background: #ffd60a; border-radius: 3px; }
+  .split .h { position: absolute; background: #ffd60a; border-radius: 4px; }
+  .editor .foot { position: absolute; left: 206px; right: 16px; bottom: 14px; display: flex; gap: 10px; align-items: center; }
+  .editor .foot .btn { flex: 0 0 auto; padding: 0 16px; }
+  .note { position: absolute; left: 60px; bottom: 16px; font-size: 12px; background: rgba(0,0,0,.55); padding: 6px 10px; border-radius: 6px; color: #ddd; }
+  .stamp { position: absolute; right: 12px; bottom: 12px; font-size: 11px; color: rgba(255,255,255,.55); background: rgba(0,0,0,.35); padding: 4px 8px; border-radius: 5px; }
+  .tip { right: 80px; top: 60px; background: #fff; color: #222; font-size: 12px; padding: 6px 9px; border-radius: 6px; box-shadow: 0 8px 20px rgba(0,0,0,.4); }
+  .cursor { position: absolute; width: 18px; height: 22px; display: none; z-index: 99; }
+  .cursor svg { width: 18px; height: 22px; }
+  .badge { font-size: 10px; background: #0a84ff; color: #fff; border-radius: 4px; padding: 0 5px; }
+</style></head>
+<body>
+<div class="menubar"><b></b><b>Finder</b><span>File</span><span>Edit</span><span>View</span><span style="flex:1"></span><span>Thu 25 Sep 09:41</span></div>
+<div class="rail">
+  <div class="tile on">🌐</div><div class="tile">▣</div><div class="tile">{}</div><div class="tile">♫</div><div class="tile">⚙︎</div><div class="tile">+</div>
+</div>
+<div class="bar" id="bar">
+  <div class="tab on">🟦 Code — spacial-shell</div><div class="tab">⌨︎ Hyper</div><div class="tab">📄 notes.md</div>
+  <div class="spacer"></div>
+  <div id="glyphs" style="display:flex; gap:2px"></div>
+  <div class="glyph" id="more" title="All layouts">⋯</div>
+  <div class="cog" id="cog">⚙︎</div>
+</div>
+<div class="area" id="area"></div>
+
+<div class="pop" id="pop">
+  <h4>Layouts for this workspace</h4>
+  <div id="poplist"></div>
+  <div class="sep"></div>
+  <div class="row"><span class="name">Set as default for new workspaces</span></div>
+  <div class="btns"><div class="btn" id="newbtn">New…</div><div class="btn">Edit…</div></div>
+</div>
+
+<div class="menu" id="menu"></div>
+
+<div class="editor" id="editor">
+  <div class="tb"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span style="margin-left:10px">Layout editor</span></div>
+  <div class="side">
+    <h4>Start from</h4>
+    <div id="presets"></div>
+    <h4 style="margin-top:10px">Name</h4>
+    <div class="field" id="namefield">Untitled layout</div>
+    <h4>Id</h4>
+    <div class="field" id="idfield" style="color:#999">untitled</div>
+    <h4>Zones</h4>
+    <div id="zonecount" style="color:#bbb">4 · fill order 1 → 4</div>
+  </div>
+  <div class="canvas" id="canvas"></div>
+  <div class="foot"><div class="btn">Copy as TOML</div><span style="flex:1;color:#999;font-size:12px" id="hint">Drag a splitter · ⇧-click two cells to merge</span><div class="btn">Cancel</div><div class="btn pri">Save</div></div>
+</div>
+
+<div class="tip" id="tip">⚠︎ layout “code-3” is missing — using maximize</div>
+<div class="cursor" id="cursor"><svg viewBox="0 0 18 22"><path d="M1 1 L1 17 L5 13 L8 20 L11 19 L8 12 L14 12 Z" fill="#fff" stroke="#000" stroke-width="1.2"/></svg></div>
+<div class="note" id="note"></div>
+<div class="stamp">MOCKUP · #7 design (not built) · custom grid layouts</div>
+
+<script>
+const S = location.hash.slice(1) || "1";
+const $ = id => document.getElementById(id);
+const ico = z => `<svg viewBox="0 0 16 12">${z.map(r => `<rect x="${r[0]*16+0.6}" y="${r[1]*12+0.6}" width="${r[2]*16-1.2}" height="${r[3]*12-1.2}" rx="1" fill="none" stroke="#fff" stroke-width="1.1"/>`).join("")}</svg>`;
+const L = {
+  maximize: { name: "Maximize", z: [[0,0,1,1]] },
+  split:    { name: "Split", z: [[0,0,.5,1],[.5,0,.5,1]] },
+  column:   { name: "Column", z: [[0,0,1/3,1],[1/3,0,1/3,1],[2/3,0,1/3,1]] },
+  half:     { name: "Half", z: [[0,0,.5,1],[.5,0,.5,.5],[.5,.5,.5,.5]] },
+  grid:     { name: "Grid", z: [[0,0,.5,.5],[.5,0,.5,.5],[0,.5,.5,.5],[.5,.5,.5,.5]] },
+  "code-3": { name: "Code, three", z: [[0,0,.6,1],[.6,0,.4,.5],[.6,.5,.4,.5]] },
+  "wide-4": { name: "Ultrawide four", z: [[0,0,.25,1],[.25,0,.5,1],[.75,0,.25,.5],[.75,.5,.25,.5]] },
+  "focus-c": { name: "Focus centre", z: [[0,0,.2,1],[.2,0,.6,1],[.8,0,.2,1]] },
+};
+let bar = ["maximize","split","column","half","grid"], active = "maximize", warn = false;
+if (["7","8"].includes(S)) { bar = ["maximize","split","column","half","grid","code-3"]; active = "code-3"; }
+if (S === "9") { bar = ["maximize","split","column","half","grid"]; active = "maximize"; warn = true; }
+$("glyphs").innerHTML = bar.map(k => `<div class="glyph ${k===active?'on':''}">${ico(L[k].z)}${warn && k===active ? '<span class="warn">⚠️</span>' : ''}</div>`).join("");
+
+// windows in the tiling area
+const titles = ["Code — spacial-shell", "Hyper", "notes.md"];
+const bodies = ["func frames(_ layout: LayoutDef,\n  count: Int, in rect: CGRect)", "$ swift test\n✔ 391 tests passed", "# grid layouts\n- zones are fractions"];
+function tile(zs) {
+  const W = 1280-48-16, H = 800-58-16, g = 8;
+  $("area").innerHTML = zs.map((r,i) => `<div class="win" style="left:${8+r[0]*W+g/2}px;top:${8+r[1]*H+g/2}px;width:${r[2]*W-g}px;height:${r[3]*H-g}px">
+    <div class="tb"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span>&nbsp;${titles[i]||""}</div>
+    <div class="body">${(bodies[i]||"").replace(/\n/g,"<br>")}</div></div>`).join("");
+}
+tile(active === "code-3" ? L["code-3"].z : [[0,0,1,1]]);
+
+// popover list
+$("poplist").innerHTML = Object.keys(L).filter(k => !["focus-c"].includes(k) || true).map(k =>
+  `<div class="row ${k===active?'sel':''}"><span class="chk">${k===active?'✓':''}</span>${ico(L[k].z).replace('<svg','<svg style="width:18px;height:13px"')}<span class="name">${L[k].name}${["code-3","wide-4","focus-c"].includes(k)?' <span class="badge">drawn</span>':''}</span><div class="toggle ${bar.includes(k)?'on':''}" title="Show on bar"></div></div>`).join("");
+
+// ⋯ menu
+const sect = (h, ks) => `<div class="hdr">${h}</div>` + ks.map(k => `<div class="row ${k===active?'sel':''}"><span class="chk">${k===active?'✓':''}</span>${ico(L[k].z).replace('<svg','<svg style="width:18px;height:13px"')}<span class="name">${L[k].name}</span></div>`).join("");
+$("menu").innerHTML = sect("Built-in", ["maximize","split","column","half","grid"]) + '<div class="sep"></div>' + sect("From config.toml", ["wide-4"]) + '<div class="sep"></div>' + sect("Drawn", ["code-3","focus-c"]) + '<div class="sep"></div><div class="row"><span class="chk"></span><span class="name">Edit layouts…</span></div>';
+
+// editor
+const presets = [[[0,0,1,1]],[[0,0,.5,1],[.5,0,.5,1]],[[0,0,1/3,1],[1/3,0,1/3,1],[2/3,0,1/3,1]],[[0,0,.5,.5],[.5,0,.5,.5],[0,.5,.5,.5],[.5,.5,.5,.5]],[[0,0,1/3,.5],[1/3,0,1/3,.5],[2/3,0,1/3,.5],[0,.5,1/3,.5],[1/3,.5,1/3,.5],[2/3,.5,1/3,.5]]];
+const pre = (i,on) => `<div class="preset ${on?'on':''}" style="position:relative">${presets[i].map(r=>`<i style="position:absolute;left:${2+r[0]*44}px;top:${2+r[1]*28}px;width:${r[2]*44-2}px;height:${r[3]*28-2}px"></i>`).join("")}</div>`;
+function editor(zs, opts={}) {
+  $("presets").innerHTML = presets.map((_,i)=>pre(i, i===(opts.preset??3))).join("");
+  const C = $("canvas"); const W = 558, H = 448;
+  C.innerHTML = zs.map((r,i)=>`<div class="zone ${ (opts.pick||[]).includes(i)?'pick':''}" style="left:${r[0]*W+4}px;top:${r[1]*H+4}px;width:${r[2]*W-8}px;height:${r[3]*H-8}px">${i+1}</div>`).join("")
+    + (opts.split!=null ? `<div class="split" style="left:${opts.split*W-2}px;top:4px;width:4px;height:${H-8}px"><div class="h" style="left:-5px;top:${H/2-18}px;width:14px;height:36px"></div></div>` : "");
+  $("zonecount").textContent = `${zs.length} · fill order 1 → ${zs.length}`;
+}
+
+const cur = (x,y) => { const c=$("cursor"); c.style.display="block"; c.style.left=x+"px"; c.style.top=y+"px"; };
+const note = t => { $("note").textContent = t; };
+const show = id => { $(id).style.display = "block"; };
+
+switch (S) {
+  case "1": note("1 · Today's bar: five built-in layouts, then ⋯ (all layouts) and the cog"); cur(1250,40); break;
+  case "2": $("cog").classList.add("hot"); show("pop"); note("2 · Cog → popover: every layout by name, current ✓, Show-on-bar toggles, New / Edit"); cur(1250,42); break;
+  case "3": show("pop"); cur(1015,352); note("3 · New… opens the editor (the only surface that takes key focus: naming needs typing)"); break;
+  case "4": show("editor"); editor(L.grid.z, {preset:3}); note("4 · Editor starts from a preset: 2×2 grid, zones numbered in fill order"); cur(700,420); break;
+  case "5": show("editor"); editor(L.grid.z, {preset:3, pick:[0,2]}); $("hint").textContent = "⇧-click cells 1 and 3 → merge"; note("5 · ⇧-click the two left cells to merge them into one tall zone"); cur(620,360); break;
+  case "6": show("editor"); editor([[0,0,.6,1],[.6,0,.4,.5],[.6,.5,.4,.5]], {preset:3, split:.6});
+            $("namefield").textContent = "Code, three"; $("namefield").classList.add("focus"); $("idfield").textContent = "code-3"; $("hint").textContent = "Splitter at 60% (snaps to 1/48)";
+            note("6 · Drag the splitter to 60 %, name it “Code, three” → id code-3 · Save"); cur(540,340); break;
+  case "7": note("7 · Saved: code-3 joins the bar, the workspace re-tiles into its three zones"); cur(1150,40); break;
+  case "8": show("menu"); note("8 · ⋯ lists all layouts, sectioned: built-in · config.toml · drawn · Edit layouts…"); cur(1225,40); break;
+  case "9": show("tip"); note("9 · Layout deleted elsewhere: workspace keeps its id, falls back to maximize, badge + tooltip say so"); cur(1165,40); break;
+}
+</script>
+</body></html>
