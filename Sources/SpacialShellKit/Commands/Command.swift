@@ -56,6 +56,16 @@ public enum Command: Sendable, Hashable {
     case editLayout(LayoutID?, workspace: UUID?)
     case setDefaultLayout(LayoutID)
     case showLayoutOnBar(LayoutID, Bool)
+
+    /// Commands the app layer handles (overview, settings, the layout surfaces) — no-ops in the
+    /// model. Every command source, the hotkey tap and the control socket alike, routes these to
+    /// their controllers instead of the store (#88).
+    public var isAppLayer: Bool {
+        switch self {
+        case .toggleOverview, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
+        default: false
+        }
+    }
 }
 
 public enum Effect: Sendable, Equatable {

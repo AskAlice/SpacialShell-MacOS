@@ -56,12 +56,12 @@ public final class CheatSheetController {
 
     private func present() {
         shown = true
-        let view = CheatSheetView(groups: Self.grouped(CheatSheet.rows(for: config)))
+        let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
+        // #87: it floats over everything, so the whole visible frame is its to fit.
+        let (view, size) = CheatSheetView.fitting(Self.grouped(CheatSheet.rows(for: config)), in: vf.width)
         let host = NSHostingView(rootView: view)
         self.host = host
         panel.contentView = host
-        let size = host.fittingSize
-        let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
         panel.setFrame(NSRect(x: vf.midX - size.width / 2, y: vf.midY - size.height / 2,
                               width: size.width, height: size.height), display: true)
         panel.orderFrontRegardless()
@@ -93,7 +93,7 @@ final class EmptyCheatSheetController {
     private static let bottomMargin: CGFloat = 16   // + the view's own 8 pt shadow padding
 
     private let panel = PanelWindow()
-    private var shownConfig: Config?
+    private var shown: (config: Config, width: CGFloat)?
     private var size: CGSize = .zero
 
     init() {
@@ -108,15 +108,21 @@ final class EmptyCheatSheetController {
             panel.orderOut(nil)
             return
         }
-        if shownConfig != config {   // only rebuild when the bindings could have changed
-            shownConfig = config
-            let host = NSHostingView(rootView: CheatSheetView(
-                groups: CheatSheetController.grouped(CheatSheet.rows(for: config)), dimmed: true))
-            panel.contentView = host
-            size = host.fittingSize
-        }
+        // #87: it sits behind the shell, so it fits (and centres in) the area beside the rail —
+        // the same insets the tiled windows get, so Zen hands it the rail's strip back.
+        let insets = ShellInsets(config: config, hidden: world.zen)
         let vf = screen.visibleFrame
-        panel.setFrame(NSRect(x: vf.midX - size.width / 2, y: vf.minY + Self.bottomMargin,
+        let area = NSRect(x: vf.minX + insets.left, y: vf.minY,
+                          width: vf.width - insets.left - insets.right, height: vf.height)
+        // Only rebuild when the bindings or the room could have changed.
+        if shown?.config != config || shown?.width != area.width {
+            shown = (config, area.width)
+            let (view, size) = CheatSheetView.fitting(CheatSheetController.grouped(CheatSheet.rows(for: config)),
+                                                      dimmed: true, in: area.width)
+            panel.contentView = NSHostingView(rootView: view)
+            self.size = size
+        }
+        panel.setFrame(NSRect(x: area.midX - size.width / 2, y: vf.minY + Self.bottomMargin,
                               width: size.width, height: size.height), display: true)
         panel.orderFrontRegardless()
     }
@@ -126,30 +132,34 @@ struct CheatSheetView: View {
     let groups: [(group: CheatSheet.Group, rows: [CheatSheet.Row])]
     /// The empty-workspace background (#29): the same sheet, stepped back.
     var dimmed = false
+    /// #87: how many rows the groups are dealt into. One is the sheet as designed; more is how it
+    /// fits a narrow display — see `fitting(_:dimmed:in:)`.
+    var rows = 1
+
+    /// Clear space kept between the sheet and the edges of the area it sits in.
+    static let sideMargin: CGFloat = 16
+
+    /// #87: the sheet with the fewest rows that fits an area `width` wide, and its size. Wrapping
+    /// rather than scaling keeps the type at its designed size; a single column is the floor.
+    static func fitting(_ groups: [(group: CheatSheet.Group, rows: [CheatSheet.Row])], dimmed: Bool = false,
+                        in width: CGFloat) -> (view: CheatSheetView, size: CGSize) {
+        var best: (view: CheatSheetView, size: CGSize)?
+        for rows in 1...max(groups.count, 1) {
+            let view = CheatSheetView(groups: groups, dimmed: dimmed, rows: rows)
+            let size = NSHostingView(rootView: view).fittingSize
+            best = (view, size)
+            if size.width <= width - 2 * sideMargin { break }
+        }
+        return best!
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 22) {
-            ForEach(groups, id: \.group) { entry in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(entry.group.title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    ForEach(entry.rows, id: \.commandName) { row in
-                        HStack(spacing: 7) {
-                            Image(systemName: row.symbol)
-                                .font(.system(size: 11))
-                                .frame(width: 16)
-                                .foregroundStyle(.secondary)
-                            Text(row.title)
-                                .font(.system(size: 12))
-                                .lineLimit(1)
-                            Spacer(minLength: 10)
-                            Text(row.chords.joined(separator: "  "))
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(minWidth: 190, alignment: .leading)
-                    }
+        let perRow = max(1, Int((Double(groups.count) / Double(rows)).rounded(.up)))
+        let lines = stride(from: 0, to: groups.count, by: perRow).map { Array(groups[$0..<min($0 + perRow, groups.count)]) }
+        Grid(alignment: .topLeading, horizontalSpacing: 22, verticalSpacing: 16) {
+            ForEach(lines.indices, id: \.self) { i in
+                GridRow {
+                    ForEach(lines[i], id: \.group) { column($0) }
                 }
             }
         }
@@ -158,5 +168,29 @@ struct CheatSheetView: View {
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.separator.opacity(0.5)))
         .opacity(dimmed ? 0.55 : 1)
         .padding(8)   // breathing room for the panel shadow
+    }
+
+    private func column(_ entry: (group: CheatSheet.Group, rows: [CheatSheet.Row])) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(entry.group.title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            ForEach(entry.rows, id: \.commandName) { row in
+                HStack(spacing: 7) {
+                    Image(systemName: row.symbol)
+                        .font(.system(size: 11))
+                        .frame(width: 16)
+                        .foregroundStyle(.secondary)
+                    Text(row.title)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+                    Spacer(minLength: 10)
+                    Text(row.chords.joined(separator: "  "))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minWidth: 190, alignment: .leading)
+            }
+        }
     }
 }

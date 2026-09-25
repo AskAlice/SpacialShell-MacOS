@@ -373,6 +373,14 @@ enum Stories {
         // #29: the passive background behind an empty workspace — same sheet, dimmed.
         add("cheatsheet-empty-workspace", nil,
             CheatSheetView(groups: CheatSheetController.grouped(CheatSheet.rows(for: Config())), dimmed: true))
+        // #87: fitted to a 1024 pt display. The sheets above are wider than that; these wrap to fit
+        // — the Fn sheet the whole width, the empty-workspace one the area beside the 48 pt rail.
+        // Fitting size, as the panel sizes itself; `cheatSheetWrapsToFitItsArea` checks the width.
+        add("cheatsheet-fn-1024", nil,
+            CheatSheetView.fitting(CheatSheetController.grouped(CheatSheet.rows(for: Config())), in: 1024).view)
+        add("cheatsheet-empty-workspace-1024", nil,
+            CheatSheetView.fitting(CheatSheetController.grouped(CheatSheet.rows(for: Config())),
+                                   dimmed: true, in: 1024 - 48).view)
 
         return out
     }

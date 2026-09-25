@@ -2,6 +2,7 @@ import Testing
 import AppKit
 import SwiftUI
 import SnapshotTesting
+import SpacialShellKit
 @testable import SpacialShellUI
 
 /// Storybook-style rendering of every shell story, twice over:
@@ -63,6 +64,15 @@ import SnapshotTesting
         let image = NSImage(size: size)
         image.addRepresentation(rep)
         return image
+    }
+
+    /// #87: a sheet that fits stays the designed single row; one that does not wraps until it does.
+    @Test func cheatSheetWrapsToFitItsArea() {
+        let groups = CheatSheetController.grouped(CheatSheet.rows(for: Config()))
+        #expect(CheatSheetView.fitting(groups, in: 4000).view.rows == 1)
+        let narrow = CheatSheetView.fitting(groups, in: 1024 - 48)
+        #expect(narrow.view.rows > 1)
+        #expect(narrow.size.width <= 1024 - 48 - 2 * CheatSheetView.sideMargin)
     }
 
     @Test(arguments: ["light", "dark"])

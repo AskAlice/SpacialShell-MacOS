@@ -168,7 +168,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 guard let name = request.args["command"]?.stringValue,
                       let command = KeyBindings.commandNames[name]
                 else { return .failure(id: request.id, "unknown command") }
-                await store.run(command)
+                // #88: exactly like a hotkey. App-layer commands go through `route` to their
+                // controllers (the store would drop them); model commands are awaited, so a
+                // `spacialctl state` straight after sees their effect.
+                if command.isAppLayer { route(command) } else { await store.run(command) }
                 return .ok(id: request.id)
             case "state":
                 let state = await store.wireState()

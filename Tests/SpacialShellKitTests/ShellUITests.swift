@@ -164,6 +164,24 @@ import Foundation
         let t = KeyBindings.table(for: try Config.parse(toml: ""))
         #expect(t[KeyBindings.parse("fn-tab")!] == .toggleOverview)
     }
+
+    /// #88: `spacialctl run open-settings` reached the store, which drops it. The app-layer set is
+    /// what every command source routes to the controllers instead — and exactly the model's no-ops.
+    @Test func appLayerCommandsAreTheModelsNoOps() {
+        let before = base()
+        let appLayer: [Command] = [.toggleOverview, .openSettings, .editLayout(nil, workspace: nil),
+                                   .setDefaultLayout(.grid), .showLayoutOnBar(.grid, false)]
+        for c in appLayer {
+            #expect(c.isAppLayer)
+            let (w, e) = run(before, c)
+            #expect(w == before && e.isEmpty)
+        }
+        #expect(KeyBindings.commandNames["open-settings"]?.isAppLayer == true)
+        #expect(KeyBindings.commandNames["toggle-overview"]?.isAppLayer == true)
+        // Everything else a socket can name is the store's.
+        let named = KeyBindings.commandNames.filter { $0.value.isAppLayer }.keys.sorted()
+        #expect(named == ["open-settings", "toggle-overview"])
+    }
 }
 
 @Suite struct ZenTests {
