@@ -28,6 +28,7 @@ public final class ShellController: NSObject {
     private let appMeta: AppMetaCache
     /// One card for the whole shell, not one per display: only one pointer exists.
     private let hover: RailHoverController
+    private let emptySheet = EmptyCheatSheetController()
 
     public init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.config = config
@@ -108,6 +109,7 @@ public final class ShellController: NSObject {
             panels[id] = nil
             hover.hideNow()
         }
+        emptySheet.update(world: world, config: config)
     }
 
     /// SwiftUI hands us the tile's frame in the hosting view's space — top-left origin, y down.

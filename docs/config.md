@@ -26,6 +26,7 @@ rail-side = "left"                # or "right"
 tab-sizing = "fit"                # or "equal"
 launcher-url = "raycast://"
 show-panels = true
+empty-cheatsheet = true           # dimmed cheat sheet behind an empty workspace
 
 [[workspace]]                     # pinned, named workspaces seeded on every screen
 name = "Code"                     # (material-shell "categories")
@@ -64,6 +65,7 @@ title-regex = "^Picture in Picture$"
 | `keybinding-overrides` | table of command \u2192 chord | `{}` | Rebinds a command, *replacing* its default chord. This is what the settings window writes. Distinct from `keybindings` below, which is chord \u2192 command and only ever *adds* a chord \u2014 useful in a hand-edited file, useless for rebinding, since the old chord keeps working. |
 | `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
+| `empty-cheatsheet` | boolean | `true` | When the focused display's active workspace has no windows, the key-binding cheat sheet (the one holding the bare modifier shows) sits dimmed at the bottom of that screen, behind everything and click-through. It goes as soon as a window arrives or focus moves to another display. Also a toggle in the settings window. |
 
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
 two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import SpacialShellKit
+import SpacialShellPlatform
 
 /// The Fn-hold cheat sheet: hold the bare modifier (no key) for a beat and the bindings appear,
 /// grouped the way `CheatSheet.rows(for:)` groups them; release and it fades. Driven by
@@ -82,8 +83,49 @@ public final class CheatSheetController {
     }
 }
 
+/// #29: the same sheet as a passive background. While the focused display's active workspace is
+/// empty (`ShellUI.showsEmptyCheatSheet`), it sits dimmed at the bottom of that screen, just above
+/// the desktop — so every window, the shell panels and the overview are in front of it — and
+/// click-through. Owned by `ShellController`, which already has both the world and the effective
+/// config, so rebinds show up here the moment they land.
+@MainActor
+final class EmptyCheatSheetController {
+    private static let bottomMargin: CGFloat = 16   // + the view's own 8 pt shadow padding
+
+    private let panel = PanelWindow()
+    private var shownConfig: Config?
+    private var size: CGSize = .zero
+
+    init() {
+        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        panel.ignoresMouseEvents = true
+    }
+
+    func update(world: World, config: Config) {
+        guard let screen = NSScreen.screens.first(where: {
+            ShellUI.showsEmptyCheatSheet(DisplayTopology.uuid(for: $0), in: world, config: config)
+        }) else {
+            panel.orderOut(nil)
+            return
+        }
+        if shownConfig != config {   // only rebuild when the bindings could have changed
+            shownConfig = config
+            let host = NSHostingView(rootView: CheatSheetView(
+                groups: CheatSheetController.grouped(CheatSheet.rows(for: config)), dimmed: true))
+            panel.contentView = host
+            size = host.fittingSize
+        }
+        let vf = screen.visibleFrame
+        panel.setFrame(NSRect(x: vf.midX - size.width / 2, y: vf.minY + Self.bottomMargin,
+                              width: size.width, height: size.height), display: true)
+        panel.orderFrontRegardless()
+    }
+}
+
 struct CheatSheetView: View {
     let groups: [(group: CheatSheet.Group, rows: [CheatSheet.Row])]
+    /// The empty-workspace background (#29): the same sheet, stepped back.
+    var dimmed = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 22) {
@@ -114,6 +156,7 @@ struct CheatSheetView: View {
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.separator.opacity(0.5)))
+        .opacity(dimmed ? 0.55 : 1)
         .padding(8)   // breathing room for the panel shadow
     }
 }

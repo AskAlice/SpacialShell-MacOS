@@ -247,6 +247,9 @@ enum Stories {
         var ctrlAlt = Config(); ctrlAlt.keybindingPreset = .ctrlAlt
         add("cheatsheet-ctrl-alt", nil,
             CheatSheetView(groups: CheatSheetController.grouped(CheatSheet.rows(for: ctrlAlt))))
+        // #29: the passive background behind an empty workspace — same sheet, dimmed.
+        add("cheatsheet-empty-workspace", nil,
+            CheatSheetView(groups: CheatSheetController.grouped(CheatSheet.rows(for: Config())), dimmed: true))
 
         return out
     }

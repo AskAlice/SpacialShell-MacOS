@@ -53,6 +53,34 @@ import Foundation
     @Test func unknownDisplayIsNil() {
         #expect(ShellUI.state(for: "nope", in: base()) == nil)
     }
+
+    /// #29: the dimmed cheat sheet is on the focused display only, only while its workspace is
+    /// empty, off on a fullscreen Space and with the key off, and unaffected by Zen.
+    @Test func emptyCheatSheetRule() {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        #expect(w.focus.screen == "D1")
+        #expect(ShellUI.showsEmptyCheatSheet("D1", in: w, config: Config()))
+        #expect(!ShellUI.showsEmptyCheatSheet("D2", in: w, config: Config()))   // empty, but not focused
+        #expect(!ShellUI.showsEmptyCheatSheet("nope", in: w, config: Config()))
+
+        var off = Config(); off.emptyCheatsheet = false
+        #expect(!ShellUI.showsEmptyCheatSheet("D1", in: w, config: off))
+
+        w.zen = true
+        #expect(ShellUI.showsEmptyCheatSheet("D1", in: w, config: Config()))    // Zen does not hide it
+
+        w.adopt(a, kind: .tile, on: "D1")                                     // a window arrives
+        #expect(!ShellUI.showsEmptyCheatSheet("D1", in: w, config: Config()))
+
+        w.focus.screen = "D2"; w.focus.window = nil                           // focus moves away
+        #expect(ShellUI.showsEmptyCheatSheet("D2", in: w, config: Config()))
+        #expect(!ShellUI.showsEmptyCheatSheet("D1", in: w, config: Config()))
+
+        w.adopt(b, kind: .tile, on: "D2"); w.setFullscreen(b, true)            // a fullscreen Space
+        w.screens["D2"]!.activeIndex = 1                                      // its trailing empty row
+        #expect(w.screens["D2"]!.active.isEmpty)
+        #expect(!ShellUI.showsEmptyCheatSheet("D2", in: w, config: Config()))
+    }
 }
 
 @Suite struct ShellCommandTests {

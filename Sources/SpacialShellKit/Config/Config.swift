@@ -74,6 +74,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// Switching is motion (#64, ruled in #65): windows slide as screenshot proxies when the Screen
     /// Recording grant is present, and are placed instantly without it or with this off.
     public var animations: Bool = true
+    /// #29: an empty workspace on the focused display shows the cheat sheet, dimmed, as its
+    /// background, so a fresh screen answers "what can I press?" without holding anything.
+    public var emptyCheatsheet: Bool = true
     /// Both panels' material tint and how opaque they are. "system" means the stock vibrancy
     /// material; a hex colour replaces it. One pair for both surfaces — split them only if the
     /// rail and bar ever need to differ.
@@ -107,6 +110,7 @@ public struct Config: Codable, Equatable, Sendable {
              launcherURL = "launcher-url", showPanels = "show-panels", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
+        case emptyCheatsheet = "empty-cheatsheet"
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -123,6 +127,7 @@ public struct Config: Codable, Equatable, Sendable {
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
+        emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
             guard let n = HexColor.normalize(raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
@@ -163,6 +168,7 @@ public struct Config: Codable, Equatable, Sendable {
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
         animations = \(animations)
+        empty-cheatsheet = \(emptyCheatsheet)
 
         """
         func rules(_ name: String, _ items: [AppRule]) {

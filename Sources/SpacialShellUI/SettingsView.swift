@@ -113,6 +113,9 @@ struct SettingsView: View {
             row("Switch animation", overridden: overrides.animations != nil) {
                 Toggle("", isOn: binding(\.animations, default: file.animations)).labelsHidden()
             } reset: { overrides.animations = nil }
+            row("Empty cheat sheet", overridden: overrides.emptyCheatsheet != nil) {
+                Toggle("", isOn: binding(\.emptyCheatsheet, default: file.emptyCheatsheet)).labelsHidden()
+            } reset: { overrides.emptyCheatsheet = nil }
         }
     }
 

@@ -92,4 +92,12 @@ public enum ShellUI {
             isFocusedScreen: world.focus.screen == display,
             rail: rail, tabs: tabs, layout: active.layout)
     }
+
+    /// #29: whether `display` shows the dimmed cheat sheet behind its empty workspace. Only the
+    /// focused display (one sheet, where the user is looking), only while its active workspace has
+    /// no windows, and not on a fullscreen Space (#72). Zen deliberately does not hide it.
+    public static func showsEmptyCheatSheet(_ display: DisplayID, in world: World, config: Config) -> Bool {
+        guard config.emptyCheatsheet, world.focus.screen == display, let screen = world.screens[display] else { return false }
+        return screen.active.isEmpty && !world.showsFullscreenSpace(display)
+    }
 }

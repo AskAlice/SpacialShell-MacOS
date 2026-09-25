@@ -16,6 +16,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var tabSizing: TabSizing?
     public var keybindingPreset: KeybindingPreset?
     public var animations: Bool?
+    public var emptyCheatsheet: Bool?
     /// command -> chord. Merged over the file's own overrides per command rather than replacing
     /// the map wholesale, so rebinding one command in the settings window cannot silently discard
     /// a rebind the file made to a different one.
@@ -37,6 +38,7 @@ public enum Settings {
         if let v = overrides.tabSizing { c.tabSizing = v }
         if let v = overrides.keybindingPreset { c.keybindingPreset = v }
         if let v = overrides.animations { c.animations = v }
+        if let v = overrides.emptyCheatsheet { c.emptyCheatsheet = v }
         if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }
         return c
     }
