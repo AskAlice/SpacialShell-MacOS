@@ -33,13 +33,12 @@ import Foundation
         let focus = ShellSnapshot.FocusRow(screen: "D1", window: ref)
 
         let chrome = ShellSnapshot.ChromeRow(
-            panelWidth: 48, panelHeight: 34, railSide: "left", highlightMs: 600,
+            panelWidth: 48, panelHeight: 34, railSide: "left",
             launcherURL: "raycast://", showPanels: true)
 
         return ShellSnapshot(
             v: 1, generation: generation, screens: [screenRow], focus: focus, zen: false,
             capabilities: ["workspace-crud", "zen", "symbols"],
-            focusedFrame: RectDTO(x: 0, y: 34, width: 960, height: 1021),
             locked: false, chrome: chrome)
     }
 
@@ -57,7 +56,7 @@ import Foundation
         let keys = Set((obj ?? [:]).keys)
         let expected: Set<String> = [
             "v", "generation", "screens", "focus", "zen",
-            "capabilities", "focusedFrame", "locked", "chrome",
+            "capabilities", "locked", "chrome",
         ]
         #expect(keys == expected)
     }

@@ -571,26 +571,6 @@ import Foundation
         #expect(await store.world.focus.window == b)
     }
 
-    /// T20 (M2 design, Motion): the focus ring is published from `Reconciler.desired` during the
-    /// reconcile — the frame the window is *about* to get — so the ring is already at the
-    /// destination when AX delivers the window there, instead of chasing it across the screen.
-    @Test func focusedFrameIsPublishedFromTheReconcile() async {
-        let box = FrameBox()
-        let be = FakeBackend(snapshot: snap([win(a), win(b)], focused: a))
-        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               onFocusedFrame: { f in Task { await box.set(f) } }, onChange: { _ in })
-        await store.start()
-        try? await Task.sleep(for: .milliseconds(50))
-        // Maximize: the focused window gets the whole layout rect, and that is what the ring draws.
-        #expect(await box.value == CGRect(x: 8, y: 33, width: 984, height: 658))
-
-        // A window with no tiled frame has no ring: there is nothing at a known place to draw around.
-        await store.apply(.snapshot(snap([win(a), win(b, min: true)], focused: a)))
-        await store.run(.toggleFloat)
-        try? await Task.sleep(for: .milliseconds(50))
-        #expect(await box.value == nil)
-    }
-
     @Test func minimizedIsHidden() async {
         let (store, _) = await make(snap([win(a), win(b, min: true)], focused: a))
         #expect(await store.world.hidden == [b])
@@ -1070,13 +1050,5 @@ func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x), .setFullscreen(let x, _), .unhide(let x): return x == r
     }
 }
-/// Catches what the store published for the focus ring (T20). Optional-of-optional on purpose:
-/// `value` starts nil meaning *never published*, and holds `.some(nil)` for "published: no ring".
-actor FrameBox {
-    private var published: CGRect??
-    var value: CGRect? { published ?? nil }
-    func set(_ f: CGRect?) { published = .some(f) }
-}
-
 actor ChangeBox { var value: World?; func set(_ w: World) { value = w }
 }

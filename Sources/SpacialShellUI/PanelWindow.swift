@@ -3,9 +3,9 @@ import AppKit
 /// The chrome-less overlay both panels live in. Non-activating: a click on a rail or a tab must
 /// not steal key status from the window the user is working in — the click's whole point is to
 /// change focus through the model, not through AppKit.
-/// Not `final`: `HighlightPanel` (T20) is the same furniture with two changes — click-through and
-/// one level higher — and inheriting keeps the non-activating, never-key configuration in one place
-/// rather than copied into a second window class that must stay in step with it.
+/// Not `final`: other overlays (e.g. `OverlayPanel` in `SwitchOverlay.swift`) are the same
+/// furniture with small changes, and inheriting keeps the non-activating, never-key configuration
+/// in one place.
 class PanelWindow: NSPanel {
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],

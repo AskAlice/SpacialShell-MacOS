@@ -39,7 +39,7 @@ public enum RailSide: String, Codable, Sendable { case left, right }
 /// - `equal`: every tab takes 1/n of the bar and centres its content, the way Safari does.
 public enum TabSizing: String, Codable, Sendable { case fit, equal }
 
-public enum HighlightColor {
+public enum HexColor {
     public static func normalize(_ s: String) -> String? {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.lowercased() == "system" { return "system" }
@@ -69,17 +69,11 @@ public struct Config: Codable, Equatable, Sendable {
     public var panelHeight: Double = 34
     public var railSide: RailSide = .left
     public var tabSizing: TabSizing = .fit
-    /// The border drawn around the focused window. Off by default: it restates what the tab bar
-    /// and the window's own title bar already say, and a ring that chases focus is motion for
-    /// something the eye was already looking at. `highlight-color`/`highlight-ms` style it when on.
-    public var focusRing: Bool = false
-    public var highlightMs: Int = 600
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
     /// Switching is motion (#64, ruled in #65): windows slide as screenshot proxies when the Screen
     /// Recording grant is present, and are placed instantly without it or with this off.
     public var animations: Bool = true
-    public var highlightColor: String = "system"
     /// Both panels' material tint and how opaque they are. "system" means the stock vibrancy
     /// material; a hex colour replaces it. One pair for both surfaces — split them only if the
     /// rail and bar ever need to differ.
@@ -110,8 +104,7 @@ public struct Config: Codable, Equatable, Sendable {
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
-             focusRing = "focus-ring", highlightMs = "highlight-ms", launcherURL = "launcher-url", showPanels = "show-panels", animations,
-             highlightColor = "highlight-color", appCategories = "app-categories",
+             launcherURL = "launcher-url", showPanels = "show-panels", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
     }
@@ -127,19 +120,11 @@ public struct Config: Codable, Equatable, Sendable {
         panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
-        focusRing = try c.decodeIfPresent(Bool.self, forKey: .focusRing) ?? false
-        highlightMs = try c.decodeIfPresent(Int.self, forKey: .highlightMs) ?? 600
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
-        if let raw = try c.decodeIfPresent(String.self, forKey: .highlightColor) {
-            guard let n = HighlightColor.normalize(raw) else {
-                throw DecodingError.dataCorruptedError(forKey: .highlightColor, in: c, debugDescription: "highlight-color must be \"system\" or #RRGGBB")
-            }
-            highlightColor = n
-        } else { highlightColor = "system" }
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
-            guard let n = HighlightColor.normalize(raw) else {
+            guard let n = HexColor.normalize(raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
             }
             panelColor = n
@@ -175,12 +160,9 @@ public struct Config: Codable, Equatable, Sendable {
         panel-width = \(panelWidth)
         panel-height = \(panelHeight)
         rail-side = \(q(railSide.rawValue))
-        focus-ring = \(focusRing)
-        highlight-ms = \(highlightMs)
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
         animations = \(animations)
-        highlight-color = \(q(highlightColor))
 
         """
         func rules(_ name: String, _ items: [AppRule]) {

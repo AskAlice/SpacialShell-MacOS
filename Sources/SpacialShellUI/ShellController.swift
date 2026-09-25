@@ -19,9 +19,6 @@ public final class ShellController: NSObject {
         let railHost: NSHostingView<ScreenPanelView>
         let bar: PanelWindow
         let barHost: NSHostingView<WorkspacePanelView>
-        /// T20: covers the whole display, click-through, and draws the focus ring inside itself.
-        let ring: HighlightPanel
-        let ringHost: NSHostingView<FocusRingView>
     }
 
     private var panels: [DisplayID: Panels] = [:]
@@ -47,19 +44,8 @@ public final class ShellController: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    /// Where the store says the focused window is about to be, in AX top-left coordinates; nil when
-    /// nothing has a tiled frame to draw around.
-    private var focusedFrame: CGRect?
-
     public func update(world: World) {
         self.world = world
-        render()
-    }
-
-    /// T20. Arrives from `WorldStore`'s reconcile, ahead of the AX write, so the ring is already at
-    /// the destination when the window gets there.
-    public func update(focusedFrame: CGRect?) {
-        self.focusedFrame = focusedFrame
         render()
     }
 
@@ -95,20 +81,6 @@ public final class ShellController: NSObject {
             p.bar.setFrame(NSRect(x: barX, y: vf.maxY - barHeight,
                                   width: vf.width - railWidth, height: barHeight), display: true)
 
-            // The ring panel covers the whole display. `focusedFrame` is AX top-left and global;
-            // the ring view draws in its own top-left space, so the frame only needs shifting by
-            // the panel's origin — the flip from NSScreen's y-up happens once, here.
-            p.ring.setFrame(vf, display: true)
-            let mainHeight = NSScreen.screens.first?.frame.height ?? 0
-            let ringFrame = config.focusRing ? focusedFrame.flatMap { f -> CGRect? in
-                let screenTop = mainHeight - vf.maxY          // AX y of this display's visible top
-                let local = CGRect(x: f.minX - vf.minX, y: f.minY - screenTop, width: f.width, height: f.height)
-                // Only draw a ring for a window on *this* display.
-                return local.intersects(CGRect(origin: .zero, size: vf.size)) ? local : nil
-            } : nil
-            p.ringHost.rootView = FocusRingView(frame: ringFrame,
-                                                color: FocusRingView.color(for: config),
-                                                animation: FocusRingView.animation(for: config))
             p.railHost.rootView = ScreenPanelView(state: state, launcherURL: config.launcherURL,
                                                   metaFor: appMeta.meta(for:),
                                                   send: forward,
@@ -127,14 +99,11 @@ public final class ShellController: NSObject {
                 p.bar.orderOut(nil)
                 hover.hideNow()   // Zen hides the rail; a card about it must not outlive it
             }
-            // The ring is not chrome: Zen hides the panels and gives their edges back to the
-            // layout, but the tiling — and therefore which window has focus — is still there.
-            if ringFrame != nil { p.ring.orderFrontRegardless() } else { p.ring.orderOut(nil) }
         }
 
         for (id, p) in panels where !seen.contains(id) {
-            p.rail.orderOut(nil); p.bar.orderOut(nil); p.ring.orderOut(nil)
-            p.rail.close(); p.bar.close(); p.ring.close()
+            p.rail.orderOut(nil); p.bar.orderOut(nil)
+            p.rail.close(); p.bar.close()
             panels[id] = nil
             hover.hideNow()
         }
@@ -159,13 +128,9 @@ public final class ShellController: NSObject {
         let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL,
                                                                metaFor: appMeta.meta(for:), send: forward))
         let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward))
-        let ringHost = NSHostingView(rootView: FocusRingView(frame: nil,
-                                                             color: FocusRingView.color(for: config),
-                                                             animation: FocusRingView.animation(for: config)))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost
-        let ring = HighlightPanel(); ring.contentView = ringHost
-        return Panels(rail: rail, railHost: railHost, bar: bar, barHost: barHost, ring: ring, ringHost: ringHost)
+        return Panels(rail: rail, railHost: railHost, bar: bar, barHost: barHost)
     }
 
     /// The views hold this, not `send` itself, so they stay agnostic of the store's threading.

@@ -6,7 +6,7 @@ import Foundation
     @Test func emptyTomlGivesDefaults() throws {
         let c = try Config.parse(toml: "")
         #expect(c.keybindingPreset == .fn && c.gap == 8 && c.defaultLayout == .maximize && c.axTimeoutMs == 1000 && c.refreshIntervalMs == 2000)
-        #expect(c.panelWidth == 48 && c.panelHeight == 34 && !c.focusRing && c.railSide == .left && c.highlightMs == 600 && c.launcherURL == "raycast://" && c.showPanels)
+        #expect(c.panelWidth == 48 && c.panelHeight == 34 && c.railSide == .left && c.launcherURL == "raycast://" && c.showPanels)
         // #70: System Settings is a window you work in, not a visitor — only Calculator by default.
         #expect(c.ephemeral.map(\.bundleId) == ["com.apple.calculator"])
         #expect(c.workspaces.isEmpty)
@@ -58,12 +58,22 @@ import Foundation
         panel-width = 64
         panel-height = 40
         rail-side = "right"
-        highlight-ms = 300
         launcher-url = "raycast://extensions/foo"
         show-panels = false
         """)
         #expect(c.panelWidth == 64 && c.panelHeight == 40 && c.railSide == .right)
-        #expect(c.highlightMs == 300 && c.launcherURL == "raycast://extensions/foo" && !c.showPanels)
+        #expect(c.launcherURL == "raycast://extensions/foo" && !c.showPanels)
+    }
+    /// #60: the focus ring was removed, but config files written before then still carry its keys.
+    /// Unknown keys are ignored, so they must load rather than fail.
+    @Test func removedFocusRingKeysStillLoad() throws {
+        let c = try Config.parse(toml: """
+        focus-ring = true
+        highlight-ms = 300
+        highlight-color = "#FF0000"
+        gap = 4
+        """)
+        #expect(c.gap == 4)
     }
     @Test func unknownRailSideRejects() {
         #expect(throws: (any Error).self) { try Config.parse(toml: #"rail-side = "middle""#) }

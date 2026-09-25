@@ -93,15 +93,14 @@ public struct ShellSnapshot: Codable, Sendable, Equatable {
         public var panelWidth: Double
         public var panelHeight: Double
         public var railSide: String
-        public var highlightMs: Int
         public var launcherURL: String
         public var showPanels: Bool
         public init(
-            panelWidth: Double, panelHeight: Double, railSide: String, highlightMs: Int,
+            panelWidth: Double, panelHeight: Double, railSide: String,
             launcherURL: String, showPanels: Bool
         ) {
             self.panelWidth = panelWidth; self.panelHeight = panelHeight; self.railSide = railSide
-            self.highlightMs = highlightMs; self.launcherURL = launcherURL
+            self.launcherURL = launcherURL
             self.showPanels = showPanels
         }
     }
@@ -112,16 +111,15 @@ public struct ShellSnapshot: Codable, Sendable, Equatable {
     public var focus: FocusRow
     public var zen: Bool
     public var capabilities: [String]
-    public var focusedFrame: RectDTO?
     public var locked: Bool
     public var chrome: ChromeRow
 
     public init(
         v: Int, generation: UInt64, screens: [ScreenRow], focus: FocusRow, zen: Bool,
-        capabilities: [String], focusedFrame: RectDTO?, locked: Bool, chrome: ChromeRow
+        capabilities: [String], locked: Bool, chrome: ChromeRow
     ) {
         self.v = v; self.generation = generation; self.screens = screens; self.focus = focus
-        self.zen = zen; self.capabilities = capabilities; self.focusedFrame = focusedFrame
+        self.zen = zen; self.capabilities = capabilities
         self.locked = locked; self.chrome = chrome
     }
 

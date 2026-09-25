@@ -25,7 +25,6 @@ palette". Binding assignments:
 | Inactive glyphs / text | `secondaryLabelColor` (SwiftUI `.secondary`) |
 | Hover | `quaternaryLabelColor` |
 | Hairlines | `separatorColor` (SwiftUI `.separator`) |
-| Focus-glow stroke | accent; fallback `#0A84FF` — **the only hex allowed anywhere** |
 
 Light/dark and the accent come from System Settings. Never define a named color, an asset-catalog
 palette, a hex constant, or a theme switch. If a Figma file carries a color style, map it to the
@@ -50,8 +49,6 @@ public var panelWidth: Double = 48      // panel-width
 public var panelHeight: Double = 34     // panel-height
 public var railSide: RailSide = .left   // rail-side: left | right
 public var gap: Double = 8              // gap between tiled windows
-public var highlightMs: Int = 600       // focus-glow fade; 0 disables
-public var highlightColor: String = "system"  // "system" or #RRGGBB — the one escape hatch
 ```
 
 Deliberately **not** configurable: theme, font, icon set. `theme`/`font`/`icon-set` keys once
@@ -152,9 +149,8 @@ wrong here — find the SF Symbol.
 
 - Hover labels appear after **250 ms** (`.onHover` + `NSTrackingArea` exit guard — hovers stick
   across screen edges otherwise).
-- The one moment of drama is the **focus glow**: 3 pt accent stroke at the reconciler's *desired*
-  frame, scale 1.06→1 / opacity 0→1 spring **180 ms**, hold, fade over `highlight-ms` (600).
-  Zen: panels fade 180 ms. `reduce-motion` → instant; `highlight-ms = 0` schedules nothing.
+- Zen: panels fade 180 ms. `reduce-motion` → instant. There is no focus ring or glow (removed
+  2026-09-25, #60).
 - Light/dark come from the OS; every story is snapshot-tested in both (`.aqua` / `.darkAqua`).
 - Copy: sentence case; verbs on controls ("Rename workspace…"); direct empty states. Raycast
   command names are Title Case (store rule).
@@ -193,8 +189,6 @@ New UI **must**:
   (`ScreenPanelView.swift`); spec says 18 % accent fill, glyph at 100 %.
 - Tab titles are 11.5 pt (`WorkspacePanelView.swift`); spec says 12 pt. Rail tiles 36 pt; spec 32.
 - Half-layout glyph is `rectangle.lefthalf.filled`; spec assigns `sidebar.left`.
-- The focus glow is spec'd and `highlight-ms`/`highlight-color` parse, but no highlight panel
-  exists yet (M2 T20 / M3 B6) — the keys are honest-but-unwired.
 - Tab overflow scrolls instead of a "+N" badge: tabs squeeze to the 88 pt floor (focused tab
   +16 for its close button), then the row scrolls with the focused tab kept in view (#14).
   Layout-switcher hover names are unbuilt.

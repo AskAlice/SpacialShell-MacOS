@@ -205,12 +205,6 @@ enum Stories {
         add("bar-off-space", barGeometry, WorkspacePanelView(
             state: tabs([tab(3, focused: true), tab(1, offSpace: true), tab(2, hidden: true), tab(4, fullscreen: true)]),
             metaFor: meta, sizing: .fit, send: send))
-        // T20 focus ring: the highlight panel's content — one window's frame inside a display.
-        add("ring-focused", CGSize(width: 600, height: 400),
-            FocusRingView(frame: CGRect(x: 40, y: 40, width: 400, height: 260), color: .accentColor, animation: nil))
-        // …and the honest empty case: focus on something with no tiled frame draws nothing at all.
-        add("ring-none", CGSize(width: 600, height: 400),
-            FocusRingView(frame: nil, color: .accentColor, animation: nil))
         // Tab overflow (#14), at 800 pt: the tab row gets 628 pt, and each tab at its 88 pt floor
         // costs 91 with spacing (+16 for the focused tab's close button, +8 end-of-row gap). Six tabs
         // (570) squeeze toward the floor and still fit; seven (661) are past it and the row scrolls;

@@ -26,7 +26,7 @@ struct PanelChrome: View {
     }
 
     var body: some View {
-        if let (r, g, b, a) = HighlightColor.rgba(color) {
+        if let (r, g, b, a) = HexColor.rgba(color) {
             Color(.sRGB, red: r, green: g, blue: b, opacity: a * opacity)
         } else {
             Rectangle().fill(.thinMaterial).opacity(opacity)

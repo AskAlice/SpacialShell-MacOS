@@ -78,10 +78,6 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
             placements: restored?.placements ?? [:],
-            // T20: the ring is driven straight from the reconcile, ahead of the AX write.
-            onFocusedFrame: { [weak self] frame in
-                Task { @MainActor in self?.shell?.update(focusedFrame: frame) }
-            },
             // #64: switches slide as screenshot proxies (#65); instant without the grant.
             animator: SwitchOverlay(),
         ) { [weak self] world in
