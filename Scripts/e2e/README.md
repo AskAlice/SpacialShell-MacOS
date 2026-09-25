@@ -238,6 +238,22 @@ A failure you did not intend is the suite doing its job: the diff shows where.
   held drag is a long-lived `input` process, and it re-points at the target before it lets go:
   otherwise AppKit sometimes drops nothing after a still hold.
 
+## Screen recordings for the docs (#8)
+
+`Scripts/e2e/e2e.sh --vm --suite media` runs `scenarios/media/*.scn`, which drive the shell while
+a `record` step captures the screen through ScreenCaptureKit (`record.swift`, frames plus their
+times). No references; the frames land in the artefacts. Then, per recording:
+
+```sh
+Scripts/e2e/media.sh .build/e2e/vm-…/overview/overview docs/media/live-overview 720
+Scripts/e2e/media.sh .build/e2e/vm-…/rail-apps/rail-apps docs/media/live-rail-apps 512 12 512:384:0:0
+```
+
+`media.sh` holds each frame until the next one's time, so the loop plays at recorded speed, and
+writes a gif (ffmpeg) and a webp (`img2webp`: Homebrew's ffmpeg has no libwebp). Recording
+speed is real, so a switch's first capture in the GPU-less guest (1–4 s) shows as a pause before
+the slide. The guest has one display: multi-display features are not in these recordings.
+
 ## Status
 
 - `--host`: `tabs.scn` passes on this Mac. `fullscreen.scn` has not been run on the host (it

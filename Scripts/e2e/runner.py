@@ -26,8 +26,9 @@ Scenario format (`scenarios/*.scn`): one step per line, `#` comments, shell-styl
                          overlay appears; needs the motion stretched first (SpacialMotionScale)
     record NAME SECS [FPS]  record the screen to NAME/ in the background for SECS (#8);
                          the scenario waits for it at the end
-    input ARGS...        synthetic pointer/keys (input.swift); a group name or `shell` as an
-                         argument is replaced by that pid
+    input ARGS...        synthetic pointer/keys (input.swift); a group name, `shell` or
+                         `pid:NAME` as an argument is replaced by that pid; a trailing `?`
+                         makes the step best effort
     sh LINE              the rest of the line through /bin/sh, unparsed (config files, defaults) —
                          vm mode only
     relaunch             quit and reopen SpacialShell, wait for its socket — vm mode only
@@ -264,14 +265,19 @@ class Run:
         def resolve(a):
             if a == "shell":
                 return sh("pgrep", "-x", "SpacialShell").split()[0]
+            if a.startswith("pid:"):   # any app by process name, e.g. pid:Notes
+                return (sh("pgrep", "-x", a[4:], check=False).split() or ["0"])[0]
             return str(self.pids[a]) if a in self.pids else a
+        optional = argv[-1] == "?"   # best effort: `input axclick pid:Notes Continue ?`
+        if optional:
+            argv = argv[:-1]
         cmd = [tool("input"), *map(resolve, argv)]
         if argv[0] == "drag" and len(argv) == 6:
             self.held = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
             if self.held.stdout.readline().strip() != "holding":
                 raise Fail("drag never reached its hold")
         else:
-            sh(*cmd)
+            sh(*cmd, check=not optional)
 
     def vm_only(self, what):
         if self.mode != "vm":

@@ -1,0 +1,28 @@
+# #8 media: a tab dragged along the bar (reorder, #32), then onto a workspace in the rail, which
+# moves its window there. Tabs sit at y 47; each is at least 88 pt wide, starting at x 54.
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+open 1 as a
+open 1 as b
+open 1 as c
+settle
+focus a1
+settle
+wait 2
+record tab-drag 22
+wait 1
+input drag 100 47 330 47 1
+wait 1.5
+input drag 100 47 23 88 1.5
+wait 2.5
+input move 600 400
+wait 1

@@ -1,15 +1,17 @@
 # SpacialShell
 
 <p align="center">
-  <img src="docs/media/screenshot-grid.webp" width="920" alt="SpacialShell M2 — rail, tab bar, grid layout">
+  <img src="docs/media/screenshot-grid.webp" width="920" alt="SpacialShell M2 — rail, tab bar, grid layout (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
 A spatial window manager for macOS: workspaces stacked vertically, windows arranged horizontally,
 every window has one address.
 
 <p align="center">
-  <img src="docs/media/general-showcase.webp" width="920" alt="M2: focus a window, switch workspace, come back">
+  <img src="docs/media/general-showcase.webp" width="920" alt="M2: focus a window, switch workspace, come back (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
 ## What it is
 
@@ -28,14 +30,44 @@ M1 is the headless spatial core. **M2** is the face: a left workspace rail, a to
 five tiling layouts, and a focus glow that lands on the tile.
 
 <p align="center">
-  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split, focus glow">
+  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split, focus glow (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
+
+## Live captures
+
+Recorded in the test VM (macOS 26.6, one 1024x768 display) while a scenario drives the real shell
+through `spacialctl` and synthetic input: `Scripts/e2e/e2e.sh --vm --suite media`, then
+`Scripts/e2e/media.sh` for the loops. The guest has a single display, so the multi-display
+features (a tab dragged to another display's bar, the #33 spill) are not in these; they still
+need a capture on a real multi-monitor Mac.
+
+<p align="center">
+  <img src="docs/media/live-overview.webp" width="720" alt="Live: rail, tab bar and tiled windows; Fn+Space through the layouts, Fn+D / Fn+A along the row, Fn+W / Fn+S between rows">
+</p>
+<p align="center"><sub>The shell at a glance: <code>Fn+Space</code> through the layouts, <code>Fn+D</code>/<code>Fn+A</code> along the row, <code>Fn+W</code>/<code>Fn+S</code> between rows.</sub></p>
+
+<p align="center">
+  <img src="docs/media/live-rail-apps.webp" width="512" alt="Live: the rail with Safari, Terminal, Finder, Notes and TextEdit; hover cards with window previews">
+</p>
+<p align="center"><sub>The rail with real apps, each in the workspace its category sends it to; hover cards with live previews.</sub></p>
+
+<p align="center">
+  <img src="docs/media/live-tab-drag.webp" width="720" alt="Live: a tab dragged along the bar, then onto a workspace in the rail">
+</p>
+<p align="center"><sub>A tab dragged along the bar (insertion caret), then onto a workspace in the rail, which moves its window there.</sub></p>
+
+<p align="center">
+  <img src="docs/media/live-settings.webp" width="720" alt="Live: the Settings window, pane by pane">
+</p>
+<p align="center"><sub>Settings, opened with <code>Fn+,</code>: General, Appearance, Layout, Workspaces, Keybindings.</sub></p>
 
 ## The model
 
 <p align="center">
-  <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells">
+  <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
 *(The zoomed-out spatial view above illustrates the model — it ships as a toggleable mode with
 M3b's spatialisation view; today you ride it with `Fn+W`/`Fn+S`.)*
@@ -60,12 +92,14 @@ change window. The screen is a viewport over a larger, always-sorted grid.
 ## Interface
 
 <p align="center">
-  <img src="docs/media/interface-showcase.webp" width="720" alt="Rail tiles and window tabs tracking focus">
+  <img src="docs/media/interface-showcase.webp" width="720" alt="Rail tiles and window tabs tracking focus (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
 <p align="center">
-  <img src="docs/media/m2-ui-showcase.webp" width="720" alt="Overview search, hold-Fn cheat sheet, Zen mode">
+  <img src="docs/media/m2-ui-showcase.webp" width="720" alt="Overview search, hold-Fn cheat sheet, Zen mode (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
 Two panels, one job: show *where you are*.
 
@@ -81,8 +115,9 @@ Two panels, one job: show *where you are*.
 ## Layouts
 
 <p align="center">
-  <img src="docs/media/tiling-showcase.webp" width="720" alt="Cycle maximize, split, column, half, grid">
+  <img src="docs/media/tiling-showcase.webp" width="720" alt="Cycle maximize, split, column, half, grid (render)">
 </p>
+<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
 
 `Fn+Space` cycles them: **maximize** · **split** · **column** · **half** · **grid**.
 
@@ -107,7 +142,9 @@ click re-enters the same command pipeline as a hotkey. Still to come: the focus 
 reordering, workspace rename/menus, and window titles in tabs (app name + icon until then).
 
 Loops are served as animated **webp** (and **gif** next to them) from
-[`docs/media/`](docs/media/). Regenerate with `Scripts/render-m2-media.py`.
+[`docs/media/`](docs/media/). The `live-*` ones are screen recordings from the test VM (see
+[Live captures](#live-captures)). Every other loop and still is a render: regenerate those with
+`Scripts/render-m2-media.py`.
 
 ## Install
 

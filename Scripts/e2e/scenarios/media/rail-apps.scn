@@ -1,0 +1,46 @@
+# #8 media: the rail with real app icons. Real apps from the guest, each landing where its
+# category sends it; the pointer walks the tiles (hover cards with live previews, which take a
+# few seconds to capture in the guest) and Fn+S / Fn+W ride the stack. Frames go to rail-apps/ in the artefacts; Scripts/e2e/media.sh makes the loops.
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+# Not Calendar: it asks for notification permission in a banner that stays in every frame.
+sh open -a Safari; open -a Finder ~; sleep 3; open -a Notes; true
+wait 8
+# Notes opens on a first-run welcome window, frontmost; Return is its Continue button.
+input key return
+wait 1
+open 1 as a
+open 1 as b
+settle
+run focus-workspace-1
+settle
+wait 2
+record rail-apps 24
+wait 1
+input move 23 88
+wait 2.6
+input move 23 124
+wait 2.6
+input move 23 160
+wait 2.6
+input move 23 196
+wait 2.6
+input move 600 400
+wait 0.6
+run focus-workspace-down
+wait 1.4
+run focus-workspace-down
+wait 1.4
+run focus-workspace-up
+wait 1.4
+run focus-workspace-up
+wait 1.5

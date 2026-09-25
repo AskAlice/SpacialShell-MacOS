@@ -1,0 +1,48 @@
+# #8 media: the whole shell at a glance, a current demo for README and PRs. Rail, tab bar, tiled
+# windows; Fn+Space through the layouts; Fn+D / Fn+A along the row; Fn+S / Fn+W between rows.
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+sh open -a Safari; true
+wait 6
+open 1 as a
+open 1 as b
+open 1 as c
+settle
+focus a1
+settle
+wait 2
+record overview 16
+wait 1
+run cycle-layout
+wait 1.3
+run cycle-layout
+wait 1.3
+run cycle-layout
+wait 1.3
+run focus-window-right
+wait 1.2
+run focus-window-right
+wait 1.2
+run focus-window-left
+wait 1.2
+run focus-workspace-up
+wait 1.5
+run focus-workspace-up
+wait 1.5
+run focus-workspace-down
+wait 1.5
+run focus-workspace-down
+wait 1.2
+run cycle-layout
+wait 1.2
+run cycle-layout
+wait 1
