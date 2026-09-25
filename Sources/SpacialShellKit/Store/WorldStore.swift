@@ -78,6 +78,9 @@ public actor WorldStore {
     /// What the last snapshot said macOS had focused. Focus that has not moved since is an echo,
     /// not news — see `applyNativeFocus`. Same idea as `intents`, which does this for frames.
     private var lastNativeFocus: WindowRef?
+    /// #84: the window a command just moved focus to, and when. macOS keeps reporting the window
+    /// it had until our raise lands; see `applyNativeFocus`.
+    private var commandedFocus: (ref: WindowRef, at: ContinuousClock.Instant)?
     private var locked = false
     /// Bumped by every `reconcile()`; an in-flight pass abandons itself once a newer pass has started.
     /// Only a *newer reconcile* invalidates a plan — early-return event paths (intent echoes, locked,
@@ -171,6 +174,7 @@ public actor WorldStore {
         let before = world.focus
         let (next, effects) = CommandRunner.apply(command, to: world, layouts: layouts)
         world = next
+        if let f = world.focus.window, f != before.window { commandedFocus = (f, now()) }
         Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
         for e in effects {
             switch e {
@@ -438,6 +442,13 @@ public actor WorldStore {
         if unchanged {
             Self.log.debug("native focus \(r.id, privacy: .public) unchanged")
         } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
+        // #84: right after a command moved focus, macOS re-reports the window it *had* (unchanged)
+        // until our raise lands. That is the past, not the user: honouring it pulled focus back a
+        // tab ~50 ms after Fn+D and restarted the slide. A *change* (the user clicked something)
+        // still goes through, and so does an unchanged report once the echo window has passed —
+        // then macOS really did not move, and the model follows it.
+        if unchanged, let c = commandedFocus, c.ref != r, world.focus.window == c.ref,
+           now() - c.at < Self.echoWindow { return }
         // #28. A repeated report of a requester already intercepted is *not* skipped as an echo:
         // it means macOS still has it in front, so the fullscreen window goes back again. Windows
         // the model does not manage (ignored, unknown) are left alone, exactly as below.

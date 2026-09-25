@@ -463,6 +463,27 @@ import OpenTelemetryApi
         #expect(await store.world.focus.window == c)
     }
 
+    /// #84: right after Fn+D, macOS re-reports the window it still has (unchanged) before our
+    /// raise lands. That report must not pull focus back a tab; a second later, an unchanged
+    /// report means macOS really did not move, and the model follows it.
+    @Test func aStaleUnchangedReportRightAfterACommandDoesNotPullFocusBack() async {
+        final class Clock: @unchecked Sendable { var t = ContinuousClock.now }
+        let clock = Clock()
+        let c = WindowRef(id: 3, pid: 1)
+        let be = FakeBackend(snapshot: snap([win(a), win(b), win(c)], focused: a))
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _ in })
+        await store.start()
+        await store.apply(.focusChanged(a))                 // macOS has a; the model agrees
+        await store.run(.focusWindow(.right))               // Fn+D → b
+        #expect(await store.world.focus.window == b)
+        await store.apply(.focusChanged(a))                 // stale, unchanged: before our raise landed
+        #expect(await store.world.focus.window == b, "a stale report pulled focus back a tab")
+        clock.t = clock.t.advanced(by: .seconds(2))
+        await store.apply(.focusChanged(a))                 // still a, long after: macOS really is on a
+        #expect(await store.world.focus.window == a)
+    }
+
     /// The echo allowance is short-lived: long after the raise, activating that app is a human
     /// choice again and surfaces it (#56 must keep working).
     @Test func anActivationLongAfterOurRaiseStillSurfaces() async {
