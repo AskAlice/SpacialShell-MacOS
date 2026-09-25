@@ -58,6 +58,56 @@ public enum HexColor {
     }
 }
 
+/// #83: tracing, exported over OTLP/HTTP. Off unless `enabled` and a token are both present; the
+/// app target owns everything past parsing. The token is a secret: `render()` never writes it.
+public struct TelemetryConfig: Codable, Equatable, Sendable {
+    public var enabled = false
+    /// The OTLP base URL; `/v1/traces` is appended.
+    public var endpoint = ""
+    public var user = ""
+    public var token = ""
+    public init() {}
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        endpoint = try c.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        user = try c.decodeIfPresent(String.self, forKey: .user) ?? ""
+        token = try c.decodeIfPresent(String.self, forKey: .token) ?? ""
+    }
+
+    /// Where traces go and with which headers — or nil, which means register nothing and send
+    /// nothing. `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_HEADERS` override the table;
+    /// `enabled` does not, so off stays off whatever the environment says. Headers from the
+    /// environment replace the Basic auth, and count as the credential.
+    public func export(env: [String: String]) -> (url: URL, headers: [String: String])? {
+        guard enabled else { return nil }
+        var headers = Self.parseHeaders(env["OTEL_EXPORTER_OTLP_HEADERS"] ?? "")
+        if headers.isEmpty {
+            guard !token.isEmpty else { return nil }
+            headers["Authorization"] = "Basic " + Data("\(user):\(token)".utf8).base64EncodedString()
+        }
+        var base = env["OTEL_EXPORTER_OTLP_ENDPOINT"].flatMap { $0.isEmpty ? nil : $0 } ?? endpoint
+        while base.hasSuffix("/") { base.removeLast() }
+        guard let url = URL(string: base + "/v1/traces"), url.scheme == "https" || url.scheme == "http", url.host != nil
+        else { return nil }
+        return (url, headers)
+    }
+
+    /// The OTel spec's `key=value,key=value`, values percent-encoded. Hand-rolled because the
+    /// exporter's own parser splits on every `=` (dropping a base64 value's padding) and does not
+    /// decode, so Grafana's documented `Authorization=Basic%20…` never arrived.
+    static func parseHeaders(_ raw: String) -> [String: String] {
+        var out: [String: String] = [:]
+        for pair in raw.split(separator: ",") {
+            guard let eq = pair.firstIndex(of: "=") else { continue }
+            let key = pair[..<eq].trimmingCharacters(in: .whitespaces)
+            let value = String(pair[pair.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+            if !key.isEmpty, let v = value.removingPercentEncoding, !v.isEmpty { out[key] = v }
+        }
+        return out
+    }
+}
+
 public struct Config: Codable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
     public var gap: Double = 8
@@ -116,6 +166,7 @@ public struct Config: Codable, Equatable, Sendable {
     /// bundle-id → category, for the apps the built-in table and `LSApplicationCategoryType`
     /// both get wrong. Any table of this kind is permanently incomplete; this is the knob.
     public var appCategories: [String: AppCategory] = [:]
+    public var telemetry = TelemetryConfig()
 
     /// Decision 2026-09-24 (#70): System Settings used to be here, and so never got a tab — but it
     /// is a window you work in, not a visitor. Calculator is the one app that really is a popup.
@@ -137,6 +188,7 @@ public struct Config: Codable, Equatable, Sendable {
         case emptyCheatsheet = "empty-cheatsheet"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
         case layouts = "layout", layoutBar = "layout-bar"
+        case telemetry
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -176,6 +228,7 @@ public struct Config: Codable, Equatable, Sendable {
         tile = try c.decodeIfPresent([AppRule].self, forKey: .tile) ?? Config.defaultTile
         keybindings = try c.decodeIfPresent([String: String].self, forKey: .keybindings) ?? [:]
         keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides) ?? [:]
+        telemetry = try c.decodeIfPresent(TelemetryConfig.self, forKey: .telemetry) ?? TelemetryConfig()
     }
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }
@@ -226,6 +279,11 @@ public struct Config: Codable, Equatable, Sendable {
         if !keybindings.isEmpty {
             o += "\n[keybindings]\n"
             for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }
+        }
+        // #83: never the token. A secret has no business in a file this writes, which can land
+        // anywhere a config gets pasted; put it back by hand, and keep the file mode 600.
+        if telemetry != TelemetryConfig() {
+            o += "\n[telemetry]\nenabled = \(telemetry.enabled)\nendpoint = \(q(telemetry.endpoint))\nuser = \(q(telemetry.user))\n"
         }
         return o
     }

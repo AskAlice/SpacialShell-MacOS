@@ -1,4 +1,5 @@
 import Foundation
+import OpenTelemetryApi
 import os
 
 public actor WorldStore {
@@ -95,13 +96,19 @@ public actor WorldStore {
     /// Bundle ids that have shown a window this session. The crowd rule looks only at an app's
     /// first appearance, so later windows of an app are never swept into a workspace of their own.
     private var seenApps: Set<String> = []
+    /// #83: nil means the global provider — a no-op until the app registers the SDK. Tests pass
+    /// their own, so they never race each other over the global.
+    private let tracerProvider: (any TracerProvider)?
+    private var tracer: any Tracer { Telemetry.tracer(tracerProvider) }
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:],
                 now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
                 animator: (any SwitchAnimator)? = nil,
+                tracerProvider: (any TracerProvider)? = nil,
                 onChange: @escaping @Sendable (World) -> Void) {
         self.now = now
+        self.tracerProvider = tracerProvider
         self.animator = animator
         self.layouts = LayoutCatalogue(config: config)
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
@@ -145,8 +152,22 @@ public actor WorldStore {
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
+    /// A span that is a root when `parent` is nil — never a child of whatever happens to be active.
+    private func startSpan(_ name: String, parent: (any Span)?) -> any Span {
+        let b = tracer.spanBuilder(spanName: name)
+        if let parent { b.setParent(parent) } else { b.setNoParent() }
+        return b.startSpan()
+    }
+
     public func run(_ command: Command) async {
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
+        // #83: the root of a command's trace. The case name is the low-cardinality key; the detail
+        // carries only ids and enum values — `Command` has no string payloads.
+        let span = startSpan("command", parent: nil)
+        defer { span.end() }
+        let detail = String(describing: command)
+        span.setAttribute(key: "command", value: String(detail.prefix { $0 != "(" }))
+        span.setAttribute(key: "command.detail", value: detail)
         let before = world.focus
         let (next, effects) = CommandRunner.apply(command, to: world, layouts: layouts)
         world = next
@@ -163,7 +184,7 @@ public actor WorldStore {
             case .focus, .relayout: break
             }
         }
-        await reconcile()
+        await reconcile(parent: span)
         switch command {
         case .rescueWindows, .recoverWindow: await rescueBeyondReach(reason: "command")   // #73: the tray's "off every display"
         default: break
@@ -171,10 +192,14 @@ public actor WorldStore {
     }
 
     public func apply(_ event: BackendEvent) async {
+        // #83: a snapshot is traced with the reconcile it causes as its child; every other event's
+        // reconcile is a root of its own.
+        var eventSpan: (any Span)?
+        defer { eventSpan?.end() }
         switch event {
         case .snapshot(let s):
             if locked { return }
-            applySnapshot(s)
+            eventSpan = tracedSnapshot(s)
         case .windowMoved(let r, let f), .windowResized(let r, let f):
             if intents.matches(r, frame: f) { observed[r] = f; return }
             let was = observed[r]
@@ -208,20 +233,32 @@ public actor WorldStore {
             locked = true; generation += 1; return
         case .screenUnlocked:
             locked = false
-            applySnapshot(await backend.currentSnapshot())
+            eventSpan = tracedSnapshot(await backend.currentSnapshot())
         }
         drainDeferredFocus()
-        await reconcile()
+        await reconcile(parent: eventSpan)
+    }
+
+    private func tracedSnapshot(_ s: Snapshot) -> any Span {
+        let span = startSpan("snapshot", parent: nil)
+        let (adopted, vanished) = applySnapshot(s)
+        span.setAttribute(key: "windows", value: s.windows.count)
+        span.setAttribute(key: "displays", value: s.displays.count)
+        span.setAttribute(key: "adopted", value: adopted)
+        span.setAttribute(key: "vanished", value: vanished)
+        return span
     }
 
     // MARK: snapshot → world
 
-    private func applySnapshot(_ s: Snapshot) {
+    /// Returns how many windows it adopted and how many vanished, for the trace.
+    private func applySnapshot(_ s: Snapshot) -> (adopted: Int, vanished: Int) {
         // An empty display topology is always transient (wake, hot-plug, the lock screen). The
         // backend guards its own snapshots, but a snapshot reaches the store from more than one
         // door, and applying one would reseed the world from nothing: every workspace dropped,
         // every window re-adopted onto a screen that does not exist. Drop it instead.
-        guard !s.displays.isEmpty else { return }
+        guard !s.displays.isEmpty else { return (0, 0) }
+        var adopted = 0, vanished = 0
         // displays
         let sorted = s.displays.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
         displays = sorted
@@ -268,6 +305,7 @@ public actor WorldStore {
                                             order: config.categoryOrder, maxWorkspaces: config.maxWorkspaces)
                 if let b = w.bundleID, let landing { placements[b] = landing }
                 world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent, workspace: landing)
+                adopted += 1
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
                 if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
             }
@@ -289,6 +327,7 @@ public actor WorldStore {
         if !s.loginwindowFrontmost {
             let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }).union(world.ephemeral).union(world.ignored)
             for gone in all.subtracting(present) {
+                vanished += 1
                 Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
                 world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; intents.forget(gone)
                 retired[gone] = nil; lastSeen[gone] = nil
@@ -308,6 +347,7 @@ public actor WorldStore {
             world.clearReservations()
         }
         applyNativeFocus(s.focused)
+        return (adopted, vanished)
     }
 
     /// #13 rung 2: bundle id → display, for each app making its first appearance at launch with
@@ -593,12 +633,34 @@ public actor WorldStore {
 
     // MARK: reconcile
 
-    private func reconcile() async {
+    private func reconcile(parent: (any Span)? = nil) async {
         // Placement memory follows the model: whatever the last command or snapshot did, the
         // windows on screen now define where their apps belong.
         placements.merge(PersistedState.placements(world: world, bundleIDs: bundleIDs)) { _, live in live }
         generation += 1
         let gen = generation
+        // #83: one span per pass, one child for all its writes and one for the raise — counts, not
+        // a span per window, so a burst of Fn+D stays a handful of spans a press. A pass a newer
+        // one overtook is `superseded`: it returned early, and its writes are the newer pass's now.
+        let span = startSpan("reconcile", parent: parent)
+        span.setAttribute(key: "generation", value: gen)
+        var finished = false
+        var writes: (any Span)?
+        var frames = 0, parks = 0, failedWrites = 0
+        func beginWrites() { if writes == nil { writes = startSpan("reconcile.writes", parent: span) } }
+        func endWrites() {
+            guard let w = writes else { return }
+            w.setAttribute(key: "frames", value: frames)
+            w.setAttribute(key: "parks", value: parks)
+            w.setAttribute(key: "failures", value: failedWrites)
+            w.end(); writes = nil
+        }
+        func count(_ result: Result<Void, BackendError>) { if case .failure = result { failedWrites += 1 } }
+        defer {
+            endWrites()
+            span.setAttribute(key: "superseded", value: !finished)
+            span.end()
+        }
         let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
         // Zen and `show-panels` decide whether the panels' edges belong to the layout (M2 design
         // §Decisions: `ShellInsets(config:hidden:)` computed purely in Kit; same insets on every
@@ -617,15 +679,19 @@ public actor WorldStore {
         // prepared (the echo of this very raise) re-enters and reconciles again, and compared to
         // the old rows it would plan this same switch a second time and cancel the first mid-flight.
         lastShown = shownNow
+        span.setAttribute(key: "windows", value: desired.count)
+        span.setAttribute(key: "transitions", value: transitions.count)
+        let trace = span.context
         var animating = false
         // Once the overlay is up, every way out of this pass plays it — including the early
         // returns when a newer pass supersedes this one mid-write (the echo of our own raise does,
         // routinely). That pass compares against the `lastShown` recorded above, plans no motion,
         // and would never play this one: the pictures sat frozen until the watchdog cut them (#66).
-        defer { if animating, let animator { Task { await animator.play() } } }
+        defer { if animating, let animator { Task { await animator.play(trace: trace) } } }
         if let animator, config.animations {
             if !transitions.isEmpty {
-                animating = await animator.prepare(transitions)
+                animating = await animator.prepare(transitions, trace: trace)
+                span.setAttribute(key: "animating", value: animating)
                 if gen != generation { return }      // superseded: the deferred play still lands it
             }
         }
@@ -640,22 +706,29 @@ public actor WorldStore {
             guard let d else { continue }
             let f = Reconciler.centered(size: size, in: d.visibleFrame)
             intents.record(.setFrame(r, f))
+            beginWrites(); frames += 1
             let result = await backend.setFrame(r, f)
+            count(result)
             if gen != generation { return }          // superseded mid-write: side tables belong to the newer pass
             observed[r] = f
             note(result, for: r)
         }
         for w in Reconciler.plan(desired: desired, observed: observed, parkedNow: parked) {
             intents.record(w)
+            beginWrites()
             switch w {
             case .setFrame(let r, let f):
+                frames += 1
                 let result = await backend.setFrame(r, f)
+                count(result)
                 if gen != generation { return }
                 observed[r] = f; parked.remove(r); prePark[r] = nil
                 note(result, for: r)
             case .setPosition(let r, let o):
                 let pre = parked.contains(r) ? nil : observed[r]
+                parks += 1
                 let result = await backend.setPosition(r, o)
+                count(result)
                 if gen != generation { return }
                 if let pre { prePark[r] = pre }
                 if let cur = observed[r] { observed[r] = CGRect(origin: o, size: cur.size) }
@@ -663,11 +736,17 @@ public actor WorldStore {
                 note(result, for: r)
             }
         }
+        endWrites()
         if let f = world.focus.window, f != lastRaised {
             lastRaised = f
             pendingFocusEchoes.append((f, now()))
             pendingActivationEchoes.append((f, now()))
+            let raise = startSpan("reconcile.raise", parent: span)
+            raise.setAttribute(key: "window.id", value: Int(f.id))
+            if let b = bundleIDs[f] { raise.setAttribute(key: "bundle.id", value: b) }
             let result = await backend.raise(f)
+            if case .failure = result { raise.setAttribute(key: "failed", value: true) }
+            raise.end()
             if gen != generation { return }
             // Spec §11 as amended: a failed raise never retires. Raising fails for transient reasons
             // — the window is in its own fullscreen Space, the app is mid-transition — and counting
@@ -676,7 +755,8 @@ public actor WorldStore {
                 Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
             }
         }
-        if animating, let animator { animating = false; await animator.play() }
+        if animating, let animator { animating = false; await animator.play(trace: trace) }
+        finished = true
         onChange(world)
         // #77: only a pass that finished speaks for what is on screen; a superseded one returned above.
         if let animator, config.animations, gen == generation {

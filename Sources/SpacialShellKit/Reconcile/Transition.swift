@@ -1,4 +1,5 @@
 import Foundation
+import OpenTelemetryApi
 
 /// What one display's tiling showed at the end of a reconcile — enough to tell, at the next one,
 /// which way the user went. `frames` holds every window the row shows: tiled windows at their
@@ -100,9 +101,11 @@ public protocol SwitchAnimator: Sendable {
     /// Capture and cover, with every moving window drawn at its `from`. False means "place
     /// instantly" — no Screen Recording grant, reduce-motion, or a capture that failed. A switch
     /// arriving while the last is still in flight drops that one and starts over (never queues).
-    func prepare(_ transitions: [Transition]) async -> Bool
+    /// `trace` is the reconcile pass this switch belongs to (#83): the animator's own spans are its
+    /// children, so a switch reads as one trace, command to landing.
+    func prepare(_ transitions: [Transition], trace: SpanContext?) async -> Bool
     /// Start the motion to each `to` and return; the overlay removes itself when it lands.
-    func play() async
+    func play(trace: SpanContext?) async
     /// #77: the switches the keys could make next, as the planner would draw them from here (see
     /// `WorldStore.predictedCommands`; an entry is empty when that key moves nothing). Take their
     /// pictures ahead of time, in the background, so the next `prepare` has nothing to capture.

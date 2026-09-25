@@ -5,6 +5,8 @@ import struct SpacialShellProtocol.WindowRef
 import enum SpacialShellProtocol.JSONValue
 import SpacialShellPlatform
 import SpacialShellUI
+import OpenTelemetryApi
+import OpenTelemetrySdk
 import os
 
 /// Boot, live wiring, and the way out.
@@ -62,6 +64,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         log.info("stage 2/8: loading config")
         loadOverrides()
         loadConfig()
+        // #83: before anything that traces. Read once: turning it on or off takes a relaunch.
+        termination.arm(tracing: Tracing.start(config.telemetry))
 
         log.info("stage 3/8: constructing the AX backend")
         let backend = AXWindowBackend(config: config)
@@ -176,7 +180,14 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         self.cheatSheet = cheatSheet
         let tap = HotkeyTap(
             table: KeyBindings.table(for: config),
-            onCommand: { command in route(command) },
+            onCommand: { command in
+                // #83: the tap thread's share of a key press — inside the tap's deadline, so it
+                // is worth watching. The command's own trace starts in `WorldStore.run`.
+                let span = Telemetry.tracer().spanBuilder(spanName: "hotkey.dispatch").setNoParent().startSpan()
+                span.setAttribute(key: "command", value: String(String(describing: command).prefix { $0 != "(" }))
+                route(command)
+                span.end()
+            },
             onFlags: { flags in Task { @MainActor in cheatSheet.flagsChanged(flags) } },
             onKeyDown: { backend.noteHumanInput() },
         )
@@ -375,6 +386,7 @@ final class TerminationGate: @unchecked Sendable {
     private var backend: AXWindowBackend?
     private var tap: HotkeyTap?
     private var ipc: IPCServer?
+    private var tracing: TracerProviderSdk?
     private var didTerminate = false
     /// The most recent world `WorldStore.onChange` published. The fallback when the export times
     /// out — see `fallbackExport`.
@@ -392,6 +404,10 @@ final class TerminationGate: @unchecked Sendable {
         lock.lock(); self.ipc = ipc; lock.unlock()
     }
 
+    func arm(tracing: TracerProviderSdk?) {
+        lock.lock(); self.tracing = tracing; lock.unlock()
+    }
+
     /// Called from `WorldStore`'s `onChange`, off the main actor.
     func note(world: World) {
         lock.lock(); lastWorld = world; lock.unlock()
@@ -405,8 +421,11 @@ final class TerminationGate: @unchecked Sendable {
             return
         }
         didTerminate = true
-        let store = self.store, backend = self.backend, tap = self.tap, ipc = self.ipc
+        let store = self.store, backend = self.backend, tap = self.tap, ipc = self.ipc, tracing = self.tracing
         lock.unlock()
+        // #83: last, after the windows are back — the flush waits on the network, bounded by the
+        // exporter's timeout. It sends the spans of this very shutdown too.
+        defer { tracing?.shutdown() }
 
         // First, stop taking commands: a keystroke or IPC request landing between the export and
         // the restore would move windows the restore has already decided about.

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import OpenTelemetryApi
 @testable import SpacialShellKit
 
 @Suite struct WorldStoreTests {
@@ -495,12 +496,12 @@ import Foundation
         var duringPrepare: (@Sendable () async -> Void)?
         init(be: FakeBackend, accept: Bool = true) { self.be = be; self.accept = accept }
         func setDuringPrepare(_ f: @escaping @Sendable () async -> Void) { duringPrepare = f }
-        func prepare(_ t: [Transition]) async -> Bool {
+        func prepare(_ t: [Transition], trace: SpanContext?) async -> Bool {
             prepared.append(t); writesAtPrepare.append(await be.calls.count)
             if let f = duringPrepare { duringPrepare = nil; await f() }
             return accept
         }
-        func play() async { writesAtPlay.append(await be.calls.count) }
+        func play(trace: SpanContext?) async { writesAtPlay.append(await be.calls.count) }
         var prefetched: [[[Transition]]] = []
         func prefetch(_ predicted: [[Transition]]) async { prefetched.append(predicted) }
     }

@@ -256,6 +256,50 @@ see `docs/platform-notes.md` check #2. The arrow keys only work meaningfully und
 (or another non-`fn`) modifier combination, which is why they ship pre-bound to `⌃⌥` in both
 presets rather than left for you to configure.
 
+## `[telemetry]` — OpenTelemetry traces (#83)
+
+Off by default. When on, the shell exports traces over OTLP/HTTP (protobuf) to
+`<endpoint>/v1/traces`, with an `Authorization: Basic base64(user:token)` header — the shape
+Grafana Cloud's OTLP gateway takes (`user` is the stack's instance id, `token` an access-policy
+token with `traces:write`).
+
+```toml
+[telemetry]
+enabled = true
+endpoint = "https://otlp-gateway-prod-us-west-0.grafana.net/otlp"
+user = "123456"
+token = "…"
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `false` | Master switch. Off means off: no SDK is registered and no network call is made, whatever the environment says. |
+| `endpoint` | string | `""` | The OTLP base URL; `/v1/traces` is appended. |
+| `user` | string | `""` | The Basic-auth user. |
+| `token` | string | `""` | The Basic-auth password. With no token (and no `OTEL_EXPORTER_OTLP_HEADERS`), telemetry stays off even when `enabled = true`. |
+
+> **Warning: this table holds a secret.** Keep the file private — `chmod 600
+> ~/.config/spacial-shell/config.toml` — and do not paste it into issues or dotfile repos with the
+> token in it. SpacialShell never writes the token back out: a config it renders has the table
+> without `token`.
+
+- **Environment overrides.** `OTEL_EXPORTER_OTLP_ENDPOINT` replaces `endpoint`, and
+  `OTEL_EXPORTER_OTLP_HEADERS` (`key=value,key=value`, values percent-encoded, e.g.
+  `Authorization=Basic%20…`) replaces the Basic header and counts as the credential. Neither can
+  turn telemetry on.
+- **Read at launch.** Turning it on or off, or changing the endpoint, takes a relaunch.
+- **What is sent.** Spans for commands (`command` → `reconcile` → `reconcile.writes` /
+  `reconcile.raise` → `animation.prepare` / `animation.play`), snapshots (`snapshot` → `reconcile`),
+  hotkey dispatch (`hotkey.dispatch`) and control-socket requests (`ipc.request`). Attributes are
+  command names, bundle ids, window ids, display counts, counts and durations — **never window
+  titles**. The resource carries `service.name = spacial-shell`, the version, the OS and the host
+  name and architecture.
+- **Failures.** Spans are batched (one POST every 5 s at most, a bounded queue that drops rather
+  than grows). An export that fails is logged under the `telemetry` category and dropped; nothing
+  else notices. The first successful export logs `export ok: HTTP 200` at notice:
+  `/usr/bin/log show --last 5m --predicate 'subsystem == "sh.emu.SpacialShell" && category == "telemetry"'`.
+  Quitting flushes what is queued (bounded by a 5 s timeout).
+
 ## Where the file lives
 
 The config file *is* the interface — it is why `Fn+,` opens it and why the settings window layers

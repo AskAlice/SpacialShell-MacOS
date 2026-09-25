@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import OpenTelemetryApi
 import QuartzCore
 import ScreenCaptureKit
 import SpacialShellKit
@@ -29,8 +30,8 @@ public final class SwitchOverlay: SwitchAnimator {
 
     @MainActor public init() { stage = Stage() }
 
-    public func prepare(_ transitions: [Transition]) async -> Bool { await stage.prepare(transitions) }
-    public func play() async { await stage.play() }
+    public func prepare(_ transitions: [Transition], trace: SpanContext?) async -> Bool { await stage.prepare(transitions, trace: trace) }
+    public func play(trace: SpanContext?) async { await stage.play(trace: trace) }
     public func prefetch(_ predicted: [[Transition]]) async { await stage.prefetch(predicted) }
 }
 
@@ -67,6 +68,8 @@ private final class Stage {
     /// A prefetch that arrived mid-flight; it starts once the overlay lands.
     private var pendingPrefetch: [[Transition]]?
     private var content: (listing: SCShareableContent, at: ContinuousClock.Instant)?
+    /// #83: the flight in the air, ended when it lands or is dropped.
+    private var playSpan: (any Span)?
 
     static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "motion")
     static let duration: CFTimeInterval = 0.2
@@ -84,21 +87,33 @@ private final class Stage {
     /// One window-server listing serves a burst of switches and their prefetches.
     static let listingFreshFor = Duration.seconds(1)
 
-    func prepare(_ transitions: [Transition]) async -> Bool {
+    /// #83: a child of the reconcile pass that asked for it.
+    private static func span(_ name: String, trace: SpanContext?) -> any Span {
+        let b = Telemetry.tracer().spanBuilder(spanName: name)
+        if let trace { b.setParent(trace) } else { b.setNoParent() }
+        return b.startSpan()
+    }
+
+    func prepare(_ transitions: [Transition], trace: SpanContext?) async -> Bool {
         // A real switch outranks every prefetch.
         prefetchTask?.cancel(); prefetchTask = nil
+        let span = Self.span("animation.prepare", trace: trace)
+        var outcome = "instant"
+        defer { span.setAttribute(key: "outcome", value: outcome); span.end() }
         // A switch that arrives mid-flight drops that flight (its real windows are already at their
         // final frames) and animates from there, never queueing, so the model is never behind the
         // motion. Skipping instead meant the second of two quick presses never animated (#66).
         // ponytail: restart, not a smooth retarget — a held key restarts every repeat and only the
         // last one slides; blend from the in-flight positions if that feels choppy.
         let moves = transitions.reduce(0) { $0 + $1.moves.count }
+        span.setAttribute(key: "moves", value: moves)
+        span.setAttribute(key: "displays", value: transitions.count)
         if busy { teardown(); Self.log.notice("switch restarted: previous still in flight") }
         guard ScreenRecordingAccess.isGranted else {
-            Self.log.notice("switch instant: no Screen Recording grant"); return false
+            outcome = "no-grant"; Self.log.notice("switch instant: no Screen Recording grant"); return false
         }
         guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-            Self.log.notice("switch instant: reduce motion"); return false
+            outcome = "reduce-motion"; Self.log.notice("switch instant: reduce motion"); return false
         }
         busy = true
         token += 1
@@ -109,6 +124,7 @@ private final class Stage {
         let missing = zip(transitions, hits).filter { $0.1 == nil }.map(\.0)
         guard let captured = await capture(missing), mine == token else {
             if mine == token { busy = false }
+            outcome = "capture-failed"
             Self.log.notice("switch instant: capture failed or superseded (\(moves) moves)")
             return false
         }
@@ -116,11 +132,15 @@ private final class Stage {
         let pictures = hits.map { $0 ?? fresh.next()! }
         remember(pictures)
         let cache = missing.isEmpty ? "hit" : missing.count == transitions.count ? "miss" : "partial"
+        let capture = ContinuousClock.now - started
+        span.setAttribute(key: "cache", value: cache)
+        span.setAttribute(key: "capture.ms", value: Double(capture.components.attoseconds) / 1e15 + Double(capture.components.seconds) * 1000)
         Self.log.notice("switch animating \(moves) moves on \(transitions.count) display(s); cache \(cache, privacy: .public); capture \(String(describing: ContinuousClock.now - started), privacy: .public)")
         show(transitions, pictures)
         // One frame for the window server to composite the overlay before anything moves under it.
         try? await Task.sleep(for: .milliseconds(16))
-        guard mine == token else { return false }
+        guard mine == token else { outcome = "superseded"; return false }
+        outcome = "animating"
         Task { [weak self] in
             try? await Task.sleep(for: Self.watchdog)
             guard let self, self.token == mine else { return }
@@ -130,9 +150,12 @@ private final class Stage {
         return true
     }
 
-    func play() {
+    func play(trace: SpanContext?) {
         guard busy, !sprites.isEmpty else { return }
         let mine = token
+        playSpan?.end()
+        playSpan = Self.span("animation.play", trace: trace)
+        playSpan?.setAttribute(key: "sprites", value: sprites.count)
         CATransaction.begin()
         CATransaction.setAnimationDuration(Self.duration)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1))
@@ -140,6 +163,7 @@ private final class Stage {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: Self.landingHold)
                 guard let self, self.token == mine else { return }
+                self.playSpan?.setAttribute(key: "landed", value: true)
                 self.teardown()
                 self.startPrefetch()
             }
@@ -155,6 +179,7 @@ private final class Stage {
     }
 
     private func teardown() {
+        playSpan?.end(); playSpan = nil
         token += 1
         busy = false
         for p in panels { p.orderOut(nil) }

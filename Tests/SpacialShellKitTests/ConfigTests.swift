@@ -87,4 +87,52 @@ import Foundation
         #expect(c.kindOverride(bundleID: "com.example.x", title: "") == .tile)
         #expect(c.kindOverride(bundleID: "com.apple.systempreferences", title: "") == nil)
     }
+
+    // MARK: #83 telemetry
+
+    static let telemetryToml = """
+    [telemetry]
+    enabled = true
+    endpoint = "https://otlp.example.net/otlp/"
+    user = "123456"
+    token = "not-a-real-token"
+    """
+
+    @Test func telemetryDefaultsToOffAndSendsNothing() throws {
+        let t = try Config.parse(toml: "").telemetry
+        #expect(t == TelemetryConfig() && !t.enabled)
+        #expect(t.export(env: [:]) == nil)
+        // Off stays off whatever the environment says.
+        #expect(t.export(env: ["OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+                               "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic%20eA=="]) == nil)
+        // On, but no credential anywhere: still nothing.
+        var noToken = try Config.parse(toml: Self.telemetryToml).telemetry
+        noToken.token = ""
+        #expect(noToken.export(env: [:]) == nil)
+    }
+
+    @Test func telemetryTableParsesAndExportsWithBasicAuth() throws {
+        let t = try Config.parse(toml: Self.telemetryToml).telemetry
+        #expect(t.enabled && t.endpoint == "https://otlp.example.net/otlp/" && t.user == "123456" && t.token == "not-a-real-token")
+        let target = try #require(t.export(env: [:]))
+        #expect(target.url.absoluteString == "https://otlp.example.net/otlp/v1/traces")
+        #expect(target.headers == ["Authorization": "Basic " + Data("123456:not-a-real-token".utf8).base64EncodedString()])
+    }
+
+    @Test func telemetryEnvironmentOverridesEndpointAndHeaders() throws {
+        let t = try Config.parse(toml: Self.telemetryToml).telemetry
+        let target = try #require(t.export(env: ["OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:4318",
+                                                 "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Basic%20dTp0==, X-Scope = a%2Cb"]))
+        #expect(target.url.absoluteString == "http://127.0.0.1:4318/v1/traces")
+        // Percent-decoded, and a base64 value keeps its padding.
+        #expect(target.headers == ["Authorization": "Basic dTp0==", "X-Scope": "a,b"])
+    }
+
+    @Test func renderNeverWritesTheToken() throws {
+        let c = try Config.parse(toml: Self.telemetryToml)
+        let out = c.render()
+        #expect(!out.contains("not-a-real-token") && !out.contains("token"))
+        let back = try Config.parse(toml: out).telemetry
+        #expect(back.enabled && back.endpoint == c.telemetry.endpoint && back.user == c.telemetry.user && back.token.isEmpty)
+    }
 }

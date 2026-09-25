@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import OpenTelemetryApi
 import SpacialShellProtocol
 import os
 
@@ -91,8 +92,13 @@ public final class IPCServer: @unchecked Sendable {
         for line in lines {
             let request = try? IPCCodec.decoder.decode(IPCRequest.self, from: line)
             Task { [handle] in
+                // #83: one root span per request. `cmd` is one of a handful of verbs; the args
+                // (a command name at most) are not recorded.
+                let span = Telemetry.tracer().spanBuilder(spanName: "ipc.request").setNoParent().startSpan()
+                span.setAttribute(key: "ipc.cmd", value: request?.cmd ?? "invalid")
                 let response: IPCResponse =
                     if let request { await handle(request) } else { .failure(id: 0, "invalid request") }
+                span.end()
                 self.send(response, to: fd)
             }
         }
