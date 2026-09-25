@@ -69,8 +69,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
         log.info("stage 4/8: building the world")
         let restored = (try? PersistedState.load(from: Paths.stateFile)) ?? nil
-        let seeded = World.seeded(screens: DisplayTopology.current().map(\.id), config: config)
-        let initial = restored?.restore(into: seeded) ?? seeded
+        let topology = DisplayTopology.current()
+        let seeded = World.seeded(screens: topology.map(\.id), config: config)
+        let initial = restored?.restore(into: seeded, main: topology.first(where: \.isMain)?.id) ?? seeded
         log.info("world on \(initial.screenOrder.count) screen(s), restored=\(restored != nil)")
 
         log.info("stage 5/8: constructing the store")

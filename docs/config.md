@@ -27,6 +27,7 @@ tab-sizing = "fit"                # or "equal"
 launcher-url = "raycast://"
 show-panels = true
 empty-cheatsheet = true           # dimmed cheat sheet behind an empty workspace
+crowd-threshold = 8               # an app arriving at launch with more windows gets its own workspace
 
 [[workspace]]                     # pinned, named workspaces seeded on every screen
 name = "Code"                     # (material-shell "categories")
@@ -66,6 +67,7 @@ title-regex = "^Picture in Picture$"
 | `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 | `empty-cheatsheet` | boolean | `true` | When the focused display's active workspace has no windows, the key-binding cheat sheet (the one holding the bare modifier shows) sits dimmed at the bottom of that screen, behind everything and click-through. It goes as soon as a window arrives or focus moves to another display. Also a toggle in the settings window. |
+| `crowd-threshold` | integer | `8` | An app arriving **at launch** with *more* windows than this, and no remembered placement, gets a workspace of its own on the display most of its windows are on, instead of piling into the active workspace. See [Where windows land at launch](#where-windows-land-at-launch). |
 
 Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
 two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the
@@ -84,9 +86,33 @@ makes a named category usable before window-to-workspace persistence exists (tha
 | `symbol` | string | `"square.grid.2x2"` | SF Symbol name, for the M2 shell UI. |
 | `layout` | layout name | `"maximize"` | This workspace's starting layout, independent of `default-layout`. |
 
-Windows themselves are **not** persisted or re-associated with pinned workspaces in M1 (`CGWindowID`
-doesn't survive an app restart, and the matching algorithm is M3 work) — only the empty, named,
-pinned workspace shell is restored from `state.json` on launch.
+Pinned workspaces are restored from `state.json` on launch; which app was in which workspace is
+remembered per bundle id — see below.
+
+## Where windows land at launch
+
+A window seen for the first time goes to the first of these that applies (#13):
+
+1. **Its app's remembered workspace**, if that workspace still exists. The state file remembers
+   the workspace each app was last in (#5), and each workspace lives on a display identified by
+   its UUID, not by arrangement order, so a two-monitor arrangement comes back on the right
+   monitors.
+2. **A workspace of its own**, for an app arriving at launch with more than `crowd-threshold`
+   windows, on the display most of them are on. Its further windows follow it there.
+3. **Otherwise, the active workspace** of the display holding most of the window — unchanged.
+
+"At launch" means the first snapshot after SpacialShell starts, plus any app whose windows first
+appear within 10 s of it (login items and macOS's "reopen windows" arrive after the shell is up).
+The app is judged on the windows in its first appearance only. Windows that appear later in the
+session are never swept into a workspace of their own.
+
+A fullscreen or floating window's display is decided by macOS, not by memory: if its frame is on
+another display, it is filed there (#72).
+
+If the displays changed while SpacialShell was not running (spec §7.8): a display that is gone
+brings its workspaces to the main display, appended to the bottom of its stack, so their apps
+still come back to them; a display that is new starts with an empty stack (just the
+`[[workspace]]` seeds).
 
 ## `[[ephemeral]]`, `[[float]]`, `[[ignore]]` — app rules
 

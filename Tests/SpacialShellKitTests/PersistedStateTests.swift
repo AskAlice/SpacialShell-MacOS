@@ -137,9 +137,10 @@ import Foundation
         #expect(fresh.screens["D1"]!.workspaces.count == 1)
         #expect(fresh.invariantViolations().isEmpty)
     }
-    /// A workspace whose screen is gone at relaunch is not restored, so the placement naming it
-    /// resolves to nothing — its app lands by the ordinary rules, on the screen it is on now.
-    @Test func aPlacementOnAVanishedScreenFallsBack() {
+    /// A workspace whose screen is gone at relaunch merges into the main screen (#13, spec §7.8),
+    /// so the placement naming it still resolves — its app comes back to its own workspace, now on
+    /// the screen that is left.
+    @Test func aPlacementOnAVanishedScreenFollowsItsWorkspaceToMain() {
         var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
         let win = WindowRef(id: 1, pid: 10)
         w.adopt(win, kind: .tile, on: "D2")
@@ -149,7 +150,7 @@ import Foundation
         let back = WindowRef(id: 91, pid: 99)
         fresh.adopt(back, kind: .tile, on: "D1", workspace: s.placements["com.x"])
         #expect(fresh.screens.count == 1)
-        #expect(fresh.screens["D1"]!.workspaces[0].windows == [back])
+        #expect(fresh.workspace(containing: back)?.id == s.placements["com.x"])
         #expect(fresh.invariantViolations().isEmpty)
     }
     @Test func stateFilesWithoutPlacementsStillLoad() throws {

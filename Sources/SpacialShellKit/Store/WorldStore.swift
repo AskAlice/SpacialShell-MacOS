@@ -81,6 +81,15 @@ public actor WorldStore {
     private var started = false
     /// See `applySnapshot`: the boot reservations are retired after the first snapshot.
     private var reservationsExpired = false
+    /// #13, the crowd rule's "at launch": the first snapshot, plus any app whose windows are first
+    /// seen within this long of `start()` — login items and macOS's "reopen windows" trickle in
+    /// after the shell is up, and they are exactly the apps that arrive with dozens of windows.
+    /// After it, nothing is swept up: an app opened mid-session lands by the ordinary rules.
+    static let launchWindow = Duration.seconds(10)
+    private var startedAt: ContinuousClock.Instant?
+    /// Bundle ids that have shown a window this session. The crowd rule looks only at an app's
+    /// first appearance, so later windows of an app are never swept into a workspace of their own.
+    private var seenApps: Set<String> = []
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:],
@@ -96,6 +105,7 @@ public actor WorldStore {
 
     public func start() async {
         guard !started else { return }; started = true
+        startedAt = now()
         await apply(.snapshot(await backend.currentSnapshot()))
         // #52: the previous run may have ended without its §7.4 restore — a crash, an OOM kill, a
         // force quit, or (until #30) an ordinary SIGTERM. Whatever it parked is still in a corner,
@@ -213,6 +223,7 @@ public actor WorldStore {
             world.setScreens(sorted.map(\.id), main: main)
         }
         let hiddenApps = Set(s.apps.filter(\.isHidden).map(\.pid))
+        let crowds = crowdedApps(s)
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
@@ -231,10 +242,14 @@ public actor WorldStore {
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
             if !known {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
-                // The app's remembered workspace, if it still exists — `adopt` falls back to the
-                // active workspace when it does not, and never creates one.
-                world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent,
-                            workspace: w.bundleID.flatMap { placements[$0] })
+                // #13's ladder: the app's remembered workspace if it still exists, else a workspace
+                // of its own for a crowd arriving at launch, else nil — `adopt`'s ordinary rules.
+                // The crowd's new workspace becomes the app's placement, so its other windows
+                // follow it there by rung 1.
+                let landing = world.landing(remembered: w.bundleID.flatMap { placements[$0] },
+                                            crowdOn: w.bundleID.flatMap { crowds[$0] })
+                if let b = w.bundleID, let landing { placements[b] = landing }
+                world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent, workspace: landing)
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
                 if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
             }
@@ -275,6 +290,26 @@ public actor WorldStore {
             world.clearReservations()
         }
         applyNativeFocus(s.focused)
+    }
+
+    /// #13 rung 2: bundle id → display, for each app making its first appearance at launch with
+    /// more than `crowdThreshold` new tileable windows. The display is the one most of them are on.
+    /// ponytail: counts only the windows in the app's first snapshot; an app whose windows arrive
+    /// across several snapshots is judged on the first batch. Upgrade path: count per app over the
+    /// launch window before adopting.
+    private func crowdedApps(_ s: Snapshot) -> [String: DisplayID] {
+        defer { seenApps.formUnion(s.windows.compactMap(\.bundleID)) }
+        guard !reservationsExpired || startedAt.map({ now() - $0 < Self.launchWindow }) == true else { return [:] }
+        var displaysByApp: [String: [DisplayID]] = [:]
+        for w in s.windows {
+            guard let b = w.bundleID, !seenApps.contains(b), world.location(of: w.ref) == nil,
+                  !world.ephemeral.contains(w.ref), !world.ignored.contains(w.ref) else { continue }
+            let kind = config.kindOverride(bundleID: b, title: w.title) ?? w.kind
+            if kind == .tile || kind == .float { displaysByApp[b, default: []].append(screenFor(w.frame)) }
+        }
+        return displaysByApp.filter { $0.value.count > config.crowdThreshold }.mapValues { ds in
+            world.screenOrder.max { a, b in ds.filter { $0 == a }.count < ds.filter { $0 == b }.count } ?? ds[0]
+        }
     }
 
     /// I6's corollary — *switching to an app always shows a window* (#56, and the cause of #57).

@@ -71,6 +71,10 @@ public struct Config: Codable, Equatable, Sendable {
     public var tabSizing: TabSizing = .fit
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
+    /// #13: an app arriving at launch with *more* windows than this, and no remembered placement,
+    /// gets a workspace of its own instead of piling into the active one (observed: 36 windows in
+    /// one tab bar). 8 is about where the tab bar stops being readable.
+    public var crowdThreshold: Int = 8
     /// Switching is motion (#64, ruled in #65): windows slide as screenshot proxies when the Screen
     /// Recording grant is present, and are placed instantly without it or with this off.
     public var animations: Bool = true
@@ -107,7 +111,7 @@ public struct Config: Codable, Equatable, Sendable {
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
-             launcherURL = "launcher-url", showPanels = "show-panels", animations, appCategories = "app-categories",
+             launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
         case emptyCheatsheet = "empty-cheatsheet"
@@ -126,6 +130,7 @@ public struct Config: Codable, Equatable, Sendable {
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
+        crowdThreshold = try c.decodeIfPresent(Int.self, forKey: .crowdThreshold) ?? 8
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
@@ -167,6 +172,7 @@ public struct Config: Codable, Equatable, Sendable {
         rail-side = \(q(railSide.rawValue))
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
+        crowd-threshold = \(crowdThreshold)
         animations = \(animations)
         empty-cheatsheet = \(emptyCheatsheet)
 

@@ -79,6 +79,27 @@ extension World {
         normalize()
     }
 
+    /// Where a window seen for the first time lands (#13) — the workspace to hand `adopt`, or nil
+    /// for today's rules. One ladder, highest rung first:
+    ///
+    /// 1. `remembered`, the app's placement from the state file, if that workspace still exists.
+    ///    It is display-aware by construction: a workspace lives on a display keyed by the
+    ///    display's UUID, and `PersistedState.restore` puts it back there.
+    /// 2. `crowdOn`, set by the store only for an app arriving at launch with more windows than
+    ///    `Config.crowdThreshold`: a new workspace of its own on that display, inserted above the
+    ///    trailing empty one (invariant 4) and `reserved` until its first window lands.
+    /// 3. nil: `adopt`'s ordinary rules, unchanged.
+    public mutating func landing(remembered: UUID?, crowdOn: DisplayID?) -> UUID? {
+        if let id = remembered, location(ofWorkspace: id) != nil { return id }
+        guard let d = crowdOn, var s = screens[d] else { return nil }
+        var ws = newWorkspace(); ws.reserved = true
+        let at = s.workspaces.count - 1
+        s.workspaces.insert(ws, at: at)
+        if s.activeIndex >= at { s.activeIndex += 1 }   // the active workspace stays the active one
+        screens[d] = s
+        return ws.id
+    }
+
     public mutating func remove(_ w: WindowRef) {
         ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
         parents = parents.filter { $0.value != w }

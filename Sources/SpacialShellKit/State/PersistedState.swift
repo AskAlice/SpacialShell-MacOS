@@ -59,22 +59,42 @@ public struct PersistedState: Codable, Equatable, Sendable {
     /// so `normalize()` does not reap them before their windows are adopted. Every other unpinned
     /// workspace is still dropped (nothing is coming back to it); trailing empty and invariants
     /// restored by normalize().
-    public func restore(into world: World) -> World {
+    ///
+    /// Topology changed while we were not running (#13, spec §7.8): screens are matched by display
+    /// UUID, never by arrangement order. A display that is gone brings its workspaces to `main`
+    /// (the unplug ruling: appended in order above the trailing empty), so the apps remembered
+    /// there still have somewhere to come back to — except pinned rows whose name `main` already
+    /// has, which are just the config's seeds twice over. A display the state has never seen keeps
+    /// the stack the caller seeded it with: nobody else's workspaces.
+    public func restore(into world: World, main: DisplayID? = nil) -> World {
         var w = world
         w.zen = zen
         let wanted = Set(placements.values)
-        for (id, ss) in screens {
-            guard var screen = w.screens[id] else { continue }
-            let restored = ss.workspaces.filter { $0.pinned || wanted.contains($0.id) }.map {
+        func kept(_ ss: ScreenState) -> [Workspace] {
+            ss.workspaces.filter { $0.pinned || wanted.contains($0.id) }.map {
                 Workspace(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout,
                           pinned: $0.pinned, reserved: wanted.contains($0.id))
             }
+        }
+        for (id, ss) in screens {
+            guard var screen = w.screens[id] else { continue }
+            let restored = kept(ss)
             let names = Set(restored.filter(\.pinned).map(\.name))
             let existing = screen.workspaces.filter { !$0.isEmpty || $0.pinned }
             let ids = Set(restored.map(\.id))
             screen.workspaces = restored + existing.filter { !ids.contains($0.id) && !($0.pinned && names.contains($0.name)) }
             screen.activeIndex = min(max(ss.activeIndex, 0), max(screen.workspaces.count - 1, 0))
             w.screens[id] = screen
+        }
+        let gone = screens.keys.filter { w.screens[$0] == nil }.sorted()
+        if let m = main.flatMap({ w.screens[$0] == nil ? nil : $0 }) ?? w.screenOrder.first, var s = w.screens[m], !gone.isEmpty {
+            let names = Set(s.workspaces.filter(\.pinned).map(\.name))
+            let moved = gone.flatMap { kept(screens[$0]!) }.filter { wanted.contains($0.id) || !names.contains($0.name) }
+            let trailing = s.workspaces.last.map { $0.isEmpty && !$0.pinned && !$0.reserved } ?? false
+            let at = trailing ? s.workspaces.count - 1 : s.workspaces.count
+            s.workspaces.insert(contentsOf: moved, at: at)
+            if s.activeIndex >= at { s.activeIndex += moved.count }
+            w.screens[m] = s
         }
         w.normalize()
         return w
