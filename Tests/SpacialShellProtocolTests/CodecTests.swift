@@ -161,20 +161,21 @@ import Foundation
 }
 
 /// #9: `LayoutID` encodes exactly as the `Layout` enum did, so nothing on disk or on the wire
-/// changes, and decodes strings no build has seen instead of throwing.
+/// changes, and decodes strings no build has seen instead of throwing. The enum was
+/// `String`-backed, so its encoding was the bare case name; #11 retired it, and the pre-#9
+/// fixtures in the Kit tests hold the bytes it wrote.
 @Suite struct LayoutIDCodecTests {
     @Test func builtinsEncodeByteForByteAsTheEnum() throws {
-        for l in Layout.allCases {
-            let id = LayoutID(l)
+        for l in ["maximize", "split", "column", "half", "grid"] {
+            let id = LayoutID(rawValue: l)
             #expect(try JSONEncoder().encode(id) == JSONEncoder().encode(l))
             #expect(try JSONEncoder().encode([id]) == JSONEncoder().encode([l]))
             #expect(try JSONDecoder().decode(LayoutID.self, from: JSONEncoder().encode(l)) == id)
         }
-        #expect(LayoutID.maximize == LayoutID(.maximize) && LayoutID.grid.rawValue == "grid")
+        #expect(LayoutID.maximize.rawValue == "maximize" && LayoutID.grid.rawValue == "grid")
     }
 
     @Test func anUnseenIdDecodes() throws {
         #expect(try JSONDecoder().decode(LayoutID.self, from: Data(#""code-3""#.utf8)) == "code-3")
-        #expect(throws: (any Error).self) { try JSONDecoder().decode(Layout.self, from: Data(#""code-3""#.utf8)) }
     }
 }

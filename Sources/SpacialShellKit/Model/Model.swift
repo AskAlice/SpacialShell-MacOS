@@ -3,12 +3,11 @@ import CoreGraphics
 import SpacialShellProtocol
 
 // Moved to SpacialShellProtocol (M2 D4) so `spacialctl` and the IPC server can share these types
-// without linking the model. Typealiases keep every M1 call site (`WindowRef(id:pid:)`,
-// `Layout.allCases`, …) compiling unchanged.
+// without linking the model. Typealiases keep every M1 call site (`WindowRef(id:pid:)`, …)
+// compiling unchanged.
 public typealias DisplayID = SpacialShellProtocol.DisplayID
 public typealias WindowID = SpacialShellProtocol.WindowID
 public typealias WindowRef = SpacialShellProtocol.WindowRef
-public typealias Layout = SpacialShellProtocol.Layout
 public typealias LayoutID = SpacialShellProtocol.LayoutID
 
 public enum WindowKind: String, Codable, Sendable { case tile, float, ephemeral, ignore }

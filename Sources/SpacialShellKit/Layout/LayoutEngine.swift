@@ -21,7 +21,7 @@ public enum LayoutEngine {
     ///
     /// A rect below `minSize` itself cannot meet the floor at all; the focused window then gets
     /// the whole rect anyway, because a focused window on screen beats a floor.
-    public static func frames(_ layout: Layout, count: Int, focused: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
+    public static func frames(_ layout: BuiltinLayout, count: Int, focused: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
         guard count > 0 else { return [] }
         let f = min(max(focused, 0), count - 1)
         // ponytail: linear search down from `count`, re-running the layout each step — O(n²) in
@@ -79,7 +79,7 @@ public enum LayoutEngine {
 
     static func fits(_ r: CGRect) -> Bool { r.width >= minSize.width && r.height >= minSize.height }
 
-    static func unfloored(_ layout: Layout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
+    static func unfloored(_ layout: BuiltinLayout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
         switch layout {
         case .maximize:
             var out = [CGRect?](repeating: nil, count: count); out[f] = rect; return out

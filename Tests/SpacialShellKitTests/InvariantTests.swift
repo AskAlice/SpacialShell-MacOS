@@ -42,7 +42,7 @@ import Foundation
         #expect(w.invariantViolations().isEmpty)
     }
     @Test func layoutNextCycles() {
-        #expect(Layout.maximize.next == .split)
-        #expect(Layout.grid.next == .maximize)
+        #expect(LayoutCatalogue.builtins.next(after: .maximize) == .split)
+        #expect(LayoutCatalogue.builtins.next(after: .grid) == .maximize)
     }
 }

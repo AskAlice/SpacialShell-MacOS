@@ -448,6 +448,12 @@ appearances. The PR carries an editor animation plus the overview loop (AGENTS.m
 The "old file still loads" criterion holds by construction. The proof is a `config.toml` and
 `state.json` fixture captured **before #9 starts**, decoded by the post-#11 build in a test.
 
+*As landed (#11):* the enum, its Kit typealias, `Layout.next` and the `LayoutID(_: Layout)` bridge
+are gone; `BuiltinLayout` is a Kit enum, and `LayoutDef` writes a built-in as its raw string. There
+is no `docs/ipc.md`: the `state.layouts` / `set-layout` wording lives in `docs/config.md` beside
+`[[layout]]`, and `spacialctl`'s own usage text. The cheat sheet's "Cycle layout" label needed no
+change. The pre-#9 fixtures (config, state, wire, built-in frames golden) pass on the post-#11 build.
+
 ## 12. Changes from the 2026-09-12 draft
 
 | Draft said | Now | Why |

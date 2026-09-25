@@ -12,7 +12,7 @@ import SpacialShellProtocol
     func columnZones(_ n: Int) -> LayoutDef { zones((0..<n).map { (Double($0) / Double(n), 0, 1 / Double(n), 1) }) }
     let grid2x2: [(Double, Double, Double, Double)] = [(0, 0, 0.5, 0.5), (0.5, 0, 0.5, 0.5), (0, 0.5, 0.5, 0.5), (0.5, 0.5, 0.5, 0.5)]
     let half4: [(Double, Double, Double, Double)] = [(0, 0, 0.5, 1), (0.5, 0, 0.5, 1.0 / 3), (0.5, 1.0 / 3, 0.5, 1.0 / 3), (0.5, 2.0 / 3, 0.5, 1.0 / 3)]
-    func builtin(_ l: Layout) -> LayoutDef { LayoutCatalogue.builtins[LayoutID(l)]! }
+    func builtin(_ l: BuiltinLayout) -> LayoutDef { LayoutCatalogue.builtins[LayoutID(rawValue: l.rawValue)]! }
 
     /// Floating point makes `(W − (n−1)g)/n + g` and `(W + g)/n` differ in the last bit or so; the
     /// design's "exact" is exact arithmetic. 1e-9 pt is a billionth of a point.
@@ -104,7 +104,7 @@ import SpacialShellProtocol
         let golden = try JSONDecoder().decode([String: [[Double]?]].self, from: Data(contentsOf: url))
         let rects = [CGRect(x: 8, y: 42, width: 1864, height: 1021), CGRect(x: 0, y: 0, width: 500, height: 300)]
         var checked = 0
-        for l in Layout.allCases { for (ri, rect) in rects.enumerated() { for n in 1...9 { for f in 0..<n {
+        for l in BuiltinLayout.allCases { for (ri, rect) in rects.enumerated() { for n in 1...9 { for f in 0..<n {
             let now = LayoutEngine.frames(builtin(l), count: n, focused: f, in: rect, gap: 8)
                 .map { $0.map { [Double($0.minX), Double($0.minY), Double($0.width), Double($0.height)] } }
             #expect(now == golden["\(l.rawValue) r\(ri) n\(n) f\(f)"], "\(l) r\(ri) n\(n) f\(f)")
@@ -113,14 +113,14 @@ import SpacialShellProtocol
         #expect(checked == golden.count)
     }
 
-    /// And over random rects, gaps, counts and focus: the catalogue row is the enum, exactly.
+    /// And over random rects, gaps, counts and focus: the catalogue row is the generator, exactly.
     @Test(arguments: 0..<100)
     func builtinRowsAreTheGenerators(seed: Int) {
         var rng = TestRNG(seed: UInt64(seed) &+ 9_000)
         let rect = CGRect(x: 0, y: 0, width: Double.random(in: 50...4000, using: &rng), height: Double.random(in: 50...2000, using: &rng))
         let g = CGFloat(Double.random(in: 0...30, using: &rng))
         let n = Int.random(in: 0...30, using: &rng), f = Int.random(in: -1...31, using: &rng)
-        for l in Layout.allCases {
+        for l in BuiltinLayout.allCases {
             #expect(LayoutEngine.frames(builtin(l), count: n, focused: f, in: rect, gap: g)
                     == LayoutEngine.frames(l, count: n, focused: f, in: rect, gap: g), "\(l) n=\(n) f=\(f)")
         }
@@ -163,8 +163,10 @@ import SpacialShellProtocol
         let cat = LayoutCatalogue.builtins
         #expect(cat.all.map(\.id) == [.maximize, .split, .column, .half, .grid])
         #expect(cat.bar == cat.all.map(\.id))
-        #expect(cat.all.map(\.name) == Layout.allCases.map { $0.rawValue.capitalized })   // what the Hint printed
-        for l in Layout.allCases { #expect(cat.next(after: LayoutID(l)) == LayoutID(l.next)) }
+        #expect(cat.all.map(\.name) == BuiltinLayout.allCases.map { $0.rawValue.capitalized })   // what the Hint printed
+        #expect(cat.all.map(\.body) == BuiltinLayout.allCases.map { .builtin($0) })
+        let ids = cat.all.map(\.id)
+        for (i, id) in ids.enumerated() { #expect(cat.next(after: id) == ids[(i + 1) % ids.count]) }
     }
 
     @Test func unknownIdsFallBackThroughDefaultThenMaximize() {

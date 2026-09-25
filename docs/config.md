@@ -123,8 +123,18 @@ zones are clamped into `0…1`, a block reusing a built-in's id is ignored, and 
 defines — a typo, a deleted layout — keeps the workspace and draws `default-layout` (else
 `maximize`) until the layout comes back.
 
-**Downgrade:** a build older than #9 cannot read a `state.json` that names a drawn layout; it
-starts with fresh workspaces. Upgrading is lossless.
+**Upgrade and downgrade:** the five built-in ids have never changed, so a `config.toml` or
+`state.json` written before drawn layouts existed loads unchanged, with no migration (the test suite
+decodes files captured before #9). A build older than #9 cannot read a `state.json` that names a
+drawn layout; it starts with fresh workspaces.
+
+**From `spacialctl`:** `spacialctl state` gives each workspace's `layout` as the id it holds, even
+one that does not resolve, and lists every layout the shell knows in a top-level `layouts` array
+(`id`, `name`, `symbol`, `builtin`, and `zones` — the zone count, absent for a built-in). A
+workspace whose `layout` is missing from `layouts` is drawing its fallback. `capabilities` includes
+`"layouts"`; the payload's `v` is still 2. `spacialctl set-layout <id> [--workspace <uuid>]` sets a
+workspace's layout (default: the focused display's active one); an id the shell does not know is
+refused with exit 1, unlike the config file, which keeps it.
 
 ## Where windows land at launch
 
@@ -229,7 +239,7 @@ Generated from `KeyBindings.commandNames`:
 | `move-window-right` | Swap the focused window with its right neighbour |
 | `move-window-up` | Move the focused window to the workspace above and follow it |
 | `move-window-down` | Move the focused window to the workspace below (creates one if needed) and follow it |
-| `cycle-layout` | Cycle the active workspace's layout: maximize → split → column → half → grid → maximize |
+| `cycle-layout` | Cycle the active workspace's layout round `layout-bar` (by default maximize → split → column → half → grid → maximize); from a layout not on the bar, go to the bar's first |
 | `toggle-shell-ui` | Zen mode: hide/show the shell panels; their edges go back to the layout while hidden |
 | `toggle-overview` | Open/close the overview/launcher (search over open windows and installed apps) |
 | `open-settings` | Open `~/.config/spacial-shell/config.toml` in its default editor (created empty — all defaults — if missing) |

@@ -4,7 +4,7 @@ import SpacialShellKit
 import os
 
 /// Spec §7.8. The one place NSScreen's bottom-left, y-up geometry becomes the top-left, y-down
-/// geometry everything else (AX, `Layout`, `World`) speaks. Rebuilt on every access: NSScreen
+/// geometry everything else (AX, `LayoutEngine`, `World`) speaks. Rebuilt on every access: NSScreen
 /// caches nothing useful across a hot-plug, and a stale topology places windows off-screen.
 public enum DisplayTopology {
     private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "DisplayTopology")

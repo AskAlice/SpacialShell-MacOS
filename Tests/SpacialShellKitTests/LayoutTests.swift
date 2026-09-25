@@ -53,7 +53,7 @@ import Foundation
         #expect(eq(f[4], CGRect(x: 500, y: 300, width: 500, height: 300)))
     }
     @Test func neverOverlapsAcrossLayouts() {
-        for l in Layout.allCases { for n in 1...9 { for f in 0..<n {
+        for l in BuiltinLayout.allCases { for n in 1...9 { for f in 0..<n {
             #expect(!overlaps(LayoutEngine.frames(l, count: n, focused: f, in: r, gap: 6)), "\(l) n=\(n) f=\(f)")
         } } }
     }
@@ -71,7 +71,7 @@ import Foundation
         #expect(f[0] != nil && f[1] != nil && f[2] != nil)   // first page holds the focused window
     }
     @Test func overflowKeepsTheFocusedWindowOnScreen() {
-        for l in Layout.allCases { for n in 1...40 { for foc in 0..<n {
+        for l in BuiltinLayout.allCases { for n in 1...40 { for foc in 0..<n {
             let f = LayoutEngine.frames(l, count: n, focused: foc, in: narrow, gap: 6)
             #expect(f.count == n, "\(l) n=\(n)")
             #expect(f[foc] != nil, "\(l) n=\(n) focused \(foc) parked")

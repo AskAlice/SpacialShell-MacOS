@@ -46,7 +46,7 @@ bound.
 | Close focused window (app keeps running) | `Fn+Q` | `⌃⌥Q` | Super+Q |
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` | Super+Shift+A / D |
 | Move window to workspace above / below | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` | Super+Shift+W / S |
-| Cycle layout (maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
+| Cycle layout round the layout bar (default: maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` | Super (overview) |
 | Open the config file | `Fn+,` | `⌃⌥,` | — |
@@ -70,10 +70,11 @@ Semantics worth knowing:
   neighbouring screen in that direction, landing at the near end of its active row (moving right
   lands leftmost, moving left lands rightmost), keeping its floating flag; focus follows. On the
   outermost screen in that direction it is a no-op (no wrap for moves).
-- Move window left/right under **maximize** promotes the workspace to **split**. Maximize paints
-  only the focused window and the focus travels with it, so the move would reorder the row without
-  changing a pixel; the verb means "put this beside that", and split is the narrowest layout that
-  can show the pair. Layouts that already show more than one window are left as you set them. Only
+- Move window left/right under **maximize** — or any layout that shows fewer than two windows,
+  such as a one-zone drawn layout — promotes the workspace to **split**. Maximize paints only the
+  focused window and the focus travels with it, so the move would reorder the row without changing
+  a pixel; the verb means "put this beside that", and split is the narrowest layout that can show
+  the pair. Layouts that already show more than one window are left as you set them. Only
   an in-row swap promotes: a move to another screen leaves both layouts alone, and a refused move
   (outermost screen) changes nothing at all, layout included.
 - Move to another screen appends the window to that screen's active workspace and focus follows.

@@ -7,8 +7,8 @@ import SpacialShellProtocol
 
 /// The five layouts that are code, not data: each is a function of the window count (and
 /// `maximize`/`split` of the focus), which no fixed zone list can express (design §5).
-/// ponytail: backed by the Protocol enum until #11 makes it a Kit enum of its own.
-public typealias BuiltinLayout = SpacialShellProtocol.Layout
+/// Not `Codable`: nothing stores a `BuiltinLayout`; storage and the wire speak `LayoutID` (#11).
+public enum BuiltinLayout: String, CaseIterable, Sendable { case maximize, split, column, half, grid }
 
 /// One drawn zone, as a unit rect: `0…1`, origin top-left, y-down (M1 §3.2's AX convention). The
 /// workspace rect it maps onto changes with the display, insets, Zen and the gap (design §4.2).
@@ -63,7 +63,12 @@ public struct LayoutDef: Codable, Hashable, Sendable, Identifiable {
         id = try c.decode(LayoutID.self, forKey: .id)
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? id.rawValue
         symbol = try c.decodeIfPresent(String.self, forKey: .symbol)
-        if let b = try c.decodeIfPresent(BuiltinLayout.self, forKey: .builtin) { body = .builtin(b); return }
+        if let raw = try c.decodeIfPresent(String.self, forKey: .builtin) {
+            guard let b = BuiltinLayout(rawValue: raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .builtin, in: c, debugDescription: "unknown built-in \"\(raw)\"")
+            }
+            body = .builtin(b); return
+        }
         let raw = try c.decode([LayoutZone].self, forKey: .zones)
         let zones = raw.compactMap(\.clamped)
         if zones.count < raw.count {
@@ -81,7 +86,7 @@ public struct LayoutDef: Codable, Hashable, Sendable, Identifiable {
         try c.encode(name, forKey: .name)
         try c.encodeIfPresent(symbol, forKey: .symbol)
         switch body {
-        case .builtin(let b): try c.encode(b, forKey: .builtin)
+        case .builtin(let b): try c.encode(b.rawValue, forKey: .builtin)
         case .zones(let z): try c.encode(z, forKey: .zones)
         }
     }

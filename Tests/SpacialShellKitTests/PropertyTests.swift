@@ -172,7 +172,7 @@ import Foundation
     func layoutsNeverOverlap(seed: Int) {
         var rng = TestRNG(seed: UInt64(seed) &+ 99)
         let rect = CGRect(x: 0, y: 0, width: Double.random(in: 300...4000, using: &rng), height: Double.random(in: 200...3000, using: &rng))
-        for l in Layout.allCases {
+        for l in BuiltinLayout.allCases {
             let n = Int.random(in: 1...40, using: &rng)
             let fs = LayoutEngine.frames(l, count: n, focused: Int.random(in: 0..<n, using: &rng), in: rect, gap: Double.random(in: 0...20, using: &rng)).compactMap { $0 }
             for i in fs.indices { for j in fs.indices where j > i {
