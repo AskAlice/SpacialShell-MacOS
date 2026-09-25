@@ -3,8 +3,9 @@ import Foundation
 import CoreGraphics
 @testable import SpacialShellKit
 
-/// Issue #74 — an app's first window goes to its category's row, rows created in
-/// `category-order`; other apps get a row each; memory still wins; a drag is never undone.
+/// Issue #74 — an app's window goes to its category's row, rows created in `category-order`;
+/// other apps get a row each; category beats memory, memory decides the rest; a drag holds for
+/// the session and the next launch sorts category rows back to the top.
 @Suite struct CategoryRoutingTests {
     let order = Config.defaultCategoryOrder          // web, terminal, coding, media, utilities
     var n = 0
@@ -41,14 +42,15 @@ import CoreGraphics
         open(&w, .terminal)             // between web and coding
         #expect(categories(w) == [.web, .terminal, .coding, .utilities])
     }
-    @Test mutating func orderedRowsGoAboveUnorderedOnesButBelowPinnedSeeds() {
+    @Test mutating func orderedRowsGoAbovePinnedSeedsAndUnorderedOnes() {
         var c = Config(); c.workspaces = [WorkspaceSeed(name: "Code")]
         var w = World.seeded(screens: ["D1"], config: c)
         open(&w, nil)                   // an uncategorized app: a row of its own
         open(&w, .web)
         let rows = w.screens["D1"]!.workspaces.dropLast()
-        #expect(rows.map(\.name) == ["Code", "Workspace", "Workspace"])
-        #expect(rows.map(\.category) == [nil, .web, nil], "pinned seed stays first; web above the other app")
+        #expect(rows.map(\.name) == ["Workspace", "Code", "Workspace"])
+        #expect(rows.map(\.category) == [.web, nil, nil], "web on top; the pinned seed and the other app keep their order")
+        #expect(w.screens["D1"]!.active.name == "Code", "the active row is still the one the user was on")
     }
     @Test mutating func theActiveWorkspaceStaysActive() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
@@ -87,11 +89,32 @@ import CoreGraphics
 
     // MARK: precedence
 
-    @Test mutating func rememberedPlacementBeatsCategory() {
+    /// Ruling changed 2026-09-25 (#74, last comment): app type beats memory for an ordered category.
+    @Test mutating func categoryBeatsRememberedPlacement() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         let mine = open(&w, nil)!
-        #expect(open(&w, .web, remembered: mine) == mine)
-        #expect(!categories(w).contains(.web))
+        let web = open(&w, .web, remembered: mine)
+        #expect(web != mine && categories(w).contains(.web))
+    }
+    @Test mutating func memoryStillWinsForAppsOutsideTheOrder() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        let mine = open(&w, nil)!
+        #expect(open(&w, .communication, remembered: mine) == mine)
+        #expect(open(&w, nil, remembered: mine) == mine)
+        #expect(open(&w, .media, order: [.web], remembered: mine) == mine, "a category switched off is outside the order")
+    }
+    /// The user's report: Brave remembered on the secondary display, but its window is on the
+    /// primary at relaunch — it takes the primary's web row, not the remembered one.
+    @Test mutating func aBrowserRememberedOnD2ButOnD1LandsInD1sWebRow() throws {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        let onD2 = open(&w, .web, on: "D2")!
+        let s = PersistedState(world: w, placements: ["com.brave.Browser.origin": onD2])
+        var fresh = try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(s))
+            .restore(into: World.empty(screens: ["D1", "D2"], defaultLayout: .maximize), order: order)
+        let id = open(&fresh, .web, on: "D1", remembered: s.placements["com.brave.Browser.origin"])!
+        #expect(id != onD2)
+        #expect(fresh.location(ofWorkspace: id)?.screen == "D1")
+        #expect(categories(fresh, "D1") == [.web])
     }
     @Test func categoryBeatsCrowdAndCrowdBeatsOther() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
@@ -123,6 +146,49 @@ import CoreGraphics
         open(&w, .coding)                                   // after the last earlier row (web)
         open(&w, .web)
         #expect(categories(w) == [.terminal, .web, .coding])
+    }
+
+    // MARK: sorted at launch
+
+    /// A drag holds for the session (above); the next launch puts category rows back on top in
+    /// order, while rows without a category keep the order the user dragged them into.
+    @Test mutating func launchSortsCategoryRowsBackAndLeavesTheRestAlone() throws {
+        var c = Config(); c.workspaces = [WorkspaceSeed(name: "Code")]
+        var w = World.seeded(screens: ["D1"], config: c)
+        let web = open(&w, .web)!, other = open(&w, nil)!, terminal = open(&w, .terminal)!
+        #expect(w.screens["D1"]!.workspaces.dropLast().map(\.id).first == web)
+        (w, _) = CommandRunner.apply(.moveWorkspace(terminal, toIndex: 0), to: w)
+        (w, _) = CommandRunner.apply(.moveWorkspace(other, toIndex: 1), to: w)
+        w.activate(index: w.location(ofWorkspace: other)!.index, on: "D1")
+        #expect(categories(w) == [.terminal, nil, .web, nil])                       // terminal, other, web, Code
+        let s = PersistedState(world: w, placements: ["a": web, "b": other, "c": terminal])
+        let fresh = s.restore(into: World.seeded(screens: ["D1"], config: c), order: order)
+        let rows = fresh.screens["D1"]!.workspaces.dropLast()
+        #expect(rows.map(\.id).prefix(2) == [web, terminal])
+        #expect(rows.map(\.name).suffix(2) == ["Workspace", "Code"], "other stays above Code, where it was dragged")
+        #expect(fresh.screens["D1"]!.active.id == other, "the active row is kept through the sort")
+        #expect(fresh.invariantViolations().isEmpty)
+    }
+    @Test func sortingWithoutAnOrderOrWithNothingToSortChangesNothing() {
+        var c = Config(); c.workspaces = [WorkspaceSeed(name: "A"), WorkspaceSeed(name: "B")]
+        var w = World.seeded(screens: ["D1"], config: c)
+        w.activate(index: 1, on: "D1")
+        let before = w
+        w.sortCategoryRows(order); #expect(w == before)
+        w.sortCategoryRows([]); #expect(w == before)
+    }
+    @Test func sortIsStableAndSkipsPinnedAndUnorderedRows() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        func row(_ c: AppCategory?, pinned: Bool = false) -> Workspace {
+            Workspace(name: c?.rawValue ?? "none", layout: .maximize, pinned: pinned, category: c)
+        }
+        w.screens["D1"]!.workspaces = [row(.communication), row(.media), row(.web, pinned: true), row(nil), row(.web)]
+        w.screens["D1"]!.activeIndex = 3
+        w.sortCategoryRows(order)
+        let rows = w.screens["D1"]!.workspaces
+        #expect(rows.map(\.category) == [.web, .media, .communication, .web, nil])
+        #expect(rows[3].pinned, "a pinned category row is not sorted")
+        #expect(w.screens["D1"]!.activeIndex == 4 && rows[4].category == nil)
     }
 
     // MARK: persistence

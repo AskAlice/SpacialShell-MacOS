@@ -82,12 +82,13 @@ extension World {
     /// Where a window seen for the first time lands (#13, #74) — the workspace to hand `adopt`, or
     /// nil for today's rules. One ladder, highest rung first:
     ///
-    /// 1. `remembered`, the app's placement from the state file, if that workspace still exists.
+    /// 1. Category routing (#74), for an app whose `category` is in `order`: that category's row
+    ///    on `routeOn`, the display the window is on. App type beats memory for these apps, so a
+    ///    browser remembered on another display still lands on the one it opened on. None yet →
+    ///    one is made where the order puts it (see `categoryRowIndex`).
+    /// 2. `remembered`, the app's placement from the state file, if that workspace still exists.
     ///    It is display-aware by construction: a workspace lives on a display keyed by the
     ///    display's UUID, and `PersistedState.restore` puts it back there.
-    /// 2. Category routing (#74), for an app whose `category` is in `order`: that category's row
-    ///    on `routeOn`, the display the window opened on. None yet → one is made where the order
-    ///    puts it (see `categoryRowIndex`). Existing rows never move, so a drag sticks.
     /// 3. `crowdOn`, set by the store only for an app arriving at launch with more windows than
     ///    `Config.crowdThreshold`: a new workspace of its own on that display, inserted above the
     ///    trailing empty one (invariant 4) and `reserved` until its first window lands.
@@ -102,12 +103,12 @@ extension World {
     public mutating func landing(remembered: UUID?, crowdOn: DisplayID?, routeOn: DisplayID? = nil,
                                  category: AppCategory? = nil, order: [AppCategory] = [],
                                  maxWorkspaces: Int = 12) -> UUID? {
-        if let id = remembered, location(ofWorkspace: id) != nil { return id }
         let route = routeOn.flatMap { screens[$0] == nil || order.isEmpty ? nil : $0 }
         if let d = route, let c = category, let rank = order.firstIndex(of: c) {
             if let row = screens[d]!.workspaces.first(where: { $0.category == c }) { return row.id }
             return newRow(on: d, category: c, at: categoryRowIndex(on: d, rank: rank, order: order), max: maxWorkspaces)
         }
+        if let id = remembered, location(ofWorkspace: id) != nil { return id }
         if let d = crowdOn, screens[d] != nil {
             var ws = newWorkspace(); ws.reserved = true
             return insertRow(ws, on: d, at: screens[d]!.workspaces.count - 1)
@@ -116,17 +117,43 @@ extension World {
         return nil
     }
 
-    /// Where a new row for the category ranked `rank` goes: just after the last row of an earlier
-    /// category, else just before the first row of a later one, else above the first unpinned row
-    /// (ordered rows come before everything routing did not order). Rows are read in their
-    /// current, possibly hand-sorted, order and never moved; the trailing empty is not a row.
+    /// Where a new row for the category ranked `rank` goes: just after the last category row of an
+    /// earlier rank, else just before the first of a later one, else at the top. On a stack in
+    /// category order (`sortCategoryRows`) that is the same as inserting and sorting; on one where
+    /// a category row was dragged this session (#75) it places the new row among its neighbours
+    /// and leaves the dragged one where the user put it. The trailing empty is not a row.
     func categoryRowIndex(on d: DisplayID, rank: Int, order: [AppCategory]) -> Int {
         let rows = screens[d]!.workspaces.dropLast()
-        func r(_ ws: Workspace) -> Int? { ws.category.flatMap { order.firstIndex(of: $0) } }
-        if let i = rows.lastIndex(where: { r($0).map { $0 < rank } ?? false }) { return i + 1 }
-        return rows.firstIndex { r($0).map { $0 > rank } ?? false }
-            ?? rows.firstIndex { !$0.pinned }
-            ?? rows.endIndex
+        if let i = rows.lastIndex(where: { Self.categoryRank($0, order).map { $0 < rank } ?? false }) { return i + 1 }
+        return rows.firstIndex { Self.categoryRank($0, order).map { $0 > rank } ?? false } ?? 0
+    }
+
+    /// A row's place in `order`, or nil for a row the order does not sort: pinned, no category, or
+    /// a category not in the order.
+    static func categoryRank(_ ws: Workspace, _ order: [AppCategory]) -> Int? {
+        ws.pinned ? nil : ws.category.flatMap { order.firstIndex(of: $0) }
+    }
+
+    /// #74: on every display, rows of a category in `order` move to the top, in that order
+    /// (stable); pinned rows and rows without one keep their relative order below them. The
+    /// active row stays active — this is the model, and the reconciler follows it.
+    ///
+    /// Run at launch only, after `PersistedState.restore`. A new category row is placed by
+    /// `categoryRowIndex` instead of re-sorting, so a category row the user drags (#75) holds until
+    /// the next launch puts it back in order, and a row without a category is never moved at all.
+    public mutating func sortCategoryRows(_ order: [AppCategory]) {
+        guard !order.isEmpty else { return }
+        for id in screens.keys {
+            var s = screens[id]!
+            let active = s.workspaces.indices.contains(s.activeIndex) ? s.workspaces[s.activeIndex].id : nil
+            let ranked = s.workspaces.enumerated()
+                .compactMap { i, ws in Self.categoryRank(ws, order).map { (rank: $0, i: i, ws: ws) } }
+                .sorted { ($0.rank, $0.i) < ($1.rank, $1.i) }
+                .map(\.ws)
+            s.workspaces = ranked + s.workspaces.filter { Self.categoryRank($0, order) == nil }
+            s.activeIndex = s.workspaces.firstIndex { $0.id == active } ?? s.activeIndex
+            screens[id] = s
+        }
     }
 
     /// A routed row, or — once the display holds `max` rows — the last row instead.

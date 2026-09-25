@@ -9,13 +9,15 @@ import SpacialShellKit
 /// the window has overridden says so, and offers the way back.
 struct SettingsView: View {
     enum Pane: String, CaseIterable, Identifiable {
-        case general = "General", appearance = "Appearance", layout = "Layout", keys = "Keybindings"
+        case general = "General", appearance = "Appearance", layout = "Layout", workspaces = "Workspaces"
+        case keys = "Keybindings"
         var id: String { rawValue }
         var symbol: String {
             switch self {
             case .general: "gearshape"
             case .appearance: "paintpalette"
             case .layout: "square.grid.2x2"
+            case .workspaces: "rectangle.stack"
             case .keys: "keyboard"
             }
         }
@@ -48,6 +50,7 @@ struct SettingsView: View {
                     case .general: general
                     case .appearance: appearance
                     case .layout: layout
+                    case .workspaces: workspaces
                     case .keys: keys
                     }
                 }
@@ -131,6 +134,55 @@ struct SettingsView: View {
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
             } reset: { overrides.tabSizing = nil }
         }
+    }
+
+    /// #74: the category order and the row cap. The order is a list of every category, the ones
+    /// switched on first and in order; "off" means left out of `category-order`. Up/down buttons
+    /// rather than `List.onMove`: a `List` does not size itself inside this pane's `ScrollView`.
+    private var workspaces: some View {
+        let order = overrides.categoryOrder ?? file.categoryOrder
+        let off = AppCategory.allCases.filter { !order.contains($0) }
+        return VStack(alignment: .leading, spacing: 18) {
+            header("Workspaces", "Where an app's first window goes. Apps of a category that is on share one workspace per display, kept at the top in this order. Every other app gets a workspace of its own below them.")
+            row("Categories", overridden: overrides.categoryOrder != nil) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(order + off, id: \.self) { categoryRow($0, order: order) }
+                }
+            } reset: { overrides.categoryOrder = nil }
+
+            Divider()
+            row("Maximum", overridden: overrides.maxWorkspaces != nil) {
+                let cap = binding(\.maxWorkspaces, default: file.maxWorkspaces)
+                Stepper(value: cap, in: 1...30) {
+                    Text("\(cap.wrappedValue) workspaces per display")
+                        .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+                }
+            } reset: { overrides.maxWorkspaces = nil }
+        }
+    }
+
+    private func categoryRow(_ c: AppCategory, order: [AppCategory]) -> some View {
+        let i = order.firstIndex(of: c)
+        func move(_ by: Int) {
+            guard let i else { return }
+            var o = order; o.swapAt(i, i + by); overrides.categoryOrder = o
+        }
+        return HStack(spacing: 8) {
+            Toggle(c.label, isOn: Binding(get: { i != nil }, set: { on in
+                var o = order.filter { $0 != c }
+                if on { o.append(c) }
+                overrides.categoryOrder = o
+            }))
+            .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+            Text(c.label.prefix(1).uppercased() + c.label.dropFirst())
+                .font(.system(size: 12)).foregroundStyle(i == nil ? .secondary : .primary)
+                .frame(width: 120, alignment: .leading)
+            Button { move(-1) } label: { Label("Move up", systemImage: "chevron.up").labelStyle(.iconOnly) }
+                .disabled(i == nil || i == 0).help("Move up")
+            Button { move(1) } label: { Label("Move down", systemImage: "chevron.down").labelStyle(.iconOnly) }
+                .disabled(i.map { $0 == order.count - 1 } ?? true).help("Move down")
+        }
+        .buttonStyle(.borderless)
     }
 
     private var keys: some View {

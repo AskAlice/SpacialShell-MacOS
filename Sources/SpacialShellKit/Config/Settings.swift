@@ -20,6 +20,10 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     /// the map wholesale, so rebinding one command in the settings window cannot silently discard
     /// a rebind the file made to a different one.
     public var keybindingOverrides: [String: String]?
+    /// #74. Replaces the file's `category-order` wholesale: the list is one setting, and its order
+    /// is the point. `[]` is a real value (routing off), distinct from nil (the file decides).
+    public var categoryOrder: [AppCategory]?
+    public var maxWorkspaces: Int?
 
     public init() {}
 }
@@ -37,6 +41,8 @@ public enum Settings {
         if let v = overrides.keybindingPreset { c.keybindingPreset = v }
         if let v = overrides.animations { c.animations = v }
         if let v = overrides.emptyCheatsheet { c.emptyCheatsheet = v }
+        if let v = overrides.categoryOrder { c.categoryOrder = v }
+        if let v = overrides.maxWorkspaces { c.maxWorkspaces = max(1, v) }
         if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }
         return c
     }

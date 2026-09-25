@@ -246,11 +246,11 @@ public actor WorldStore {
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
             if !known {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
-                // #13's ladder, with #74's category routing: the app's remembered workspace if it
-                // still exists, else its category's row, else a workspace of its own for a crowd
-                // arriving at launch, else a row of its own, else nil — `adopt`'s ordinary rules.
-                // Whichever row it gets becomes the app's placement, so its other windows follow it
-                // there by rung 1. Only a window `adopt` will file on its own is routed: an
+                // #13's ladder, with #74's category routing: its category's row on the display it
+                // is on (app type beats memory), else the app's remembered workspace if it still
+                // exists, else a workspace of its own for a crowd arriving at launch, else a row of
+                // its own, else nil — `adopt`'s ordinary rules. Whichever row it gets becomes the
+                // app's placement, so the other windows of an app outside the order follow it. Only a window `adopt` will file on its own is routed: an
                 // ephemeral, ignored or child window would leave its new row empty.
                 let routable = w.bundleID != nil && w.parent == nil && (kind == .tile || kind == .float)
                 let landing = world.landing(remembered: w.bundleID.flatMap { placements[$0] },

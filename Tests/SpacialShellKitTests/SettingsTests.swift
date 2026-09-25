@@ -115,4 +115,25 @@ import Foundation
         var gui = SettingsOverrides(); gui.keybindingOverrides = ["cycle-layout": "fn-shift-k"]
         #expect(Settings.effective(config: file, overrides: gui).keybindingOverrides["cycle-layout"] == "fn-shift-k")
     }
+
+    /// #74: the Workspaces pane. The order replaces the file's wholesale, and `[]` is a value
+    /// (routing off), not "unset".
+    @Test func categoryOrderAndMaxWorkspacesAreOverridable() {
+        var file = Config(); file.categoryOrder = [.web, .terminal]; file.maxWorkspaces = 12
+        var gui = SettingsOverrides(); gui.categoryOrder = [.media, .web]; gui.maxWorkspaces = 5
+        var out = Settings.effective(config: file, overrides: gui)
+        #expect(out.categoryOrder == [.media, .web] && out.maxWorkspaces == 5)
+        gui.categoryOrder = []; gui.maxWorkspaces = 0
+        out = Settings.effective(config: file, overrides: gui)
+        #expect(out.categoryOrder.isEmpty && out.maxWorkspaces == 1, "off is a value; the cap never drops below one")
+        gui.categoryOrder = nil; gui.maxWorkspaces = nil
+        out = Settings.effective(config: file, overrides: gui)
+        #expect(out.categoryOrder == [.web, .terminal] && out.maxWorkspaces == 12)
+    }
+    @Test func overridesSavedBeforeTheWorkspacesPaneStillDecode() throws {
+        let old = try JSONDecoder().decode(SettingsOverrides.self, from: Data(#"{"panelWidth":64,"gap":4}"#.utf8))
+        #expect(old.panelWidth == 64 && old.categoryOrder == nil && old.maxWorkspaces == nil)
+        var gui = SettingsOverrides(); gui.categoryOrder = [.coding]; gui.maxWorkspaces = 7
+        #expect(try JSONDecoder().decode(SettingsOverrides.self, from: JSONEncoder().encode(gui)) == gui)
+    }
 }

@@ -68,7 +68,10 @@ public struct PersistedState: Codable, Equatable, Sendable {
     /// there still have somewhere to come back to — except pinned rows whose name `main` already
     /// has, which are just the config's seeds twice over. A display the state has never seen keeps
     /// the stack the caller seeded it with: nobody else's workspaces.
-    public func restore(into world: World, main: DisplayID? = nil) -> World {
+    ///
+    /// `order` is `Config.categoryOrder`: category rows go back to the top in that order (#74,
+    /// `World.sortCategoryRows`), undoing any drag of one last session.
+    public func restore(into world: World, main: DisplayID? = nil, order: [AppCategory] = []) -> World {
         var w = world
         w.zen = zen
         let wanted = Set(placements.values)
@@ -98,6 +101,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
             if s.activeIndex >= at { s.activeIndex += moved.count }
             w.screens[m] = s
         }
+        w.sortCategoryRows(order)
         w.normalize()
         return w
     }
