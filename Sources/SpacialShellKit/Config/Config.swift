@@ -298,11 +298,13 @@ public struct Config: Codable, Equatable, Sendable {
     }
 
     /// Spec §7.3 rule 0: config wins over heuristics. Order: ephemeral, float, ignore, tile.
-    public func kindOverride(bundleID: String?, title: String) -> WindowKind? {
+    /// `standard` is the window's AX subrole being `AXStandardWindow`: `[[tile]]` only ever promotes
+    /// an app's main window, never its alerts or sheets (#89).
+    public func kindOverride(bundleID: String?, title: String, standard: Bool = true) -> WindowKind? {
         if ephemeral.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .ephemeral }
         if float.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .float }
         if ignore.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .ignore }
-        if tile.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .tile }
+        if standard, tile.contains(where: { $0.matches(bundleID: bundleID, title: title) }) { return .tile }
         return nil
     }
 }

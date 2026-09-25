@@ -135,4 +135,12 @@ import Foundation
         let back = try Config.parse(toml: out).telemetry
         #expect(back.enabled && back.endpoint == c.telemetry.endpoint && back.user == c.telemetry.user && back.token.isEmpty)
     }
+
+    /// #89: `[[tile]]` promotes only standard windows. System Settings' "Quit & Reopen" alert is
+    /// not one; tiling it made it a tab that pushed the main Settings window aside.
+    @Test func tileRuleSkipsAlertsAndSheets() {
+        let c = Config()
+        #expect(c.kindOverride(bundleID: "com.apple.systempreferences", title: "Privacy", standard: true) == .tile)
+        #expect(c.kindOverride(bundleID: "com.apple.systempreferences", title: "", standard: false) == nil)
+    }
 }

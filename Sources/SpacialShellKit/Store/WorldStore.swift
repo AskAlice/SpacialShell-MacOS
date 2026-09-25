@@ -292,7 +292,7 @@ public actor WorldStore {
             }
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
             if !known {
-                let kind = config.kindOverride(bundleID: w.bundleID, title: w.title) ?? w.kind
+                let kind = config.kindOverride(bundleID: w.bundleID, title: w.title, standard: w.isStandard) ?? w.kind
                 // #13's ladder, with #74's category routing: its category's row on the display it
                 // is on (app type beats memory), else the app's remembered workspace if it still
                 // exists, else a workspace of its own for a crowd arriving at launch, else a row of
@@ -366,7 +366,7 @@ public actor WorldStore {
         for w in s.windows {
             guard let b = w.bundleID, !seenApps.contains(b), world.location(of: w.ref) == nil,
                   !world.ephemeral.contains(w.ref), !world.ignored.contains(w.ref) else { continue }
-            let kind = config.kindOverride(bundleID: b, title: w.title) ?? w.kind
+            let kind = config.kindOverride(bundleID: b, title: w.title, standard: w.isStandard) ?? w.kind
             if kind == .tile || kind == .float { displaysByApp[b, default: []].append(screenFor(w.frame)) }
         }
         return displaysByApp.filter { $0.value.count > config.crowdThreshold }.mapValues { ds in

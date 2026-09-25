@@ -36,11 +36,15 @@ public struct WindowSnapshot: Equatable, Sendable {
     /// `kAXWindowsAttribute`, which lists only the Spaces on screen. A `var` so a replayed
     /// observation can be brought up to date without re-reading the window.
     public var onActiveSpace: Bool
+    /// AX subrole is `AXStandardWindow`: an app's main window, not an alert, sheet or panel.
+    /// `[[tile]]` promotes only these (#89: System Settings' "Quit & Reopen" alert became a tab).
+    public let isStandard: Bool
     public init(ref: WindowRef, frame: CGRect, title: String, bundleID: String?, kind: WindowKind, parent: WindowRef?, isMinimized: Bool, isFullscreen: Bool,
-                onActiveSpace: Bool = true) {
+                onActiveSpace: Bool = true, isStandard: Bool = true) {
         self.ref = ref; self.frame = frame; self.title = title; self.bundleID = bundleID; self.kind = kind
         self.parent = parent; self.isMinimized = isMinimized; self.isFullscreen = isFullscreen
         self.onActiveSpace = onActiveSpace
+        self.isStandard = isStandard
     }
 }
 

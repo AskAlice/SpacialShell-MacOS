@@ -1072,6 +1072,26 @@ import OpenTelemetryApi
         #expect(await store.world.location(of: b)?.screen == "D2")
     }
 
+    /// #89: System Settings' main window tiles; its alert (not AXStandardWindow) stays a floating
+    /// window with no tab, so it cannot push the main window out of a maximize row.
+    @Test func systemSettingsAlertDoesNotBecomeATab() async {
+        let main = WindowRef(id: 30, pid: 30), alert = WindowRef(id: 31, pid: 30)
+        let sp = "com.apple.systempreferences"
+        let ws = [WindowSnapshot(ref: main, frame: CGRect(x: 0, y: 0, width: 700, height: 500), title: "Privacy", bundleID: sp,
+                                 kind: .float, parent: nil, isMinimized: false, isFullscreen: false, isStandard: true),
+                  WindowSnapshot(ref: alert, frame: CGRect(x: 100, y: 100, width: 260, height: 180), title: "", bundleID: sp,
+                                 kind: .float, parent: nil, isMinimized: false, isFullscreen: false, isStandard: false)]
+        var c = m1Config(); c.tile = Config.defaultTile
+        let be = FakeBackend(snapshot: snap(ws, focused: main))
+        let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        await store.start()
+        let w = await store.world
+        let loc = w.location(of: main)!
+        #expect(!w.screens[loc.screen]!.workspaces[loc.index].floating.contains(main), "the main window tiles")
+        let aloc = w.location(of: alert)
+        #expect(aloc == nil || w.screens[aloc!.screen]!.workspaces[aloc!.index].floating.contains(alert), "the alert must not tile")
+    }
+
     /// Rule 1: a new window placed by memory into a workspace on *another* display is moved there
     /// — the model files it under D2, so the reconciler writes D2's frame, whichever display it
     /// opened on. In an inactive workspace it is parked in D2's corner: model and write agree.

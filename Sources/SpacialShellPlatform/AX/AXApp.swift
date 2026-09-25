@@ -418,6 +418,7 @@ final class AXApp: @unchecked Sendable {
                 isFullscreen: ax.get(Ax.isFullscreenAttr) ?? false,
                 // Public API only: the enumeration is the Space test. No CGS/SkyLight Space ids.
                 onActiveSpace: !offSpace.contains(id),
+                isStandard: ax.get(Ax.subroleAttr) == kAXStandardWindowSubrole,
             )
             window.lastSnapshot = snapshot
             result.append(snapshot)
@@ -441,7 +442,7 @@ final class AXApp: @unchecked Sendable {
             let demoted = WindowSnapshot(
                 ref: s.ref, frame: s.frame, title: s.title, bundleID: s.bundleID, kind: .ignore,
                 parent: s.parent, isMinimized: s.isMinimized, isFullscreen: s.isFullscreen,
-                onActiveSpace: s.onActiveSpace,
+                onActiveSpace: s.onActiveSpace, isStandard: s.isStandard,
             )
             // Keep the cache in step: a tab that stops answering later is replayed from here, and
             // replaying it as `.tile` would re-adopt the very window this just demoted.
