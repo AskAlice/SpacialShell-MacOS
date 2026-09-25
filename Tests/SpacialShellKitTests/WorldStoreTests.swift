@@ -312,6 +312,26 @@ import Foundation
         #expect(!framed, "a deliberately parked window was dragged back on screen")
     }
 
+    /// #73: a popup recovered from the rail tray is unhidden, raised and — having ended up off
+    /// every display — centred on the focused one. It stays a popup: no workspace, no tab.
+    @Test func recoverWindowBringsAPopupBackWithoutFilingIt() async {
+        let p = WindowRef(id: 3, pid: 1)
+        let popup = CGRect(x: 100, y: 100, width: 300, height: 200)
+        let (store, be) = await make(snap([win(a), win(p, popup, kind: .ephemeral)], focused: a))
+        await store.apply(.snapshot(snap([win(a), win(p, CGRect(x: 5000, y: 5000, width: 300, height: 200), kind: .ephemeral)],
+                                         focused: a)))
+        await be.reset()
+        await store.run(.recoverWindow(p))
+        let calls = await be.calls
+        #expect(calls.contains(.unhide(p)) && calls.contains(.raise(p)))
+        let rescued = calls.compactMap { call -> CGRect? in
+            if case .setFrame(let r, let f) = call, r == p { return f } else { return nil }
+        }.last
+        #expect(rescued.map { d1.visibleFrame.contains($0) } == true, "the popup was left off every display")
+        let w = await store.world
+        #expect(w.ephemeral.contains(p) && w.location(of: p) == nil && w.focus.window == p)
+    }
+
     /// #57: counts could not answer "which window is where, and is it parked", so diagnosing a
     /// window that held focus while sitting off-screen meant reading the window server instead of
     /// asking the shell. `spacialctl state` now carries the rows.

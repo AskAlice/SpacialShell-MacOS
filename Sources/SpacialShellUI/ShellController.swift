@@ -88,6 +88,10 @@ public final class ShellController: NSObject {
                                                   onHoverTile: { [weak self] item, inside, tile in
                                                       self?.hoverChanged(item, inside: inside, tile: tile,
                                                                          display: id, screen: nsScreen)
+                                                  },
+                                                  onHoverTray: { [weak self] inside, tile in
+                                                      self?.trayHoverChanged(state, inside: inside, tile: tile,
+                                                                             display: id, screen: nsScreen)
                                                   })
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
                                                    chrome: PanelChrome(config: config), send: forward)
@@ -118,12 +122,23 @@ public final class ShellController: NSObject {
     private func hoverChanged(_ item: WorkspaceRailItem, inside: Bool, tile: CGRect,
                               display: DisplayID, screen: NSScreen) {
         guard inside else { hover.hide(item.id); return }
-        guard let panel = panels[display]?.rail else { return }
-        let frame = panel.frame
-        let inScreen = CGRect(x: frame.minX + tile.minX, y: frame.maxY - tile.maxY,
-                              width: tile.width, height: tile.height)
+        guard let inScreen = toScreen(tile, display: display) else { return }
         hover.show(item: item, tile: inScreen, railSide: config.railSide,
                    bounds: screen.visibleFrame, metaFor: appMeta.meta(for:))
+    }
+
+    /// #73: the tray shares the hover card; it just lists windows instead of previewing a workspace.
+    private func trayHoverChanged(_ state: ScreenShellState, inside: Bool, tile: CGRect,
+                                  display: DisplayID, screen: NSScreen) {
+        guard inside else { hover.hide(RailHoverController.trayID); return }
+        guard let inScreen = toScreen(tile, display: display) else { return }
+        hover.showTray(state.tray, tile: inScreen, railSide: config.railSide,
+                       bounds: screen.visibleFrame, metaFor: appMeta.meta(for:))
+    }
+
+    private func toScreen(_ tile: CGRect, display: DisplayID) -> CGRect? {
+        guard let frame = panels[display]?.rail.frame else { return nil }
+        return CGRect(x: frame.minX + tile.minX, y: frame.maxY - tile.maxY, width: tile.width, height: tile.height)
     }
 
     private func makePanels(for id: DisplayID) -> Panels {

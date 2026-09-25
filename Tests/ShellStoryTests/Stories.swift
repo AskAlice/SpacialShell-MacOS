@@ -70,8 +70,8 @@ enum Stories {
         return image
     }
 
-    static func rail(_ items: [WorkspaceRailItem]) -> ScreenShellState {
-        ScreenShellState(display: "D1", isFocusedScreen: true, rail: items, tabs: [], layout: .split)
+    static func rail(_ items: [WorkspaceRailItem], tray: [SpacialShellProtocol.WindowRef] = []) -> ScreenShellState {
+        ScreenShellState(display: "D1", isFocusedScreen: true, rail: items, tabs: [], layout: .split, tray: tray)
     }
     /// `pids` are the apps actually in the row — the rail draws one icon each and derives the
     /// category label from them, so a story without pids is a workspace of unknown apps.
@@ -183,6 +183,30 @@ enum Stories {
             title: "New workspace", subtitle: nil,
             content: .message("Opens a new workspace — or drop a tab here to move its window into one."),
             onGrantAccess: {}))
+
+        // #73: the tray — hidden windows and popups, counted, pinned above the cog.
+        let hiddenAway: [SpacialShellProtocol.WindowRef] = [WindowRef(id: 20, pid: 2), WindowRef(id: 40, pid: 4),
+                                                            WindowRef(id: 60, pid: 6)]
+        add("rail-tray", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
+                         railItem(1, name: "Web", symbol: "globe", count: 2, pids: [1, 1], active: true),
+                         railItem(2, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)],
+                        tray: hiddenAway),
+            launcherURL: "raycast://", metaFor: meta, send: send))
+        // …and its list: icon + title rows, a title that has to truncate, one AX would not name
+        // (the app's name stands in), and a popup.
+        func row(_ pid: Int32, _ title: String?) -> WindowPreviewItem {
+            let m = meta(pid)
+            return WindowPreviewItem(ref: WindowRef(id: WindowID(pid) * 10, pid: pid), name: title ?? m.name,
+                                     icon: m.icon, image: nil)
+        }
+        add("rail-tray-open", nil, RailHoverCard(
+            title: "Hidden windows and popups", subtitle: "4 windows · click one to bring it back",
+            content: .windows([row(2, "Shopping list"),
+                               row(4, "Re: the quarterly numbers, and a subject line long enough that it has to truncate"),
+                               row(6, nil),
+                               row(1, "Downloads")]),
+            onGrantAccess: {}), truncates: true)
 
         // panel-color / panel-opacity actually reaching the panels. These existed as config keys,
         // as persisted values and as settings-window controls while nothing read them, so the

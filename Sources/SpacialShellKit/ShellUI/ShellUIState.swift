@@ -48,10 +48,13 @@ public struct ScreenShellState: Equatable, Sendable {
     public let rail: [WorkspaceRailItem]     // top→bottom, same order as Screen.workspaces
     public let tabs: [WindowTabItem]         // left→right, the active workspace's row
     public let layout: Layout                // the active workspace's layout
+    /// The rail tray (#73): windows no tab brings back on its own, in `ShellUI.tray(in:)` order.
+    /// The same list on every display — hidden windows and popups are the user's, not a screen's.
+    public let tray: [WindowRef]
     public init(display: DisplayID, isFocusedScreen: Bool, rail: [WorkspaceRailItem],
-                tabs: [WindowTabItem], layout: Layout) {
+                tabs: [WindowTabItem], layout: Layout, tray: [WindowRef] = []) {
         self.display = display; self.isFocusedScreen = isFocusedScreen
-        self.rail = rail; self.tabs = tabs; self.layout = layout
+        self.rail = rail; self.tabs = tabs; self.layout = layout; self.tray = tray
     }
 
     /// A tab dropped on this bar's empty end (#32). The bar names its own destination: a window
@@ -100,7 +103,19 @@ public enum ShellUI {
         return ScreenShellState(
             display: display,
             isFocusedScreen: world.focus.screen == display,
-            rail: rail, tabs: tabs, layout: active.layout)
+            rail: rail, tabs: tabs, layout: active.layout, tray: tray(in: world))
+    }
+
+    /// #73: what the rail tray lists — every hidden (minimized or ⌘H) window, then every popup
+    /// (`ephemeral`), each in rail order: displays left→right, workspaces top→bottom, rows
+    /// left→right. A popup has no place of its own, so it sorts by its owner's (`parents`), and
+    /// one with no placed owner goes last, by id, so the list does not shuffle between renders.
+    /// `ignored` windows are not listed: the shell does not manage them, so it does not offer them.
+    public static func tray(in world: World) -> [WindowRef] {
+        let placed = world.screenOrder.flatMap { world.screens[$0]?.workspaces.flatMap(\.windows) ?? [] }
+        let rank = Dictionary(placed.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        func key(_ r: WindowRef) -> (Int, WindowID) { (world.parents[r].flatMap { rank[$0] } ?? .max, r.id) }
+        return placed.filter(world.hidden.contains) + world.ephemeral.sorted { key($0) < key($1) }
     }
 
     /// #29: whether `display` shows the dimmed cheat sheet behind its empty workspace. Only the

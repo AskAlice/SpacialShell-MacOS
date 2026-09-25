@@ -86,3 +86,23 @@ enum WindowPreviewCapture {
         return out
     }
 }
+
+/// Window titles for the rail tray (#73), read from AX when the tray opens. The model keeps none —
+/// a title changes with every tab switch in a browser, and nothing spatial depends on it — so like
+/// a preview it is fetched per open and dropped with the card. `nonisolated async`, so it runs off
+/// the main actor: an AX read to a hung app blocks for its messaging timeout. A window AX will not
+/// name is simply absent, and the row keeps the app's name instead.
+enum WindowTitles {
+    static func titles(for refs: [SpacialShellProtocol.WindowRef]) async -> [WindowID: String] {
+        var out: [WindowID: String] = [:]
+        for ref in refs {
+            if Task.isCancelled { break }
+            guard let element = WindowIdentities.element(for: ref.id) else { continue }
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &value) == .success,
+                  let title = value as? String, !title.isEmpty else { continue }
+            out[ref.id] = title
+        }
+        return out
+    }
+}

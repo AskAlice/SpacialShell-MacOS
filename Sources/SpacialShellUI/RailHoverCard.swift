@@ -18,6 +18,9 @@ struct RailHoverCard: View {
     /// grey rectangles.
     enum Content {
         case previews([WindowPreviewItem])
+        /// The rail tray (#73): one row per window, app icon + title, no miniatures — a hidden or
+        /// minimized window has no pixels on screen to capture, and a list reads faster than a grid.
+        case windows([WindowPreviewItem])
         case message(String)
         case needsScreenRecording
     }
@@ -37,6 +40,8 @@ struct RailHoverCard: View {
     /// tile already carries "a lot".
     // ponytail: fixed cap, not a scroller — revisit if 6+ window workspaces turn out to be normal.
     static let maxPreviews = 6
+    /// ponytail: fixed cap for the tray list too; a scroller if a dozen out-of-reach windows is normal.
+    static let maxRows = 12
     static let width: CGFloat = 324
 
     var body: some View {
@@ -73,6 +78,16 @@ struct RailHoverCard: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Open Screen Recording settings…", action: onGrantAccess)
                     .controlSize(.small)
+            }
+        case .windows(let items):
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(items.prefix(Self.maxRows)) { item in
+                    TrayRow(item: item) { onSelect(item.ref) }
+                }
+                if items.count > Self.maxRows {
+                    Text("+\(items.count - Self.maxRows) more")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).padding(.top, 4)
+                }
             }
         case .previews(let items):
             let shown = Array(items.prefix(Self.maxPreviews))
@@ -118,5 +133,32 @@ struct RailHoverCard: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { onSelect(item.ref) }
+    }
+}
+
+/// One tray row: the app's icon and the window's title, hover-highlighted like every other control
+/// in the shell. The whole row is the click target.
+private struct TrayRow: View {
+    let item: WindowPreviewItem
+    let onSelect: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let icon = item.icon {
+                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+            } else {
+                Image(systemName: "app.dashed").font(.system(size: 13)).frame(width: 16, height: 16)
+            }
+            Text(item.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .frame(height: 26)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(hovered ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Color.primary.opacity(0.001))))
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .onTapGesture(perform: onSelect)
     }
 }

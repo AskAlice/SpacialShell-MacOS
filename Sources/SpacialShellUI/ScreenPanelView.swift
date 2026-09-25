@@ -24,6 +24,9 @@ struct ScreenPanelView: View {
     /// promise that leaving one tile is delivered before entering the next: an unlabelled exit
     /// arriving late would dismiss the card the next tile had already opened.
     var onHoverTile: (WorkspaceRailItem, Bool, CGRect) -> Void = { _, _, _ in }
+    /// Pointer entered or left the tray (#73), or clicked it — a click opens the list too, for
+    /// anyone who clicks before the hover lands. Same coordinate space as `onHoverTile`.
+    var onHoverTray: (Bool, CGRect) -> Void = { _, _ in }
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
     /// re-enters through `Command` like every other interaction. Settable for the stories.
@@ -38,6 +41,7 @@ struct ScreenPanelView: View {
 
     /// Where each tile is, so a hover can tell the controller what to put the card next to.
     @State private var tileFrames: [UUID: CGRect] = [:]
+    @State private var trayFrame: CGRect = .zero
 
     /// A 2x2 grid inside a 32 pt tile; past four, the count carries the load.
     private static let maxIcons = 4
@@ -109,6 +113,17 @@ struct ScreenPanelView: View {
             }
             Spacer(minLength: 0)
 
+            // #73: the tray — hidden windows and popups, one hover away. Pinned above the cog, so
+            // the workspace list never moves it; absent when there is nothing to bring back.
+            if !state.tray.isEmpty {
+                Button { onHoverTray(true, trayFrame) } label: { tray }
+                    .buttonStyle(.plain)
+                    .background(GeometryReader { geo in
+                        Color.clear.onChange(of: geo.frame(in: .global), initial: true) { _, frame in trayFrame = frame }
+                    })
+                    .onHover { onHoverTray($0, trayFrame) }
+            }
+
             do {
                 // Every display: reaching for settings should not mean finding the right monitor.
                 Button { send(.openSettings) } label: {
@@ -175,6 +190,21 @@ struct ScreenPanelView: View {
                 .opacity(dropTarget == item.id && reordering.flatMap { state.railReorder($0, before: item.id) } != nil ? 1 : 0)
         }
         .foregroundStyle(item.isActive ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+    }
+
+    private var tray: some View {
+        ZStack {
+            Image(systemName: "tray.full").font(.system(size: 14, weight: .medium))
+            Text("\(state.tray.count)")
+                .font(.system(size: 8, weight: .bold))
+                .padding(.horizontal, 3)
+                .background(Capsule().fill(Color.black.opacity(0.45)))
+                .foregroundStyle(.white)
+                .offset(x: 13, y: 13)
+        }
+        .frame(width: 32, height: 32)
+        .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
     }
 
     /// One icon fills the tile; two to four share it as a 2x2 grid. Enough to recognise a

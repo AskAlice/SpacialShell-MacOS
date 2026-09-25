@@ -42,6 +42,13 @@ public enum Command: Sendable, Hashable {
     /// `WorldStore` does the work — but it is a `Command` so it arrives by the same door as a
     /// hotkey, a menu item and `spacialctl run rescue-windows`.
     case rescueWindows
+    /// The rail tray (#73): bring back a window no tab reaches — hidden, minimized, or an
+    /// `ephemeral` popup. `focusWindowRef` already unhides and focuses a placed window, but for a
+    /// popup it only focuses: a minimized popup stays minimized (the model never marks an
+    /// ephemeral `hidden`) and one off every display stays there. This adds exactly those two
+    /// things — an `unhide`, and `WorldStore`'s off-display rescue — and never re-files anything:
+    /// workspace, row, floating state and `ephemeral` membership are all left as they were.
+    case recoverWindow(WindowRef)
 }
 
 public enum Effect: Sendable, Equatable {

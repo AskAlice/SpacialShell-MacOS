@@ -223,6 +223,13 @@ public enum CommandRunner {
         case .closeWindowRef(let r):
             effects.append(.close(r))
 
+        case .recoverWindow(let r):
+            // #73: a placed window is exactly a tab click; a popup is focused *and* unhidden, since
+            // nothing else in the model would ever un-minimize it. The rescue is the store's.
+            guard w.ephemeral.contains(r) else { return apply(.focusWindowRef(r), to: w) }
+            w.focus.window = r
+            return (w, [.unhide(r), .focus(r)])
+
         case .rescueWindows:
             // Geometry only: the store sweeps `observed` against the displays. Relayout so the
             // sweep runs inside the ordinary reconcile.

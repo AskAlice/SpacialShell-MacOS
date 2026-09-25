@@ -18,8 +18,11 @@ import SpacialShellProtocol
 final class RailHoverController {
     private let window = PanelWindow()
     private let host: NSHostingView<RailHoverCard>
-    /// The workspace the card is currently about; nil when hidden.
+    /// The workspace the card is currently about — or `trayID` for the tray list; nil when hidden.
     private var shown: UUID?
+    /// The tray (#73) is not a workspace, but it shares the card, its placement and its hide grace,
+    /// so it takes a fixed id in the same slot.
+    static let trayID = UUID()
     private var captureTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
     private var pointerInCard = false
@@ -75,6 +78,34 @@ final class RailHoverController {
         }
     }
 
+    /// The rail tray (#73): the windows no tab brings back, as rows of icon + title. Rows show the
+    /// app's name at once and swap in the window title when AX answers, like a preview landing.
+    func showTray(_ refs: [SpacialShellProtocol.WindowRef], tile: CGRect, railSide: RailSide, bounds: CGRect,
+                  metaFor: (Int32) -> AppMeta) {
+        hideTask?.cancel(); hideTask = nil
+        guard shown != Self.trayID else { return }
+        captureTask?.cancel()
+        shown = Self.trayID
+
+        let items = refs.map { ref in
+            let meta = metaFor(ref.pid)
+            return WindowPreviewItem(ref: ref, name: meta.name, icon: meta.icon, image: nil)
+        }
+        let title = "Hidden windows and popups"
+        let subtitle = refs.count == 1 ? "1 window · click to bring it back" : "\(refs.count) windows · click one to bring it back"
+        render(title: title, subtitle: subtitle, content: .windows(items))
+        place(near: tile, railSide: railSide, bounds: bounds)
+        window.orderFrontRegardless()
+
+        let shownRefs = Array(refs.prefix(RailHoverCard.maxRows))
+        captureTask = Task { [weak self] in
+            let titles = await WindowTitles.titles(for: shownRefs)
+            guard !Task.isCancelled, !titles.isEmpty, let self, self.shown == Self.trayID else { return }
+            let named = items.map { WindowPreviewItem(ref: $0.ref, name: titles[$0.ref.id] ?? $0.name, icon: $0.icon, image: nil) }
+            self.render(title: title, subtitle: subtitle, content: .windows(named))
+        }
+    }
+
     /// The pointer left `item`. Hides after a grace period, unless it has landed on the card
     /// itself — without which the "Open Screen Recording settings…" button could never be
     /// reached. A late exit for a tile the card has already moved on from is ignored.
@@ -106,8 +137,11 @@ final class RailHoverController {
     /// A preview was clicked: the same command as clicking its tab, which activates the window's
     /// workspace and focuses it there. The card goes with the click — it describes a workspace
     /// the user has just left or entered, and would otherwise outlive the switch.
+    ///
+    /// A tray row sends `.recoverWindow` instead (#73): it also un-minimizes a popup and brings one
+    /// back from off every display, and like the tab click it never re-files the window.
     func select(_ ref: SpacialShellProtocol.WindowRef) {
-        send(.focusWindowRef(ref))
+        send(shown == Self.trayID ? .recoverWindow(ref) : .focusWindowRef(ref))
         hideNow()
     }
 

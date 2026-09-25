@@ -126,6 +126,7 @@ deliberately). Binding assignments from the spec:
 |---|---|
 | Search / launcher | `magnifyingglass` |
 | Add / trailing empty workspace | `plus` |
+| Rail tray (hidden windows + popups, #73) | `tray.full` |
 | App menu | `square.stack.3d.up` |
 | Layouts | `rectangle` · `rectangle.split.2x1` · `rectangle.split.3x1` · `sidebar.left` (half) · `square.grid.2x2` (grid) |
 | Workspace tile | the workspace's `symbol` (config seed / `WorkspaceRailItem.symbol`); first app's icon when symbol is the default and the workspace has windows |

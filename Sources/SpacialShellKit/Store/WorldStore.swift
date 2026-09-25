@@ -158,7 +158,10 @@ public actor WorldStore {
             }
         }
         await reconcile()
-        if case .rescueWindows = command { await rescueBeyondReach(reason: "command") }
+        switch command {
+        case .rescueWindows, .recoverWindow: await rescueBeyondReach(reason: "command")   // #73: the tray's "off every display"
+        default: break
+        }
     }
 
     public func apply(_ event: BackendEvent) async {

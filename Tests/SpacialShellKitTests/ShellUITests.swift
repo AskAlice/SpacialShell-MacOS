@@ -205,3 +205,73 @@ import Foundation
         #expect(!loaded.zen)
     }
 }
+
+/// #73: the rail tray — which windows it lists, in what order, and that bringing one back from it
+/// never re-files anything.
+@Suite struct RailTrayTests {
+    let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1), c = WindowRef(id: 3, pid: 2)
+    let d = WindowRef(id: 4, pid: 2), p = WindowRef(id: 5, pid: 3), q = WindowRef(id: 6, pid: 4)
+    let x = WindowRef(id: 7, pid: 5)
+
+    /// D1 ws0 [a, b(float)] · D1 ws1 [c] · D2 [d]; popups p (owned by d) and q (no owner); x ignored.
+    func world() -> World {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1"); w.adopt(b, kind: .float, on: "D1")
+        w.adopt(d, kind: .tile, on: "D2")
+        w.adopt(q, kind: .ephemeral, on: "D1"); w.adopt(p, kind: .ephemeral, on: "D1")
+        w.parents[p] = d
+        w.adopt(x, kind: .ignore, on: "D1")
+        w.adopt(c, kind: .tile, on: "D1", workspace: w.screens["D1"]!.workspaces[1].id)
+        return w
+    }
+
+    @Test func listsHiddenThenPopupsEachInRailOrder() {
+        var w = world()
+        w.setHidden(d, true); w.setHidden(c, true); w.setHidden(b, true)
+        // Hidden in rail order (D1 ws0, D1 ws1, D2), then popups: p by its owner d, q last.
+        #expect(ShellUI.tray(in: w) == [b, c, d, p, q])
+        // The same list on every display.
+        #expect(ShellUI.state(for: "D1", in: w)!.tray == [b, c, d, p, q])
+        #expect(ShellUI.state(for: "D2", in: w)!.tray == [b, c, d, p, q])
+    }
+
+    @Test func emptyWhenNothingIsOutOfReach() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1"); w.adopt(x, kind: .ignore, on: "D1")
+        #expect(ShellUI.tray(in: w).isEmpty)                    // visible and ignored are both out
+    }
+
+    /// Recovering changes focus (and, for a hidden window, which workspace is showing) and nothing
+    /// else: every window keeps its workspace, row position and floating state, a popup stays a popup.
+    @Test func recoveryNeverRefiles() {
+        var w = world()
+        w.setHidden(b, true); w.setHidden(c, true)
+        let everyone = [a, b, c, d, p, q, x]
+        func rows(_ w: World) -> [[WindowRef]] { w.screenOrder.flatMap { w.screens[$0]!.workspaces.map(\.windows) } }
+        func pins(_ w: World) -> [Set<WindowRef>] { w.screenOrder.flatMap { w.screens[$0]!.workspaces.map(\.floating) } }
+        for r in [b, c, d, p, q] {
+            let (out, effects) = CommandRunner.apply(.recoverWindow(r), to: w)
+            #expect(out.invariantViolations().isEmpty)
+            for s in everyone {
+                #expect(out.location(of: s)?.screen == w.location(of: s)?.screen
+                        && out.location(of: s)?.index == w.location(of: s)?.index, "\(s) moved recovering \(r)")
+            }
+            #expect(out.ephemeral == w.ephemeral && out.ignored == w.ignored)
+            #expect(rows(out) == rows(w) && pins(out) == pins(w))
+            #expect(out.focus.window == r && effects.contains(.focus(r)))
+            w = out
+        }
+    }
+
+    /// A hidden window comes back exactly as its tab click would bring it; a popup, which the
+    /// model never marks hidden, is still asked to unhide — nothing else would un-minimize it.
+    @Test func recoveryUnhides() {
+        var w = world()
+        w.setHidden(c, true)
+        let (out, effects) = CommandRunner.apply(.recoverWindow(c), to: w)
+        #expect(out == CommandRunner.apply(.focusWindowRef(c), to: w).0)
+        #expect(!out.hidden.contains(c) && effects.contains(.unhide(c)))
+        #expect(CommandRunner.apply(.recoverWindow(p), to: w).1 == [.unhide(p), .focus(p)])
+        #expect(CommandRunner.apply(.recoverWindow(x), to: w).1.isEmpty)   // not the tray's to offer
+    }
+}
