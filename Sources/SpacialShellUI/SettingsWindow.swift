@@ -36,6 +36,13 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         if window != nil { rebuild() }
     }
 
+    /// Another editor of `settings.json` (the layouts popover and editor, #10) changed it.
+    public func update(overrides: SettingsOverrides) {
+        guard overrides != self.overrides else { return }
+        self.overrides = overrides
+        if window != nil { rebuild() }
+    }
+
     public func toggle() {
         if let w = window, w.isVisible { w.close() } else { show() }
     }

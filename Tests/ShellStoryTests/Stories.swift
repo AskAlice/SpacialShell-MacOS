@@ -25,6 +25,36 @@ struct Story {
     var truncates: Bool = false
 }
 
+/// An `NSMenu` drawn as the system draws it — section headers, separators, a check on the current
+/// item, template glyphs — from the menu's own items, so the story shows what `LayoutMenu` built.
+struct MenuPreview: View {
+    let menu: NSMenu
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(menu.items.enumerated()), id: \.offset) { _, item in
+                if item.isSeparatorItem {
+                    Divider().padding(.vertical, 5).padding(.horizontal, 6)
+                } else if item.isSectionHeader {
+                    Text(item.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 2)
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .semibold))
+                            .opacity(item.state == .on ? 1 : 0).frame(width: 12)
+                        if let image = item.image { Image(nsImage: image).renderingMode(.template).frame(width: 18) }
+                        else { Color.clear.frame(width: 18, height: 1) }
+                        Text(item.title).font(.system(size: 13))
+                    }
+                    .padding(.horizontal, 8).frame(height: 22)
+                }
+            }
+        }
+        .padding(5)
+        .frame(width: 240, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(.regularMaterial))
+    }
+}
+
 @MainActor
 enum Stories {
     // MARK: fixtures
@@ -81,10 +111,35 @@ enum Stories {
                           windows: pids.map { WindowRef(id: WindowID($0) * 10, pid: $0) },
                           isActive: active, isPinned: pinned, isTrailingEmpty: trailing)
     }
-    static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.LayoutID = .split) -> ScreenShellState {
+    static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.LayoutID = .split,
+                     layouts: LayoutCatalogue = .builtins) -> ScreenShellState {
         ScreenShellState(display: "D1", isFocusedScreen: true,
                          rail: [railItem(0, name: "Web", symbol: "globe", count: items.count, active: true)],
-                         tabs: items, layout: layout)
+                         tabs: items, layout: layout, layouts: layouts)
+    }
+
+    /// #10: the approved mockup's catalogue — one layout from config.toml, two drawn in the editor.
+    static func customLayouts(bar extra: [SpacialShellProtocol.LayoutID] = []) -> LayoutCatalogue {
+        func drawn(_ id: SpacialShellProtocol.LayoutID, _ name: String, _ z: [(Double, Double, Double, Double)]) -> LayoutDef {
+            LayoutDef(id: id, name: name, body: .zones(z.map { LayoutZone(x: $0.0, y: $0.1, w: $0.2, h: $0.3) }))
+        }
+        var c = Config()
+        c.layouts = [drawn("wide-4", "Ultrawide four", [(0, 0, 0.25, 1), (0.25, 0, 0.5, 1), (0.75, 0, 0.25, 0.5), (0.75, 0.5, 0.25, 0.5)]),
+                     drawn("code-3", "Code, three", [(0, 0, 0.625, 1), (0.625, 0, 0.375, 0.5), (0.625, 0.5, 0.375, 0.5)]),
+                     drawn("focus-c", "Focus centre", [(0, 0, 0.25, 1), (0.25, 0, 0.5, 1), (0.75, 0, 0.25, 1)])]
+        c.fileLayoutIDs = ["wide-4"]
+        c.layoutBar += extra
+        return LayoutCatalogue(config: c)
+    }
+
+    /// The code-3 of the walkthrough's step 6: a 2×2, the left column merged, the splitter at 60 %.
+    static var codeThree: GridEditor {
+        var e = GridEditor(preset: .grid2x2)
+        e.merge(0, 2)
+        if let v = e.splitters.first(where: { $0.axis == .vertical }) { e.move(v, to: 0.6) }
+        e.setName("Code, three")
+        e.setID("code-3")
+        return e
     }
     /// `window` distinguishes several windows of one app — tabs are keyed by their ref.
     static func tab(_ pid: Int32, window: Int = 0, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
@@ -253,6 +308,30 @@ enum Stories {
             state: row(20, focus: 1), metaFor: meta, sizing: .fit, send: send))
         add("bar-twenty-tabs-focus-last", narrowBar, WorkspacePanelView(
             state: row(20, focus: 20), metaFor: meta, sizing: .fit, send: send))
+
+        // Layouts (#10). The bar: the set, plus the active layout from outside it, then ⋯ and the cog.
+        add("bar-layouts-custom", barGeometry, WorkspacePanelView(
+            state: tabs([tab(1, focused: true), tab(3)], layout: "focus-c", layouts: customLayouts(bar: ["code-3"])),
+            metaFor: meta, sizing: .fit, send: send))
+        // Design §8: the workspace holds a deleted layout; the fallback is highlighted and badged.
+        add("bar-layout-missing", barGeometry, WorkspacePanelView(
+            state: tabs([tab(1, focused: true)], layout: "code-3"), metaFor: meta, sizing: .fit, send: send))
+        // The cog's popover: every layout by name, the current one checked, Show-on-bar switches.
+        add("layout-popover", nil, LayoutPopoverView(
+            state: tabs([tab(1, focused: true)], layout: .maximize, layouts: customLayouts()), send: send))
+        // The ⋯ menu — the real NSMenu the bar pops up, drawn item by item (a menu cannot be
+        // snapshotted closed, and an open one is a separate process's window).
+        add("layout-menu", nil, MenuPreview(menu: LayoutMenu.make(
+            tabs([tab(1, focused: true)], layout: "code-3", layouts: customLayouts(bar: ["code-3"])),
+            send: send, editLayouts: {})))
+        // The editor, at the walkthrough's step 6; an existing drawn layout (Delete); a built-in
+        // (read-only, Duplicate to edit).
+        add("layout-editor", LayoutEditorView.size, LayoutEditorView(mode: .edit(codeThree)))
+        add("layout-editor-existing", LayoutEditorView.size, LayoutEditorView(
+            mode: .edit(GridEditor(editing: customLayouts()["code-3"]!)!),
+            removal: .delete(warning: GridEditor.deleteWarning(usage: 3, fallback: .maximize)), taken: ["code-3"]))
+        add("layout-editor-builtin", LayoutEditorView.size, LayoutEditorView(
+            mode: .readOnly(LayoutDef.builtins[1], canDuplicate: true)))
 
         // Overview
         let windows = [

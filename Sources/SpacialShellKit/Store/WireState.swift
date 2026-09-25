@@ -1,5 +1,10 @@
 import Foundation
 
+public struct SetLayoutRefusal: Error, Equatable, Sendable {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+}
+
 /// `spacialctl state` payload — workspaces, and since v2 the windows in them.
 /// ponytail: superseded by ShellSnapshot (M2 Task 8), which adds titles/appNames/chrome.
 public struct WireState: Codable, Equatable, Sendable {
@@ -74,6 +79,27 @@ public struct WireState: Codable, Equatable, Sendable {
                                  })
                 })
         }
+    }
+
+    /// #10, design §6: IPC `set-layout {layout, workspace?}` as the command it sends, or the error
+    /// the caller gets back (`spacialctl` exits 1). An id the catalogue does not know is refused —
+    /// the opposite of decoding on purpose: a live caller can be corrected, a file on disk is kept.
+    /// No workspace means the active one on the focused display.
+    public func setLayout(_ layout: String?, workspace: String?) -> Result<Command, SetLayoutRefusal> {
+        guard let layout, !layout.isEmpty else { return .failure(SetLayoutRefusal("set-layout needs a layout id")) }
+        guard layouts.contains(where: { $0.id == layout }) else {
+            return .failure(SetLayoutRefusal("unknown layout \"\(layout)\" (known: \(layouts.map(\.id).joined(separator: ", ")))"))
+        }
+        let all = screens.flatMap(\.workspaces)
+        let target: UUID?
+        if let workspace {
+            target = UUID(uuidString: workspace).flatMap { id in all.contains { $0.id == id } ? id : nil }
+            guard target != nil else { return .failure(SetLayoutRefusal("unknown workspace \"\(workspace)\"")) }
+        } else {
+            target = screens.first(where: \.isFocused)?.workspaces.first(where: \.isActive)?.id
+        }
+        guard let target else { return .failure(SetLayoutRefusal("no active workspace")) }
+        return .success(.setWorkspaceLayout(target, LayoutID(rawValue: layout)))
     }
 
     /// A pre-#9 payload has no `layouts`; it still decodes.

@@ -29,12 +29,15 @@ public final class ShellController: NSObject {
     /// One card for the whole shell, not one per display: only one pointer exists.
     private let hover: RailHoverController
     private let emptySheet = EmptyCheatSheetController()
+    /// #10: the cog's layout popover — one for the shell, open on at most one display.
+    private let layoutPopover: LayoutPopoverController
 
     public init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.config = config
         self.appMeta = appMeta
         self.send = send
         hover = RailHoverController(send: send)
+        layoutPopover = LayoutPopoverController(send: send)
         super.init()
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
@@ -65,10 +68,11 @@ public final class ShellController: NSObject {
         let visible = config.showPanels && !world.zen
         let railWidth = CGFloat(config.panelWidth), barHeight = CGFloat(config.panelHeight)
         var seen: Set<DisplayID> = []
+        let layouts = LayoutCatalogue(config: config)
 
         for nsScreen in NSScreen.screens {
             let id = DisplayTopology.uuid(for: nsScreen)
-            guard let state = ShellUI.state(for: id, in: world, layouts: LayoutCatalogue(config: config)) else { continue }
+            guard let state = ShellUI.state(for: id, in: world, layouts: layouts) else { continue }
             seen.insert(id)
             let p = panels[id] ?? makePanels(for: id)
             panels[id] = p
@@ -94,7 +98,12 @@ public final class ShellController: NSObject {
                                                                              display: id, screen: nsScreen)
                                                   })
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
-                                                   chrome: PanelChrome(config: config), send: forward)
+                                                   chrome: PanelChrome(config: config), send: forward,
+                                                   openLayouts: { [weak self] in
+                                                       guard let self, let bar = self.panels[id]?.bar else { return }
+                                                       self.layoutPopover.toggle(state, bar: bar)
+                                                   })
+            layoutPopover.update(state)
 
             // #72: never order the panels onto a display showing a fullscreen Space.
             if visible && !world.showsFullscreenSpace(id) {
@@ -104,6 +113,7 @@ public final class ShellController: NSObject {
                 p.rail.orderOut(nil)
                 p.bar.orderOut(nil)
                 hover.hideNow()   // Zen or fullscreen hides the rail; a card about it must not outlive it
+                if layoutPopover.display == id { layoutPopover.hide() }
             }
         }
 
@@ -111,6 +121,7 @@ public final class ShellController: NSObject {
             p.rail.orderOut(nil); p.bar.orderOut(nil)
             p.rail.close(); p.bar.close()
             panels[id] = nil
+            if layoutPopover.display == id { layoutPopover.hide() }
             hover.hideNow()
         }
         emptySheet.update(world: world, config: config)

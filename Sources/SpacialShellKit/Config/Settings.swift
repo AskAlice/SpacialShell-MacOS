@@ -55,6 +55,40 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     }
 }
 
+/// #10: the edits the layout popover and editor make. They only ever touch `settings.json`'s side;
+/// `config.toml` is the user's (design §3.1).
+extension SettingsOverrides {
+    /// Save: replace the entry with this id in place, so the menu order holds, or append it.
+    public mutating func saveLayout(_ def: LayoutDef) {
+        var list = layouts ?? []
+        if let i = list.firstIndex(where: { $0.id == def.id }) { list[i] = def } else { list.append(def) }
+        layouts = list
+    }
+
+    /// Delete (a drawn layout) and Reset (a file layout the editor changed) are the same edit: the
+    /// settings.json entry goes, and the file's, if there is one, shows through again. Workspaces
+    /// keep the id (design §8), and so does a `defaultLayout` naming it — the badge says so.
+    public mutating func removeLayout(_ id: LayoutID) {
+        layouts = layouts?.filter { $0.id != id }
+        if layouts?.isEmpty == true { layouts = nil }
+    }
+
+    /// A popover toggle. Writes the whole bar (it replaces the file's wholesale, like
+    /// `categoryOrder`), starting from what is on the bar now. Returns false when the bar is
+    /// already full and `id` would not fit.
+    @discardableResult
+    public mutating func setLayout(_ id: LayoutID, onBar: Bool, current: [LayoutID]) -> Bool {
+        guard onBar != current.contains(id) else { return true }
+        var bar = current.filter { $0 != id }
+        if onBar {
+            guard bar.count < LayoutCatalogue.maxBar else { return false }
+            bar.append(id)
+        }
+        layoutBar = bar
+        return true
+    }
+}
+
 public enum Settings {
     /// What the shell actually uses: the file, with anything the settings window has set on top.
     public static func effective(config: Config, overrides: SettingsOverrides) -> Config {

@@ -63,7 +63,12 @@ Config → views is the entire pipeline.
 | File | Role |
 |---|---|
 | `ScreenPanelView.swift` | Workspace rail (search glyph, tiles, trailing "+") |
-| `WorkspacePanelView.swift` | Tab bar + layout switcher |
+| `WorkspacePanelView.swift` | Tab bar + layout switcher (bar set, active-outside, `⋯`, cog) |
+| `LayoutGlyph.swift` | A layout's glyph: its SF Symbol, or its zones outlined at 16 × 12 pt (#10) |
+| `LayoutMenu.swift` | The switcher's `⋯` `NSMenu`: every layout, sectioned built-in / config.toml / drawn |
+| `LayoutPopover.swift` | The tab-bar cog's popover (a non-activating panel) + its controller |
+| `LayoutEditorView.swift` | The layout editor: presets, grid canvas, name/id, Copy as TOML (model: Kit `GridEditor`) |
+| `LayoutsController.swift` | The editor window and the popover's `settings.json` edits |
 | `OverviewView.swift` | Launcher overlay (search, windows + apps grid) |
 | `CheatSheetOverlay.swift` | Fn-hold keybinding sheet (view + controller) |
 | `PanelWindow.swift` | The non-activating `NSPanel` all chrome lives in |
@@ -128,7 +133,9 @@ deliberately). Binding assignments from the spec:
 | Add / trailing empty workspace | `plus` |
 | Rail tray (hidden windows + popups, #73) | `tray.full` |
 | App menu | `square.stack.3d.up` |
-| Layouts | `rectangle` · `rectangle.split.2x1` · `rectangle.split.3x1` · `sidebar.left` (half) · `square.grid.2x2` (grid) |
+| Layouts | `rectangle` · `rectangle.split.2x1` · `rectangle.split.3x1` · `sidebar.left` (half) · `square.grid.2x2` (grid); a drawn layout without a `symbol` draws its zones (`LayoutGlyph`) |
+| All layouts menu · layout popover | `ellipsis` · `gearshape` (the rail's `gearshape` is settings) |
+| Missing layout badge | `exclamationmark.triangle.fill`, multicolor |
 | Workspace tile | the workspace's `symbol` (config seed / `WorkspaceRailItem.symbol`); first app's icon when symbol is the default and the workspace has windows |
 | Floating pin | `pin.fill` · close `xmark` |
 | Native-fullscreen tab | `arrow.up.left.and.arrow.down.right` |

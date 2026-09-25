@@ -21,7 +21,12 @@ public struct LayoutZone: Codable, Hashable, Sendable {
     var clamped: LayoutZone? {
         guard [x, y, w, h].allSatisfy(\.isFinite) else { return nil }
         let cx = min(max(x, 0), 1), cy = min(max(y, 0), 1)
-        let z = LayoutZone(x: cx, y: cy, w: min(x + w, 1) - cx, h: min(y + h, 1) - cy)
+        // In range, the numbers pass through untouched: recomputing `(x + w) − x` is not `w` in
+        // floating point (2/3 + 1/3 − 2/3 is 0.33333333333333337), and a saved layout must decode
+        // to exactly what was saved (#10's Copy as TOML and settings.json round-trips).
+        let cw = x >= 0 && x + w <= 1 ? w : min(x + w, 1) - cx
+        let ch = y >= 0 && y + h <= 1 ? h : min(y + h, 1) - cy
+        let z = LayoutZone(x: cx, y: cy, w: cw, h: ch)
         return z.w > 1e-6 && z.h > 1e-6 ? z : nil
     }
 }
@@ -81,6 +86,16 @@ public struct LayoutDef: Codable, Hashable, Sendable, Identifiable {
         }
     }
 
+    /// The `[[layout]]` block of design §3.3: what the editor's Copy as TOML puts on the pasteboard
+    /// and what `Config.render` writes. Nil for a built-in, which no file ever defines.
+    public var toml: String? {
+        guard case .zones(let zones) = body else { return nil }
+        let q = Config.quote
+        var o = "[[layout]]\nid = \(q(id.rawValue))\nname = \(q(name))\n"
+        if let s = symbol { o += "symbol = \(q(s))\n" }
+        return o + "zones = [\n" + zones.map { "  { x = \($0.x), y = \($0.y), w = \($0.w), h = \($0.h) },\n" }.joined() + "]\n"
+    }
+
     /// `settings.json` over `config.toml`, per id, the GUI winning (design §3.1) — the rule
     /// `keybindingOverrides` already follows. File order first, then layouts only the GUI has.
     public static func merge(file: [LayoutDef], gui: [LayoutDef]) -> [LayoutDef] {
@@ -119,8 +134,11 @@ public struct LayoutCatalogue: Sendable, Equatable {
     public let bar: [LayoutID]
     /// `default-layout`: the second link of the resolve chain.
     public let fallback: LayoutID
+    /// #10: which user layouts `config.toml` defines; the rest were drawn in the editor.
+    public let fileIDs: Set<LayoutID>
 
     public init(config: Config) {
+        fileIDs = config.fileLayoutIDs
         let builtinIDs = Set(LayoutDef.builtins.map(\.id))
         var user: [LayoutDef] = []
         for def in config.layouts {
@@ -147,6 +165,12 @@ public struct LayoutCatalogue: Sendable, Equatable {
         return (self[fallback] ?? LayoutDef.builtins[0], false)
     }
 
+    /// #10: what a workspace holding `id` will draw once `id` is deleted — the resolve chain's next
+    /// link, `default-layout`, unless that is `id` itself or missing too. The delete sheet names it.
+    public func fallback(afterDeleting id: LayoutID) -> LayoutID {
+        fallback != id && self[fallback] != nil ? fallback : LayoutDef.builtins[0].id
+    }
+
     /// `cycleLayout`: the next id round the bar; from outside the bar, its start.
     public func next(after id: LayoutID) -> LayoutID {
         guard let first = bar.first else { return id }
@@ -158,5 +182,12 @@ public struct LayoutCatalogue: Sendable, Equatable {
     public func warning(for id: LayoutID) -> String? {
         let (def, ok) = resolve(id)
         return ok ? nil : "layout \"\(id.rawValue)\" is missing — using \(def.id.rawValue)"
+    }
+}
+
+extension World {
+    /// #10: how many workspaces hold `id` — what the delete sheet counts (design §8.6).
+    public func workspaces(using id: LayoutID) -> Int {
+        screens.values.reduce(0) { $0 + $1.workspaces.filter { $0.layout == id }.count }
     }
 }

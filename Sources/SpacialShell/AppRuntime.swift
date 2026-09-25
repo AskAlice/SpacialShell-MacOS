@@ -40,6 +40,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var shell: ShellController?
     private var overview: OverviewController?
     private var settingsWindow: SettingsWindowController?
+    private var layouts: LayoutsController?
     private var cheatSheet: CheatSheetController?
     private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
@@ -91,6 +92,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 self?.scheduleSave(world)
                 self?.shell?.update(world: world)
                 self?.overview?.update(world: world)
+                self?.layouts?.update(world: world)
             }
         }
         self.store = store
@@ -125,6 +127,16 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             })
         self.settingsWindow = settings
 
+        // #10: the layout popover's settings edits and the editor window. Same door as the settings
+        // window: `onChange` persists, re-layers and pushes.
+        let layouts = LayoutsController(
+            config: config, overrides: overrides,
+            send: { command in Task { await store.run(command) } },
+            onChange: { [weak self] new in
+                Task { @MainActor in self?.applyOverrides(new) }
+            })
+        self.layouts = layouts
+
         // One dispatch path for every command source — hotkey tap, panel clicks, and whatever
         // comes next. App-layer surfaces route to their controllers; everything else is a model
         // command for the store. Without this, a panel's `.toggleOverview` (the search glyph's
@@ -135,6 +147,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { @MainActor in overview.toggle() }
             case .openSettings:
                 Task { @MainActor in settings.toggle() }
+            case .editLayout, .setDefaultLayout, .showLayoutOnBar:
+                Task { @MainActor in layouts.handle(command) }
             default:
                 Task { await store.run(command) }
             }
@@ -159,6 +173,16 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             case "state":
                 let state = await store.wireState()
                 return .ok(id: request.id, data: (try? JSONValue(encoding: state)) ?? .null)
+            case "set-layout":
+                // #10, design §6: refuses an id the catalogue does not know (spacialctl exits 1).
+                switch await store.wireState().setLayout(request.args["layout"]?.stringValue,
+                                                         workspace: request.args["workspace"]?.stringValue) {
+                case .success(let command):
+                    await store.run(command)
+                    return .ok(id: request.id)
+                case .failure(let refusal):
+                    return .failure(id: request.id, refusal.message)
+                }
             default:
                 return .failure(id: request.id, "unknown cmd \(request.cmd)")
             }
@@ -253,6 +277,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private func applyOverrides(_ new: SettingsOverrides) {
         overrides = new
         saveOverrides()
+        // Both editors of `settings.json` hold a copy; the one that did not make this change must
+        // not write its stale copy back over it on its next edit.
+        settingsWindow?.update(overrides: new)
         applyEffectiveConfig()
     }
 
@@ -313,6 +340,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         tap?.update(table: KeyBindings.table(for: config))
         shell?.update(config: config)
         cheatSheet?.update(config: config)
+        layouts?.update(config: config, overrides: overrides)
         guard let store else { return }
         let config = config
         Task { await store.update(config: config) }   // reconcile picks up new insets; onChange re-renders the panels

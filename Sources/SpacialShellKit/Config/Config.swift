@@ -150,6 +150,10 @@ public struct Config: Codable, Equatable, Sendable {
     public var layouts: [LayoutDef] = []
     /// #9: what Fn+Space cycles and the switcher's bar shows (≤ 8; ids that resolve).
     public var layoutBar: [LayoutID] = Config.defaultLayoutBar
+    /// #10: the ids `config.toml` itself defines. Set when the file is decoded and never written;
+    /// `Settings.effective` keeps it, so the ⋯ menu can tell a file layout from a drawn one and
+    /// the editor offers Reset (a file layout) rather than Delete (a drawn one).
+    public var fileLayoutIDs: Set<LayoutID> = []
     public var ephemeral: [AppRule] = Config.defaultEphemeral
     public var float: [AppRule] = []
     public var ignore: [AppRule] = []
@@ -221,6 +225,7 @@ public struct Config: Codable, Equatable, Sendable {
         appCategories = try c.decodeIfPresent([String: AppCategory].self, forKey: .appCategories) ?? [:]
         workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
         layouts = try LayoutDef.lossy(c, .layouts) ?? []
+        fileLayoutIDs = Set(layouts.map(\.id))
         layoutBar = try c.decodeIfPresent([LayoutID].self, forKey: .layoutBar) ?? Config.defaultLayoutBar
         ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
         float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
@@ -236,9 +241,7 @@ public struct Config: Codable, Equatable, Sendable {
 
     /// ponytail: hand-written TOML (no encoder in deps). Round-trips values; drops comments.
     public func render() -> String {
-        func q(_ s: String) -> String {
-            "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
-        }
+        let q = Config.quote
         var o = """
         # written by SpacialShell settings; hand-edited comments are not preserved
         keybinding-preset = \(q(keybindingPreset.rawValue))
@@ -269,12 +272,7 @@ public struct Config: Codable, Equatable, Sendable {
         for w in workspaces {
             o += "\n[[workspace]]\nname = \(q(w.name))\nsymbol = \(q(w.symbol))\nlayout = \(q(w.layout.rawValue))\n"
         }
-        for l in layouts {
-            guard case .zones(let zones) = l.body else { continue }
-            o += "\n[[layout]]\nid = \(q(l.id.rawValue))\nname = \(q(l.name))\n"
-            if let s = l.symbol { o += "symbol = \(q(s))\n" }
-            o += "zones = [\n" + zones.map { "  { x = \($0.x), y = \($0.y), w = \($0.w), h = \($0.h) },\n" }.joined() + "]\n"
-        }
+        for l in layouts { if let t = l.toml { o += "\n" + t } }
         rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore); rules("tile", tile)
         if !keybindings.isEmpty {
             o += "\n[keybindings]\n"
@@ -286,6 +284,12 @@ public struct Config: Codable, Equatable, Sendable {
             o += "\n[telemetry]\nenabled = \(telemetry.enabled)\nendpoint = \(q(telemetry.endpoint))\nuser = \(q(telemetry.user))\n"
         }
         return o
+    }
+
+    /// A TOML basic string. Newlines too: a layout's name comes from a text field.
+    static func quote(_ s: String) -> String {
+        "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n") + "\""
     }
 
     public func save(to url: URL) throws {

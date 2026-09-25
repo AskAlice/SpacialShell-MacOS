@@ -24,7 +24,8 @@ public struct LayoutID: RawRepresentable, Codable, Hashable, Sendable, Expressib
     public let rawValue: String
     public init(rawValue: String) { self.rawValue = rawValue }
     public init(stringLiteral value: String) { rawValue = value }
-    /// #9 bridge for the switcher, which still iterates the enum; goes with the enum in #11.
+    /// #9 bridge from the enum (tests use it since #10 moved the switcher onto the catalogue);
+    /// goes with the enum in #11.
     public init(_ layout: Layout) { rawValue = layout.rawValue }
     public init(from d: Decoder) throws { rawValue = try d.singleValueContainer().decode(String.self) }
     public func encode(to e: Encoder) throws { var c = e.singleValueContainer(); try c.encode(rawValue) }
@@ -32,8 +33,8 @@ public struct LayoutID: RawRepresentable, Codable, Hashable, Sendable, Expressib
                       column: LayoutID = "column", half: LayoutID = "half", grid: LayoutID = "grid"
 }
 
-/// The five built-ins as a closed set. Since #9 only the switcher's `allCases` and Kit's
-/// `BuiltinLayout` use it; storage speaks `LayoutID`. Removed by #11.
+/// The five built-ins as a closed set. Since #10 only Kit's `BuiltinLayout` uses it; storage
+/// speaks `LayoutID` and the switcher the catalogue. Removed by #11.
 public enum Layout: String, Codable, CaseIterable, Sendable {
     case maximize, split, column, half, grid
     public var next: Layout {

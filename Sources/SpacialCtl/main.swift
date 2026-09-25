@@ -10,6 +10,8 @@ usage: spacialctl [--socket PATH] <subcommand>
   version              daemon version
   state                spatial model as JSON
   run <command-name>   run a bound command, e.g. `run focus-workspace-2`
+  set-layout <id> [--workspace <uuid>]
+                       set a workspace's layout (default: the focused one); unknown ids exit 1
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -21,6 +23,9 @@ switch args.first {
 case "version": request = IPCRequest(id: 1, cmd: "version")
 case "state": request = IPCRequest(id: 1, cmd: "state")
 case "run" where args.count == 2: request = IPCRequest(id: 1, cmd: "run", args: ["command": .string(args[1])])
+case "set-layout" where args.count == 2: request = IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1])])
+case "set-layout" where args.count == 4 && args[2] == "--workspace":
+    request = IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1]), "workspace": .string(args[3])])
 default:
     FileHandle.standardError.write(Data((usage + "\n").utf8))
     exit(2)

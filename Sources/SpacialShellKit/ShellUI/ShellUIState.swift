@@ -42,6 +42,18 @@ public struct WindowTabItem: Identifiable, Equatable, Sendable {
     }
 }
 
+/// #10: one layout as the popover and the ⋯ menu list it.
+public struct LayoutChoice: Identifiable, Equatable, Sendable {
+    /// Where it comes from: the ⋯ menu's sections, and whether the editor offers Duplicate
+    /// (built-in), Reset (config.toml) or Delete (drawn).
+    public enum Origin: Equatable, Sendable { case builtin, file, drawn }
+    public let def: LayoutDef
+    public let origin: Origin
+    public let onBar: Bool
+    public var id: LayoutID { def.id }
+    public init(def: LayoutDef, origin: Origin, onBar: Bool) { self.def = def; self.origin = origin; self.onBar = onBar }
+}
+
 public struct ScreenShellState: Equatable, Sendable {
     public let display: DisplayID
     public let isFocusedScreen: Bool
@@ -51,13 +63,46 @@ public struct ScreenShellState: Equatable, Sendable {
     /// Design §8: set when `layout` does not resolve (a deleted or mistyped layout) and the shell
     /// is drawing the fallback — "layout "code-3" is missing — using maximize". Nil otherwise.
     public let layoutWarning: String?
+    /// The layout actually drawn: `layout`, or its fallback when it does not resolve. The switcher
+    /// highlights this one, badged when `layoutWarning` is set.
+    public let shownLayout: LayoutID
+    /// #10: every layout, catalogue order — the popover's rows and the ⋯ menu's items.
+    public let layouts: [LayoutChoice]
+    /// The bar set, in order (design §7).
+    public let bar: [LayoutID]
+    /// `default-layout`, which "Set as default" writes.
+    public let defaultLayout: LayoutID
     /// The rail tray (#73): windows no tab brings back on its own, in `ShellUI.tray(in:)` order.
     /// The same list on every display — hidden windows and popups are the user's, not a screen's.
     public let tray: [WindowRef]
     public init(display: DisplayID, isFocusedScreen: Bool, rail: [WorkspaceRailItem],
-                tabs: [WindowTabItem], layout: LayoutID, layoutWarning: String? = nil, tray: [WindowRef] = []) {
+                tabs: [WindowTabItem], layout: LayoutID, layouts catalogue: LayoutCatalogue = .builtins,
+                tray: [WindowRef] = []) {
         self.display = display; self.isFocusedScreen = isFocusedScreen
-        self.rail = rail; self.tabs = tabs; self.layout = layout; self.layoutWarning = layoutWarning; self.tray = tray
+        self.rail = rail; self.tabs = tabs; self.layout = layout; self.tray = tray
+        layoutWarning = catalogue.warning(for: layout)
+        shownLayout = catalogue.resolve(layout).def.id
+        layouts = catalogue.all.map { d in
+            LayoutChoice(def: d, origin: d.isBuiltin ? .builtin : catalogue.fileIDs.contains(d.id) ? .file : .drawn,
+                         onBar: catalogue.bar.contains(d.id))
+        }
+        bar = catalogue.bar
+        defaultLayout = catalogue.fallback
+    }
+
+    /// Design §7: the bar set, then the layout on screen when it is not in the set, so the bar
+    /// always shows what is active.
+    public var switcher: [LayoutChoice] {
+        let byID = Dictionary(layouts.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return (bar + (bar.contains(shownLayout) ? [] : [shownLayout])).compactMap { byID[$0] }
+    }
+
+    /// The ⋯ menu: built-ins, then config.toml's, then drawn ones; empty sections left out.
+    public var menuSections: [(title: String, items: [LayoutChoice])] {
+        [("Built-in", LayoutChoice.Origin.builtin), ("From config.toml", .file), ("Drawn", .drawn)].compactMap { title, origin in
+            let items = layouts.filter { $0.origin == origin }
+            return items.isEmpty ? nil : (title, items)
+        }
     }
 
     /// A tab dropped on this bar's empty end (#32). The bar names its own destination: a window
@@ -107,8 +152,7 @@ public enum ShellUI {
         return ScreenShellState(
             display: display,
             isFocusedScreen: world.focus.screen == display,
-            rail: rail, tabs: tabs, layout: active.layout,
-            layoutWarning: layouts.warning(for: active.layout), tray: tray(in: world))
+            rail: rail, tabs: tabs, layout: active.layout, layouts: layouts, tray: tray(in: world))
     }
 
     /// #73: what the rail tray lists — every hidden (minimized or ⌘H) window, then every popup

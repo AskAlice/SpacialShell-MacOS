@@ -13,6 +13,9 @@ struct WorkspacePanelView: View {
     let sizing: TabSizing
     var chrome: PanelChrome = PanelChrome(color: "system", opacity: 1)
     let send: (Command) -> Void
+    /// #10: the cog, and the ⋯ menu's "Edit layouts…" — the layout popover, which the controller
+    /// owns because it is a window of its own.
+    var openLayouts: () -> Void = {}
 
     /// Where a dragged tab would land, while it is being dragged.
     private enum DropSlot: Equatable {
@@ -40,9 +43,22 @@ struct WorkspacePanelView: View {
         HStack(spacing: 3) {
             tabRow
             layoutSwitcher
-            // Right of the grid glyph and flush to the trailing edge: the layouts on the bar are
-            // the five built-in ones, and this is the way to everything else about them.
-            Button { send(.openSettings) } label: {
+            // ⋯: every layout, not just the bar set (design §7).
+            Button {
+                LayoutMenu.make(state, send: send, editLayouts: openLayouts)
+                    .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 12))
+                    .frame(width: 24, height: 22)
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("All layouts")
+            // Flush to the trailing edge: the layout popover (#10, absorbing #15) — every layout by
+            // name, the bar set, the default, and the editor. The rail's cog is the one for settings.
+            Button(action: openLayouts) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12))
                     .frame(width: 24, height: 22)
@@ -50,7 +66,7 @@ struct WorkspacePanelView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Layout settings")
+            .help("Layouts")
             .padding(.leading, 2)
         }
         .padding(.horizontal, 6)
@@ -181,35 +197,35 @@ struct WorkspacePanelView: View {
             .opacity(visible ? 1 : 0)
     }
 
+    /// Design §7: the bar set (≤ 8), then the layout on screen if it is not in the set. A workspace
+    /// whose layout is missing highlights the fallback it is drawing, badged, and says why.
     private var layoutSwitcher: some View {
         HStack(spacing: 2) {
-            ForEach(Layout.allCases, id: \.self) { l in
+            ForEach(state.switcher) { choice in
+                let shown = choice.id == state.shownLayout
                 Button {
-                    if let ws = state.rail.first(where: \.isActive) { send(.setWorkspaceLayout(ws.id, LayoutID(l))) }
+                    if let ws = state.rail.first(where: \.isActive) { send(.setWorkspaceLayout(ws.id, choice.id)) }
                 } label: {
-                    Image(systemName: Self.symbol(for: l))
-                        .font(.system(size: 12))
+                    LayoutGlyph(def: choice.def)
                         .frame(width: 24, height: 22)
                         .background(
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(LayoutID(l) == state.layout ? AnyShapeStyle(Color.accentColor.opacity(0.3))
-                                                        : AnyShapeStyle(Color.primary.opacity(0.001)))
+                                .fill(shown ? AnyShapeStyle(Color.accentColor.opacity(0.3))
+                                            : AnyShapeStyle(Color.primary.opacity(0.001)))
                         )
-                        .foregroundStyle(LayoutID(l) == state.layout ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(shown ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .overlay(alignment: .topTrailing) {
+                            if shown, state.layoutWarning != nil {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .symbolRenderingMode(.multicolor)
+                                    .font(.system(size: 9))
+                                    .offset(x: 2, y: -2)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
-                .help("\(l.rawValue) layout")
+                .help(shown ? state.layoutWarning ?? "\(choice.def.name) layout" : "\(choice.def.name) layout")
             }
-        }
-    }
-
-    static func symbol(for layout: SpacialShellProtocol.Layout) -> String {
-        switch layout {
-        case .maximize: "rectangle"
-        case .split: "rectangle.split.2x1"
-        case .column: "rectangle.split.3x1"
-        case .half: "rectangle.lefthalf.filled"
-        case .grid: "square.grid.2x2"
         }
     }
 }

@@ -49,6 +49,13 @@ public enum Command: Sendable, Hashable {
     /// things — an `unhide`, and `WorldStore`'s off-display rescue — and never re-files anything:
     /// workspace, row, floating state and `ephemeral` membership are all left as they were.
     case recoverWindow(WindowRef)
+
+    // #10: the layout popover and editor. App-layer, like `.openSettings`: `AppRuntime` routes them
+    // to the layouts controller, they edit `settings.json`, and the model ignores them.
+    /// New… (nil) or Edit… from the popover. `workspace` is the one a newly saved layout is applied to.
+    case editLayout(LayoutID?, workspace: UUID?)
+    case setDefaultLayout(LayoutID)
+    case showLayoutOnBar(LayoutID, Bool)
 }
 
 public enum Effect: Sendable, Equatable {
