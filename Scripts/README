@@ -4,8 +4,16 @@ SpacialShell dev scripts
 dev.sh      swift build (debug) + run .build/debug/SpacialShell in the foreground.
             Ctrl-C is a clean quit: SIGINT restores every managed window to the centre
             of its screen before exiting (spec §7.4).
-bundle.sh   swift build -c release + assemble build/SpacialShell.app, ad-hoc signed.
-package-dmg.sh  bundle.sh + UDZO DMG (Applications symlink). VERSION= overrides the name.
+bundle.sh   swift build -c release + assemble build/SpacialShell.app (Sparkle.framework embedded),
+            signed with the best identity available (below); hardened runtime unless ad-hoc.
+package-dmg.sh  bundle.sh + UDZO DMG (Applications symlink). VERSION= overrides the name and
+            the bundle version.
+notarize.sh package-dmg.sh + sign the DMG + notarytool submit + staple + spctl check (#16).
+            Credentials: NOTARY_PROFILE, or ASC_KEY_PATH/ASC_KEY_ID/ASC_ISSUER_ID. Without
+            them it stops before submitting and says so; --require-notarization makes that
+            an error. One-time credential setup: docs/release.md.
+sparkle-keys.sh  one-time: Sparkle EdDSA keypair into the login keychain, public key into
+            Info.plist, --upload-secret for the private key (#58, docs/release.md).
 e2e/        end-to-end scenarios against the real shell, on this Mac or in a Tart VM;
             see e2e/README.md (#38).
 

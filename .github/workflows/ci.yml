@@ -1,0 +1,46 @@
+name: CI
+
+# #58: build and the fast gate on every push and pull request. The AX and hotkey suites
+# (SpacialShellPlatformTests, PlatformIntegrationTests) need a live Accessibility grant a hosted
+# runner cannot give; they stay a Mac-with-grant job (`make test-all`).
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # macOS 26 arm64, the OS the story references are recorded on (#53).
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build
+        run: swift build
+
+      # The pre-commit hook's gate (`make test`), less the story snapshots, which get their own
+      # step below.
+      - name: Fast test gate (Kit + Protocol)
+        run: swift test --skip SpacialShellPlatformTests --skip PlatformIntegrationTests --skip ShellStoryTests
+
+      # References are per-machine artefacts (#53): an SDK bump on the runner image can move a
+      # glyph's anti-aliasing past the perceptual tolerance. Reported, not blocking, until they have
+      # proven stable on hosted runners — then drop continue-on-error.
+      - name: Story snapshots
+        continue-on-error: true
+        run: swift test --filter ShellStoryTests

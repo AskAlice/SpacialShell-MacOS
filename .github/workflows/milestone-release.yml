@@ -1,0 +1,38 @@
+name: Milestone release
+
+# #58: closing a milestone ships it. Tags the default branch with the next minor version
+# (latest vX.Y.Z → vX.(Y+1).0) and dispatches release.yml on that tag. A tag pushed with
+# GITHUB_TOKEN does not trigger other workflows, which is why the dispatch is explicit.
+
+on:
+  milestone:
+    types: [closed]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Tag and dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MILESTONE: ${{ github.event.milestone.title }}
+        run: |
+          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          LATEST=${LATEST:-v0.0.0}
+          MAJOR=$(echo "${LATEST#v}" | cut -d. -f1)
+          MINOR=$(echo "${LATEST#v}" | cut -d. -f2)
+          TAG="v$MAJOR.$((MINOR + 1)).0"
+          SHA=$(git rev-parse HEAD)
+          echo "Milestone \"$MILESTONE\" closed: tagging $SHA as $TAG (after $LATEST)"
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA"
+          gh workflow run release.yml --ref "$TAG"

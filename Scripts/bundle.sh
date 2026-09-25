@@ -9,6 +9,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/SpacialShell "$APP/Contents/MacOS/SpacialShell"
 cp .build/release/spacialctl "$APP/Contents/MacOS/spacialctl"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# Release version (package-dmg.sh passes it): Sparkle compares CFBundleVersion, so every release
+# must carry its own. Dev bundles keep the plist's.
+if [ -n "${SPACIAL_VERSION:-}" ]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SPACIAL_VERSION" \
+        -c "Set :CFBundleVersion $SPACIAL_VERSION" "$APP/Contents/Info.plist"
+fi
+# #58: Sparkle is a binary framework SwiftPM leaves next to the executable. An app looks for
+# frameworks in Contents/Frameworks, so copy it there and give the executable that rpath.
+mkdir -p "$APP/Contents/Frameworks"
+cp -R .build/release/Sparkle.framework "$APP/Contents/Frameworks/"
+install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/SpacialShell"
 # Signing identity. Ad-hoc signatures change on every rebuild, and macOS keys the Accessibility
 # grant to the *designated requirement* — which for ad-hoc is `cdhash H"..."`, i.e. the code hash.
 # So an ad-hoc rebuild silently revokes the grant, leaving a ticked checkbox and an app that never
@@ -69,6 +80,21 @@ fi
 TS="${SPACIAL_TIMESTAMP:-none}"
 if [ "$TS" = "none" ]; then TSFLAG="--timestamp=none"; else TSFLAG="--timestamp"; fi
 
-codesign --force --sign "$SIGN" $TSFLAG "$APP/Contents/MacOS/spacialctl"
-codesign --force --sign "$SIGN" $TSFLAG --identifier sh.emu.SpacialShell "$APP"
+# Hardened runtime (notarisation requires it) whenever there is a real identity. Not ad-hoc: library
+# validation wants the app and Sparkle.framework to share a team ID, and ad-hoc has none, so an
+# ad-hoc hardened app would refuse to load Sparkle and die at launch. No entitlements file:
+# Accessibility and Screen Recording are TCC grants, and nothing here needs a cs.* exception
+# (no JIT, no unsigned executable memory, no DYLD variables, no third-party plug-ins).
+if [ "$SIGN" = "-" ]; then RT=""; else RT="--options runtime"; fi
+
+# Inside out, as Sparkle documents: XPC services, helpers, then the framework. Sparkle arrives
+# signed by its own team; re-signing puts it under ours, which library validation requires.
+SPK="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+codesign --force --sign "$SIGN" $TSFLAG $RT "$SPK/XPCServices/Installer.xpc"
+codesign --force --sign "$SIGN" $TSFLAG $RT --preserve-metadata=entitlements "$SPK/XPCServices/Downloader.xpc"
+codesign --force --sign "$SIGN" $TSFLAG $RT "$SPK/Autoupdate"
+codesign --force --sign "$SIGN" $TSFLAG $RT "$SPK/Updater.app"
+codesign --force --sign "$SIGN" $TSFLAG $RT "$APP/Contents/Frameworks/Sparkle.framework"
+codesign --force --sign "$SIGN" $TSFLAG $RT "$APP/Contents/MacOS/spacialctl"
+codesign --force --sign "$SIGN" $TSFLAG $RT --identifier sh.emu.SpacialShell "$APP"
 echo "built $APP (signed: $SIGN)"

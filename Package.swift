@@ -16,6 +16,9 @@ let package = Package(
         // exporter, resource detection and the in-memory exporter the tests read spans from.
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", exact: "2.6.0"),
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift", exact: "2.5.2"),
+        // #58: auto-update. The app target only — Kit stays pure. Its binary tools (generate_keys,
+        // generate_appcast) land in .build/artifacts/sparkle/Sparkle/bin; see docs/release.md.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
         .target(name: "SpacialShellProtocol"),
@@ -37,6 +40,7 @@ let package = Package(
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetryProtocolExporterHTTP", package: "opentelemetry-swift"),
             .product(name: "ResourceExtension", package: "opentelemetry-swift"),
+            .product(name: "Sparkle", package: "Sparkle"),
         ]),
         .executableTarget(name: "SpacialCtl", dependencies: ["SpacialShellProtocol"]),
         // Fixtures: pre-#9 config/state/wire payloads and built-in frames, captured before #9 changed

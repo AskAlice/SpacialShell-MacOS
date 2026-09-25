@@ -7,6 +7,7 @@ import SpacialShellPlatform
 import SpacialShellUI
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import Sparkle
 import os
 
 /// Boot, live wiring, and the way out.
@@ -40,6 +41,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var shell: ShellController?
     private var overview: OverviewController?
     private var settingsWindow: SettingsWindowController?
+    private var updater: SPUStandardUpdaterController?
     private var layouts: LayoutsController?
     private var cheatSheet: CheatSheetController?
     private var ipc: IPCServer?
@@ -53,6 +55,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // Before the Accessibility wait: an update must still reach a copy that never got its grant.
+        updater = Updates.makeController()
         Task { await boot() }
     }
 
@@ -122,6 +126,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 }
                 NSWorkspace.shared.open(url)
             },
+            checkForUpdates: updater.map { updater in { updater.checkForUpdates(nil) } },
             onChange: { [weak self] new in
                 Task { @MainActor in self?.applyOverrides(new) }
             })

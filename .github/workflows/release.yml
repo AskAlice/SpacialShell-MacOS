@@ -1,5 +1,12 @@
 name: Release
 
+# A `v*` tag (pushed, or created by milestone-release.yml) builds the DMG and publishes a GitHub
+# Release. With the signing secrets it is Developer ID signed, notarised and stapled (#16), and with
+# SPARKLE_ED_PRIVATE_KEY it also carries the appcast auto-update reads (#58). Without them it falls
+# back to the ad-hoc DMG, with a warning. Secrets and the version scheme: docs/release.md.
+#
+# Dispatched on a branch rather than a tag, it builds and uploads the DMG as an artifact only.
+
 on:
   push:
     tags: ["v*"]
@@ -10,27 +17,107 @@ permissions:
 
 jobs:
   dmg:
-    runs-on: macos-15
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('0.1.0-{0}', github.run_number) }}
+      HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_P12 != '' && secrets.DEVELOPER_ID_P12_PASSWORD != '' }}
+      HAS_ASC_KEY: ${{ secrets.ASC_KEY_P8 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' }}
+      HAS_SPARKLE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .build
+          key: spm-release-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-release-${{ runner.os }}-
+
       - name: Unit tests
-        run: swift test -c release --skip SpacialShellPlatformTests --skip PlatformIntegrationTests
+        run: swift test -c release --skip SpacialShellPlatformTests --skip PlatformIntegrationTests --skip ShellStoryTests
 
-      - name: Package DMG
+      # A throwaway keychain holding only the Developer ID, deleted at the end of the job.
+      - name: Import the Developer ID certificate
+        if: env.HAS_DEVELOPER_ID == 'true'
         env:
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('0.1.0-{0}', github.run_number) }}
-        run: Scripts/package-dmg.sh
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KC="$RUNNER_TEMP/signing.keychain-db"
+          KCPW=$(uuidgen)
+          security create-keychain -p "$KCPW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPW" "$KC"
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/id.p12"
+          security import "$RUNNER_TEMP/id.p12" -k "$KC" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/id.p12"
+          # The issuing intermediate: without it codesign fails "unable to build chain" (Scripts/README).
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/g2.cer"
+          security import "$RUNNER_TEMP/g2.cer" -k "$KC" || true
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KC"
 
-      - uses: actions/upload-artifact@v4
+      - name: Write the App Store Connect key
+        if: env.HAS_DEVELOPER_ID == 'true' && env.HAS_ASC_KEY == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          printf '%s' "$ASC_KEY_P8" | base64 --decode > "$RUNNER_TEMP/asc.p8"
+          chmod 600 "$RUNNER_TEMP/asc.p8"
+
+      - name: Sign, notarise and staple
+        if: env.HAS_DEVELOPER_ID == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          if [ "$HAS_ASC_KEY" = "true" ]; then
+            ASC_KEY_PATH="$RUNNER_TEMP/asc.p8" Scripts/notarize.sh --require-notarization
+          else
+            echo "::warning::ASC_KEY_P8/ASC_KEY_ID/ASC_ISSUER_ID not set: the DMG is Developer ID signed but NOT notarised."
+            Scripts/notarize.sh
+          fi
+
+      - name: Ad-hoc DMG (no signing secrets)
+        if: env.HAS_DEVELOPER_ID != 'true'
+        run: |
+          echo "::warning::DEVELOPER_ID_P12 not set: building an ad-hoc signed, unnotarised DMG. See docs/release.md."
+          Scripts/package-dmg.sh
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: SpacialShell.dmg
           path: build/SpacialShell-*.dmg
 
+      # #58: the appcast Sparkle reads from releases/latest/download/appcast.xml. generate_appcast
+      # takes the EdDSA key on stdin (`--ed-key-file -`), so it never touches disk or the log.
+      - name: Sparkle appcast
+        if: github.ref_type == 'tag' && env.HAS_SPARKLE_KEY == 'true'
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          mkdir -p build/appcast
+          cp build/SpacialShell-*.dmg build/appcast/
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | .build/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
+            build/appcast
+          cp build/appcast/appcast.xml build/appcast.xml
+
       - name: GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" build/SpacialShell-*.dmg --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          [ "$HAS_SPARKLE_KEY" = "true" ] || echo "::warning::SPARKLE_ED_PRIVATE_KEY not set: no appcast, installed copies will not see this release."
+          gh release create "$GITHUB_REF_NAME" build/SpacialShell-*.dmg $(ls build/appcast.xml 2>/dev/null) \
+            --generate-notes --title "$GITHUB_REF_NAME"
+
+      - name: Delete the signing keychain
+        if: always() && env.HAS_DEVELOPER_ID == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/asc.p8"

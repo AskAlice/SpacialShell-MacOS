@@ -31,6 +31,9 @@ struct SettingsView: View {
     /// dotfile symlink points — see docs/config.md.
     let configPath: String
     let openConfigFile: () -> Void
+    /// #58: Sparkle's check, from the app target. `nil` when there is no updater (a loose dev build,
+    /// or no signing key yet), and the row is not shown.
+    let checkForUpdates: (() -> Void)?
 
     @State private var pane: Pane = .general
     /// The command currently listening for a chord, if any. One at a time: two recorders would
@@ -88,6 +91,15 @@ struct SettingsView: View {
                     .textSelection(.enabled).lineLimit(2).truncationMode(.middle)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Open config.toml…", action: openConfigFile)
+            }
+            if let checkForUpdates {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Updates").font(.system(size: 12, weight: .semibold))
+                    Text("SpacialShell checks for a new release once a day.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Button("Check for Updates…", action: checkForUpdates)
+                }
             }
         }
     }
