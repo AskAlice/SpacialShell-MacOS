@@ -14,7 +14,7 @@ Scenario format (`scenarios/*.scn`): one step per line, `#` comments, shell-styl
     focus W              bring W's workspace forward (focus-screen-next, focus-workspace-N)
     settle               wait until two consecutive `state` reads agree (animations done)
     wait SECONDS
-    fullscreen W on|off  native fullscreen via AX (System Events; needs Accessibility+Automation)
+    fullscreen W on|off  native fullscreen via AX (axfullscreen.swift; needs Accessibility)
     note focused as X    bind X to the focused window
     note frame W as F    bind F to W's current model frame
     shot NAME [TOL]      screencapture the main display; diff against the reference if one exists
@@ -164,13 +164,9 @@ class Run:
         raise Fail(f"state did not settle within {timeout}s")
 
     def step_fullscreen(self, name, onoff):
-        pid = self.win(name)["pid"]
-        val = "true" if onoff == "on" else "false"
-        # ponytail: acts on the instance's front window; one window per instance in fullscreen
-        # scenarios. Match by AX title if a scenario ever needs several.
-        sh("osascript", "-e",
-           f'tell application "System Events" to set value of attribute "AXFullScreen" of '
-           f'window 1 of (first process whose unix id is {pid}) to {val}')
+        # Straight AX (axfullscreen.swift), not System Events: needs Accessibility only, no
+        # Automation grant (which tccd will not take from a TCC.db row in the Tart guest).
+        sh(tool("axfullscreen"), str(self.win(name)["pid"]), onoff)
         time.sleep(1.5)   # the Space transition animation
 
     def step_note(self, what, *rest):
@@ -197,7 +193,7 @@ class Run:
         if not os.path.exists(ref):
             self.log(f"shot {name}: no {self.mode} reference yet (run with --record)")
             return
-        r = subprocess.run([imgdiff(), ref, png, os.path.join(self.out, f"{name}.diff.png"), tol],
+        r = subprocess.run([tool("imgdiff"), ref, png, os.path.join(self.out, f"{name}.diff.png"), tol],
                            capture_output=True, text=True)
         self.log(f"shot {name}: {r.stdout.strip()}")
         if r.returncode != 0:
@@ -348,10 +344,10 @@ class Run:
         self.transcript.close()
 
 
-def imgdiff():
-    """Compile imgdiff.swift once into .build/e2e (no dependencies beyond the SDK)."""
-    src = os.path.join(HERE, "imgdiff.swift")
-    exe = os.path.join(REPO, ".build", "e2e", "imgdiff")
+def tool(name):
+    """Compile Scripts/e2e/<name>.swift once into .build/e2e (no dependencies beyond the SDK)."""
+    src = os.path.join(HERE, f"{name}.swift")
+    exe = os.path.join(REPO, ".build", "e2e", name)
     if not os.path.exists(exe) or os.path.getmtime(exe) < os.path.getmtime(src):
         os.makedirs(os.path.dirname(exe), exist_ok=True)
         sh("swiftc", "-O", src, "-o", exe)

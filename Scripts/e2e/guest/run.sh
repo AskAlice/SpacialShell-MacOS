@@ -26,7 +26,7 @@ sudo cp -R build/SpacialShell.app "$APP"
 # 2. Grant Accessibility and Screen Recording to this build. An ad-hoc designated requirement is
 #    the cdhash, which changes every build, so the app's rows are rewritten each run with the
 #    build's own csreq (the golden image cannot bake them). The runner's own grants
-#    (tart-guest-agent, osascript) are baked in by golden.sh. Needs SIP off — golden.sh checks.
+#    (tart-guest-agent: Accessibility, Screen Recording) are baked in by golden.sh. Needs SIP off — golden.sh checks.
 REQ="$(codesign -d -r- "$APP" 2>&1 | sed -n 's/^#\{0,1\} *designated => //p')"
 echo "$REQ" | csreq -r- -b /tmp/spacial.csreq
 HEX="$(xxd -p /tmp/spacial.csreq | tr -d '\n')"
@@ -36,6 +36,23 @@ for svc in kTCCServiceAccessibility kTCCServiceScreenCapture; do
          VALUES ('$svc', 'sh.emu.SpacialShell', 0, 2, 4, 1, X'$HEX', 0);"
 done
 sudo killall tccd 2>/dev/null || true   # drop tccd's cache; launchd restarts it on demand
+
+# macOS 15+ also asks, on top of the TCC row, whether a client may "bypass the system private
+# window picker" (replayd), and asks again every month. For the app the dialog lands in every
+# screenshot; for tart-guest-agent (the runner's screencapture) it comes due a month after the
+# golden image was provisioned. So both are marked as alerted far in the future. replayd keys an
+# app by bundle id and a bare binary by its real path.
+AGENT="$(realpath /opt/homebrew/bin/tart-guest-agent)" python3 - <<'PY'
+import datetime, os, plistlib
+p = os.path.expanduser("~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist")
+d = plistlib.load(open(p, "rb")) if os.path.exists(p) else {}
+far = datetime.datetime(3000, 1, 1)
+for key in ("sh.emu.SpacialShell", os.environ["AGENT"]):
+    d[key] = {"kScreenCaptureApprovalLastAlerted": far, "kScreenCaptureApprovalLastUsed": far,
+              "kScreenCapturePrivacyHintDate": far}
+plistlib.dump(d, open(p, "wb"))
+PY
+killall replayd 2>/dev/null || true
 
 # 3. Launch into the logged-in GUI session (the golden image auto-logs-in `admin`) and wait for
 #    the control socket.

@@ -65,15 +65,24 @@ then runs `guest/provision.sh` inside it:
 - turns off sleep, the screen saver, window restoration and Dock visibility, and sets a
   plain desktop, so nothing interrupts a scenario or changes a screenshot
 - **bakes in the runner's TCC grants**: Accessibility and Screen Recording for
-  `tart-guest-agent` (every `tart exec` command's responsible process), plus Apple Events from the
-  agent and `osascript` to System Events for the `fullscreen` step. This follows the
-  Cirrus templates' `update-tcc-database.sh`, which already grants most of these.
+  `tart-guest-agent` (the per-user LaunchAgent, `--run-agent`, is every `tart exec` command's
+  responsible process). This follows the Cirrus templates' `update-tcc-database.sh`, which already
+  grants both. There is deliberately no Apple Events grant: tccd ignores a written
+  `kTCCServiceAppleEvents` row for the agent, prompts anyway, and rewrites the row as denied, so
+  anything that sends Apple Events from `tart exec` times out (-1712). The runner sends none.
 
 The **app's** grants (Accessibility and Screen Recording for `sh.emu.SpacialShell`) cannot be
 baked in. The guest has no signing certificate, so `bundle.sh` signs ad hoc, and an ad-hoc
 designated requirement is the cdhash, which changes on every build (see `Scripts/README`). So
 `guest/run.sh` writes both rows on every run, using the build's own `csreq`, and then restarts
 `tccd`.
+
+TCC rows are not the whole Screen Recording story on macOS 15+: replayd separately asks whether a
+client may "bypass the system private window picker", and asks again every month
+(`~/Library/Group Containers/group.com.apple.replayd/ScreenCaptureApprovals.plist`). For the app
+that dialog would sit in every screenshot, and for `tart-guest-agent` it comes due a month after
+the golden image was provisioned. `guest/run.sh` marks both (`sh.emu.SpacialShell` by bundle id,
+the agent by real path) as alerted in the year 3000 and restarts `replayd`.
 
 ## What a VM run does
 
@@ -100,8 +109,8 @@ and touches nothing of yours:
 - Screenshots are of the main display, so they contain whatever is on it. They stay in `.build/`
   (git-ignored). There are no host references unless you record some. Host screens differ too
   much between sessions for diffs to be useful, so visual regression is a VM-mode job.
-- The `fullscreen` step drives AX through System Events, so the terminal needs Accessibility and
-  Automation → System Events. `tabs.scn` does not need either.
+- The `fullscreen` step sets `AXFullScreen` directly (`axfullscreen.swift`, compiled once into
+  `.build/e2e/`), so the terminal needs Accessibility only. `tabs.scn` does not need it.
 
 ## Scenario format
 
@@ -133,7 +142,8 @@ check fails when more than the tolerance (default 1%) of pixels differ.
 
 - `fullscreen.scn` covers #38's acceptance: native fullscreen hides the panels on that display,
   the window keeps its tab, and it stays on screen across `focus-workspace-down`/`up` (Fn+S /
-  Fn+W), twice, then exits cleanly.
+  Fn+W), twice. The switch takes it out of fullscreen first (#49, m1 spec §"Native fullscreen"),
+  so it comes back windowed. Then it goes fullscreen again and is taken out by hand.
 - `tabs.scn`: three windows in one maximize row; `focus-window-right` three times. Each step
   moves focus to a new window with the full tile frame and parks the previous one, and the third
   step wraps back to the first.
@@ -141,8 +151,8 @@ check fails when more than the tolerance (default 1%) of pixels differ.
 ## Status
 
 - `--host`: `tabs.scn` passes on this Mac. `fullscreen.scn` has not been run on the host (it
-  takes over the screen and needs the terminal's Automation grant).
-- `--vm`: written and dry-run only. It needs a golden image, which needs the disk above.
-- Not verified: whether a TCC row with `csreq` is enough for Screen Recording on macOS 26 without
-  the periodic re-approval prompt (`ScreenCaptureApprovals`). If the shell's motion proxies show
-  a prompt in the guest, that is the next thing to bake in.
+  takes over the screen).
+- `--vm`: both scenarios pass against the references in `references/vm/` (macOS 26.6 guest).
+  `tabs.scn` fails intermittently on a real shell race, #84: a late native focus report pulls
+  focus back to the tab just left. Screenshot diffs run well under tolerance (at most 0.5% of
+  pixels differ; the menu-bar clock and the desktop widgets account for it).

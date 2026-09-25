@@ -29,13 +29,17 @@ defaults write NSGlobalDomain NSQuitAlwaysKeepsWindows -bool false
 defaults write com.apple.loginwindow TALLogoutSavesState -bool false
 defaults write com.apple.TextEdit NSShowAppCentricOpenPanelInsteadOfUntitledFile -bool false
 defaults write com.apple.TextEdit RichText -bool false
+# ponytail: goes through System Events, so it times out like any Apple Event from the agent and
+# the image keeps the default wallpaper. Harmless: references are recorded against that wallpaper.
 osascript -e 'tell application "System Events" to tell every desktop to set picture to "/System/Library/Desktop Pictures/Solid Colors/Stone.png"' || true
 defaults write com.apple.dock autohide -bool true && killall Dock || true
 
-# The runner's grants. Cirrus's image already gives tart-guest-agent Accessibility and Screen
-# Recording and gives osascript Apple Events to System Events; the `fullscreen` step's osascript
-# is a child of the agent, so the agent needs that Apple Events row too. System and user DBs both,
-# as Cirrus does.
+# The runner's grants: Accessibility and Screen Recording for tart-guest-agent, the responsible
+# process of every `tart exec` command (its per-user LaunchAgent, `--run-agent`). Cirrus's image
+# already has both; written again so the image does not depend on that. System and user DBs, as
+# Cirrus does. No Apple Events rows: tccd ignores a written kTCCServiceAppleEvents row for the
+# agent, prompts anyway (-1712 once the prompt times out) and overwrites the row with a denial.
+# The runner does not need them: `fullscreen` goes straight through AX (axfullscreen.swift).
 AGENT="$(realpath /opt/homebrew/bin/tart-guest-agent)"
 USER_DB="$HOME/Library/Application Support/com.apple.TCC/TCC.db"   # macOS ≤ 26 location
 for db in "/Library/Application Support/com.apple.TCC/TCC.db" "$USER_DB"; do
@@ -43,9 +47,7 @@ for db in "/Library/Application Support/com.apple.TCC/TCC.db" "$USER_DB"; do
         (service, client_type, client, auth_value, auth_reason, auth_version,
          indirect_object_identifier_type, indirect_object_identifier) VALUES
         ('kTCCServiceAccessibility', 1, '$AGENT', 2, 0, 1, NULL, 'UNUSED'),
-        ('kTCCServiceScreenCapture', 1, '$AGENT', 2, 0, 1, NULL, 'UNUSED'),
-        ('kTCCServiceAppleEvents',   1, '$AGENT', 2, 0, 1, 0, 'com.apple.systemevents'),
-        ('kTCCServiceAppleEvents',   1, '/usr/bin/osascript', 2, 0, 1, 0, 'com.apple.systemevents');"
+        ('kTCCServiceScreenCapture', 1, '$AGENT', 2, 0, 1, NULL, 'UNUSED');"
 done
 
 # Smoke: the runner's own tools answer without a prompt.
