@@ -55,6 +55,17 @@ import Foundation
         #expect(!after.hidden.contains(a))
         #expect(e.prefix(2) == [.unhide(a), .focus(a)])
     }
+    /// Fn+Shift+W from the first row opens a new workspace above every other and carries the
+    /// window there; the row it left keeps its other windows, now second.
+    @Test func moveWindowUpFromTheTopRowOpensANewTopWorkspace() {
+        let w0 = base()
+        let before = w0.screens["D1"]!.workspaces[0].id
+        let (after, e) = run(w0, .moveWindowToWorkspace(.up))
+        let s = after.screens["D1"]!
+        #expect(s.workspaces[0].windows == [a] && s.activeIndex == 0 && after.focus.window == a)
+        #expect(s.workspaces[1].id == before && s.workspaces[1].windows == [b, c])
+        #expect(e == [.focus(a), .relayout])
+    }
     @Test func focusWorkspaceIndexIsOneBased() {
         var w = base(); (w, _) = run(w, .focusWorkspaceIndex(2)); #expect(w.screens["D1"]!.activeIndex == 1)
         (w, _) = run(w, .focusWorkspaceIndex(9)); #expect(w.screens["D1"]!.activeIndex == 1)   // no-op
@@ -394,9 +405,6 @@ import Foundation
         #expect(w.screens["D1"]!.activeIndex == 1 && w.focus.window == a)
         (w, _) = run(w, .moveWindowToWorkspace(.up))
         #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[b, c, a], []])
-    }
-    @Test func moveWindowUpFromTopIsNoop() {
-        let w = base(); let (w2, e) = run(w, .moveWindowToWorkspace(.up)); #expect(w2 == w && e.isEmpty)
     }
     @Test func cycleLayout() {
         var w = base(); (w, _) = run(w, .cycleLayout); #expect(w.screens["D1"]!.active.layout == .split)

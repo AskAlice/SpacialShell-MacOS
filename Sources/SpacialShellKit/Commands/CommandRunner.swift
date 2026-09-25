@@ -113,8 +113,16 @@ public enum CommandRunner {
 
         case .moveWindowToWorkspace(let dir):
             guard let f = w.focus.window, screen.active.windows.contains(f) else { return (w, []) }
-            let target = screen.activeIndex + (dir == .down ? 1 : -1)
-            guard (0..<screen.workspaces.count).contains(target) else { return (w, []) }
+            var target = screen.activeIndex + (dir == .down ? 1 : -1)
+            // Past the top there is no row yet, so make one: Fn+Shift+W from the first row opens a
+            // fresh workspace above all the others and carries the window into it — the mirror of
+            // Fn+Shift+S from the last row, which lands in the trailing "+" row.
+            if target == -1 {
+                w.screens[sid]!.workspaces.insert(w.newWorkspace(), at: 0)
+                w.screens[sid]!.activeIndex += 1
+                target = 0
+            }
+            guard (0..<w.screens[sid]!.workspaces.count).contains(target) else { return (w, []) }
             guard move(f, to: (sid, target)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
 
