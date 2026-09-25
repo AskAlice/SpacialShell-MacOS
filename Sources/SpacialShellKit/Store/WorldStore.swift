@@ -384,9 +384,14 @@ public actor WorldStore {
             revive(r, frame: observed[r] ?? retired[r]!.frame, reason: "focused")
         }
         let ownEcho = consumeEcho(&pendingFocusEchoes, { $0 == r })
-        let isEcho = ownEcho || r == lastNativeFocus
+        let unchanged = r == lastNativeFocus
+        let isEcho = ownEcho || unchanged
         lastNativeFocus = r
-        Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)")
+        // #68: the backstop snapshot re-reports an unchanged focus every refresh; at .notice that
+        // pushed every interesting line out of a `log show --last 5m` window. Changes stay loud.
+        if unchanged {
+            Self.log.debug("native focus \(r.id, privacy: .public) unchanged")
+        } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
         // #28. A repeated report of a requester already intercepted is *not* skipped as an echo:
         // it means macOS still has it in front, so the fullscreen window goes back again. Windows
         // the model does not manage (ignored, unknown) are left alone, exactly as below.
