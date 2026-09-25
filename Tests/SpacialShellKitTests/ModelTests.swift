@@ -3,6 +3,21 @@ import Foundation
 @testable import SpacialShellKit
 
 @Suite struct ModelTests {
+    /// #72: a display shows a fullscreen Space only while its fullscreen window is on the active
+    /// Space; swiped away (off-Space) or out of fullscreen, the panels come back.
+    @Test func aDisplayShowsFullscreenOnlyWhileItsFullscreenWindowIsOnSpace() {
+        let v = WindowRef(id: 1, pid: 1), o = WindowRef(id: 2, pid: 2)
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        w.adopt(v, kind: .tile, on: "D2"); w.adopt(o, kind: .tile, on: "D1")
+        #expect(!w.showsFullscreenSpace("D2"))
+        w.setFullscreen(v, true)
+        #expect(w.showsFullscreenSpace("D2") && !w.showsFullscreenSpace("D1"))
+        w.setOnActiveSpace(v, false)
+        #expect(!w.showsFullscreenSpace("D2"))
+        w.setOnActiveSpace(v, true); w.setFullscreen(v, false)
+        #expect(!w.showsFullscreenSpace("D2"))
+    }
+
     let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1), c = WindowRef(id: 3, pid: 2)
 
     @Test func emptyWorldHasOneEmptyWorkspacePerScreen() {

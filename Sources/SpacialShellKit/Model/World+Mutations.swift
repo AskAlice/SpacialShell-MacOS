@@ -36,6 +36,18 @@ extension World {
     }
     /// Windows reachable by left/right navigation: not hidden.
     public func visible(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !hidden.contains($0) } }
+    /// Whether display `d` is showing a native-fullscreen Space right now (#72): it holds a
+    /// fullscreen window that is on its display's active Space. The Space test is what makes this
+    /// honest — a window keeps reporting fullscreen after the user swipes away from its Space, but
+    /// then macOS stops listing it and it is `offSpace` (#55). The shell's panels stay off such a
+    /// display: there is no tiling there to chrome, and a panel ordered front onto a fullscreen Space
+    /// sits under (or over) the video.
+    /// ponytail: trusts `offSpace` for fullscreen Spaces; if the panels stay hidden after leaving
+    /// fullscreen, that flag is not tracking fullscreen Spaces and the check needs a second signal.
+    public func showsFullscreenSpace(_ d: DisplayID) -> Bool {
+        guard let screen = screens[d] else { return false }
+        return screen.workspaces.contains { ws in ws.windows.contains { fullscreen.contains($0) && !offSpace.contains($0) } }
+    }
     public func newWorkspace() -> Workspace { Workspace(name: "Workspace", layout: defaultLayout) }
 
     // MARK: mutations

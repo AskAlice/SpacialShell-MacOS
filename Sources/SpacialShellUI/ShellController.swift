@@ -91,13 +91,14 @@ public final class ShellController: NSObject {
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
                                                    chrome: PanelChrome(config: config), send: forward)
 
-            if visible {
+            // #72: never order the panels onto a display showing a fullscreen Space.
+            if visible && !world.showsFullscreenSpace(id) {
                 p.rail.orderFrontRegardless()
                 p.bar.orderFrontRegardless()
             } else {
                 p.rail.orderOut(nil)
                 p.bar.orderOut(nil)
-                hover.hideNow()   // Zen hides the rail; a card about it must not outlive it
+                hover.hideNow()   // Zen or fullscreen hides the rail; a card about it must not outlive it
             }
         }
 
