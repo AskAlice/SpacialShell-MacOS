@@ -13,12 +13,32 @@ RECORD=""
 
 echo "guest: $(sw_vers -productVersion), $(swift --version 2>&1 | head -1)"
 
+# 0. macOS's Tips daemon posts a persistent "See what's new" banner half an hour after boot, into
+#    whatever is on screen then. A run can last that long, so it is switched off before anything.
+launchctl disable "gui/$(id -u)/com.apple.tipsd" 2>/dev/null || true
+launchctl bootout "gui/$(id -u)/com.apple.tipsd" 2>/dev/null || true
+
 # 1. Build from a private copy: the share is read-only, and .build must not leak between host and
 #    guest (different SDKs, different paths).
-rsync -a --delete --exclude .build --exclude build --exclude .claude "$SHARE/repo/" "$SRC/"
+rsync -a --delete --exclude .build --exclude build --exclude .git --exclude .claude --exclude .remember "$SHARE/repo/" "$SRC/"
 cd "$SRC"
+# Last run's build products (e2e.sh's cache share), if they were built by this same OS and
+# toolchain. SwiftPM rebuilds whatever the rsync changed; the untouched packages stay built.
+CACHE="$SHARE/cache"
+KEY="build-$( (sw_vers -buildVersion; swift --version 2>&1) | shasum | cut -c1-12).tar"
+if [ -f "$CACHE/$KEY" ]; then
+    echo "guest: reusing build products ($KEY)"
+    tar -xf "$CACHE/$KEY"
+fi
+rm -rf .build/e2e   # runner.py's helpers: compiled from this checkout, never from a cache
+t0=$SECONDS
 Scripts/bundle.sh 2>&1 | tail -3      # no certificate in the guest: ad-hoc signed, which is fine —
                                       # the grant below is written against this exact build
+echo "guest: build took $((SECONDS - t0)) s"
+if [ -d "$CACHE" ]; then
+    tar -cf "$CACHE/$KEY.$$.partial" --exclude .build/e2e .build && mv "$CACHE/$KEY.$$.partial" "$CACHE/$KEY"
+    find "$CACHE" -name 'build-*.tar' ! -name "$KEY" -delete   # one toolchain's worth, not a pile
+fi
 pkill -x SpacialShell 2>/dev/null || true
 sudo rm -rf "$APP"
 sudo cp -R build/SpacialShell.app "$APP"

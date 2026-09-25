@@ -1,6 +1,6 @@
-// imgdiff REF CANDIDATE DIFF_OUT [TOLERANCE]
+// imgdiff REF CANDIDATE DIFF_OUT [TOLERANCE] [THRESHOLD]
 // Both images are drawn at 480 px wide (scaling irons out caret blink and sub-pixel text noise),
-// a pixel "differs" when any channel moves by more than 24/255, and the run fails when the
+// a pixel "differs" when any channel moves by more than THRESHOLD/255 (default 24), and the run fails when the
 // differing fraction exceeds TOLERANCE (default 0.01). DIFF_OUT is the candidate, dimmed, with
 // differing pixels in red. Exit: 0 match · 1 regression · 2 usage/IO.
 import CoreGraphics
@@ -14,6 +14,7 @@ guard args.count >= 4 else {
     exit(2)
 }
 let tolerance = args.count > 4 ? Double(args[4]) ?? 0.01 : 0.01
+let threshold = args.count > 5 ? Int(args[5]) ?? 24 : 24
 
 func load(_ path: String) -> CGImage {
     guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
@@ -47,7 +48,7 @@ let a = pixels(ref), b = pixels(cand)
 var out = b, differing = 0
 for p in stride(from: 0, to: a.count, by: 4) {
     let delta = (0..<3).map { abs(Int(a[p + $0]) - Int(b[p + $0])) }.max()!
-    if delta > 24 {
+    if delta > threshold {
         differing += 1
         out[p] = 255; out[p + 1] = 0; out[p + 2] = 0
     } else {
@@ -67,5 +68,5 @@ out.withUnsafeMutableBytes { raw in
         CGImageDestinationFinalize(dst)
     }
 }
-print(String(format: "%.4f of pixels differ (tolerance %.4f)", ratio, tolerance))
+print(String(format: "%.4f of pixels differ by more than %d/255 (tolerance %.4f)", ratio, threshold, tolerance))
 exit(ratio > tolerance ? 1 : 0)

@@ -17,11 +17,26 @@ Scenario format (`scenarios/*.scn`): one step per line, `#` comments, shell-styl
     fullscreen W on|off  native fullscreen via AX (axfullscreen.swift; needs Accessibility)
     note focused as X    bind X to the focused window
     note frame W as F    bind F to W's current model frame
-    shot NAME [TOL]      screencapture the main display; diff against the reference if one exists
+    shot NAME [TOL] [region=X,Y,W,H] [1x] [thr=N]
+                         screencapture the main display (or a region, in points); diff against the
+                         reference if one exists. `1x` stores it at one pixel per point (a quarter
+                         of the bytes); `thr` is imgdiff's per-channel threshold (default 24/255)
+    slide NAME CMD [AT] [shot options]
+                         spacialctl run CMD, then a shot AT seconds (default 3) after the switch
+                         overlay appears; needs the motion stretched first (SpacialMotionScale)
+    record NAME SECS [FPS]  record the screen to NAME/ in the background for SECS (#8);
+                         the scenario waits for it at the end
+    input ARGS...        synthetic pointer/keys (input.swift); a group name or `shell` as an
+                         argument is replaced by that pid
+    sh LINE              the rest of the line through /bin/sh, unparsed (config files, defaults) —
+                         vm mode only
+    relaunch             quit and reopen SpacialShell, wait for its socket — vm mode only
+    appearance dark|light  switch the session's appearance (appearance.swift) — vm mode only
     expect CHECK ARGS    see CHECKS below (check_* methods); a failure is recorded, the run goes on
     require CHECK ARGS   the same, but a failure stops the scenario (use before driving focus)
 
-A failed `expect` fails the scenario but the runner still cleans up: it kills only the TextEdit
+A failed `expect`, `shot` or `slide` fails the scenario and the run goes on; any other failed step
+stops it. Either way the runner cleans up: it kills only the TextEdit
 instances it launched, deletes its scratch files, and puts the focused screen and workspace back.
 """
 import argparse, json, os, shlex, shutil, signal, subprocess, sys, tempfile, time
@@ -79,6 +94,8 @@ class Run:
         self.tmp = tempfile.mkdtemp(prefix=f"spacial-e2e-{name}-")
         self.transcript = open(os.path.join(out, "state.ndjson"), "w")
         self.failures = []
+        self.recordings = []    # background record.swift processes
+        self.held = None        # a drag holding the button down (input.swift)
 
     # --- helpers -------------------------------------------------------------------------------
     def log(self, msg):
@@ -180,9 +197,115 @@ class Run:
         else:
             raise Fail(f"bad note: {what} {rest}")
 
-    def step_shot(self, name, tol="0.01"):
+    def step_shot(self, name, *opts):
+        tol, region, onex, thr = "0.01", None, False, "24"
+        for o in opts:
+            if o.startswith("region="):
+                region = o[len("region="):]
+            elif o == "1x":
+                onex = True
+            elif o.startswith("thr="):
+                thr = o[len("thr="):]
+            else:
+                tol = o
+        self.dismiss_capture_prompt()
         png = os.path.join(self.out, f"{name}.png")
-        sh("screencapture", "-x", "-m", png)
+        sh("screencapture", "-x", "-m", *(["-R" + region] if region else []), png)
+        if onex:   # the capture is at the backing scale; store one pixel per point
+            pts = int(region.split(",")[2]) if region else int(self.main_width())
+            sh("sips", "--resampleWidth", str(pts), png)
+        self.compare(name, png, tol, thr)
+
+    def dismiss_capture_prompt(self):
+        """replayd's "bypass the system private window picker" alert for the shell. guest/run.sh
+        pre-approves it, yet after an hour or so of captures in one guest it can still come up
+        (a CFUserNotification) and would sit in every shot after it. Allow it, and say so."""
+        for c in cg_windows():
+            if c["owner"] == "UserNotificationCenter" and self.mode == "vm":
+                self.log("WARN: a screen-capture alert was up; pressing Allow")
+                sh(tool("input"), "axclick", str(c["pid"]), "Allow", check=False)
+                sh(tool("input"), "move", "600", "400")
+                time.sleep(1)
+                return
+
+    def main_width(self):
+        return json.loads(sh("osascript", "-l", "JavaScript", "-e",
+                             'ObjC.import("AppKit"); JSON.stringify($.NSScreen.mainScreen.frame.size.width)'))
+
+    def step_slide(self, name, cmd, at="3", *opts):
+        """A frame from the middle of CMD's switch animation (#77). A guest has no GPU and cannot
+        record 200 ms of motion, so the scenario first stretches it (`SpacialMotionScale`, see
+        SwitchOverlay) and this shoots AT seconds after the overlay appears."""
+        before = {c["id"] for c in cg_windows() if c["owner"] == "SpacialShell"}
+        sh(CTL, "run", cmd)
+        deadline = time.time() + 15   # a cold capture takes seconds in the guest
+        while not any(c["owner"] == "SpacialShell" and c["id"] not in before and c["b"]["Width"] > 400
+                      for c in cg_windows()):
+            if time.time() > deadline:
+                raise Fail(f"slide {name}: no switch overlay appeared — the switch did not animate")
+            time.sleep(0.05)
+        time.sleep(float(at))
+        self.step_shot(name, *opts)
+
+    def step_record(self, name, secs, fps="15"):
+        p = subprocess.Popen([tool("record"), os.path.join(self.out, name), secs, fps, "1024"],
+                             stdout=subprocess.PIPE, text=True)
+        if p.stdout.readline().strip() != "ready":
+            p.kill()
+            raise Fail("record did not start")
+        self.recordings.append(p)
+
+    def step_input(self, *argv):
+        """A drag with a hold time runs in the background, so the steps after it (a shot of the
+        drop indicator) happen mid-drag; the next `input` waits for it to let go."""
+        if self.held:
+            self.held.wait(timeout=60)
+            self.held = None
+        def resolve(a):
+            if a == "shell":
+                return sh("pgrep", "-x", "SpacialShell").split()[0]
+            return str(self.pids[a]) if a in self.pids else a
+        cmd = [tool("input"), *map(resolve, argv)]
+        if argv[0] == "drag" and len(argv) == 6:
+            self.held = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
+            if self.held.stdout.readline().strip() != "holding":
+                raise Fail("drag never reached its hold")
+        else:
+            sh(*cmd)
+
+    def vm_only(self, what):
+        if self.mode != "vm":
+            raise Fail(f"{what} runs in the VM only: it would change this Mac")
+
+    def step_sh(self, line):
+        self.vm_only("sh")
+        sh("/bin/sh", "-c", line)
+
+    def step_appearance(self, mode):
+        """Light or dark for the whole session, live (appearance.swift) — vm mode only."""
+        self.vm_only("appearance")
+        sh(tool("appearance"), mode)
+        time.sleep(2)   # every app redraws
+
+    def step_relaunch(self):
+        self.vm_only("relaunch")
+        app = os.path.dirname(os.path.dirname(os.path.dirname(CTL)))
+        sh("pkill", "-x", "SpacialShell", check=False)
+        for _ in range(40):
+            if subprocess.run(["pgrep", "-x", "SpacialShell"], capture_output=True).returncode != 0:
+                break
+            time.sleep(0.25)
+        # LaunchServices answers -600 for a moment after the old instance goes; keep asking.
+        for _ in range(60):
+            if subprocess.run([CTL, "version"], capture_output=True).returncode == 0:
+                break
+            subprocess.run(["open", app], capture_output=True)
+            time.sleep(1)
+        else:
+            raise Fail("SpacialShell did not come back")
+        time.sleep(2)   # first reconcile
+
+    def compare(self, name, png, tol, thr):
         ref_dir = os.path.join(HERE, "references", self.mode, self.name)
         ref = os.path.join(ref_dir, f"{name}.png")
         if self.record:
@@ -193,7 +316,7 @@ class Run:
         if not os.path.exists(ref):
             self.log(f"shot {name}: no {self.mode} reference yet (run with --record)")
             return
-        r = subprocess.run([tool("imgdiff"), ref, png, os.path.join(self.out, f"{name}.diff.png"), tol],
+        r = subprocess.run([tool("imgdiff"), ref, png, os.path.join(self.out, f"{name}.diff.png"), tol, thr],
                            capture_output=True, text=True)
         self.log(f"shot {name}: {r.stdout.strip()}")
         if r.returncode != 0:
@@ -297,18 +420,26 @@ class Run:
                 words = shlex.split(line)
                 self.log(f"{no:>3}: {line}")
                 try:
-                    getattr(self, "step_" + words[0])(*words[1:])
+                    if words[0] == "sh":   # the rest of the line goes to /bin/sh as written
+                        self.step_sh(line[2:].strip())
+                    else:
+                        getattr(self, "step_" + words[0])(*words[1:])
                     self.snap(f"{no}: {line}")
                 except Fail as e:
                     self.failures.append(f"line {no}: {line}\n      {e}")
                     self.log(f"FAIL {e}")
-                    if words[0] != "expect":
+                    if words[0] not in ("expect", "shot", "slide"):
                         break   # a failed action leaves nothing meaningful to assert on
         finally:
             self.cleanup(origin)
         return not self.failures
 
     def cleanup(self, origin):
+        if self.held:
+            self.held.wait(timeout=60)
+        for p in self.recordings:
+            out, _ = p.communicate()
+            self.log(f"recording: {out.strip()}")
         for pid in self.pids.values():
             try:
                 os.kill(pid, signal.SIGTERM)

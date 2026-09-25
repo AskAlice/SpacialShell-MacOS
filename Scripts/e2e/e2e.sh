@@ -6,27 +6,37 @@
 #                                                              a throwaway clone of the golden
 #                                                              Tart image (Scripts/e2e/golden.sh)
 #   Scripts/e2e/e2e.sh --check                                 parse every scenario, run nothing
+#   --suite NAME                                               the scenarios in scenarios/NAME/ (e.g.
+#                                                              snapshots, #81) instead of scenarios/*.scn
 #
-# No scenario given = all of Scripts/e2e/scenarios/*.scn. Artefacts (screenshots, diffs,
+# No scenario or suite given = all of Scripts/e2e/scenarios/*.scn. Artefacts (screenshots, diffs,
 # state.ndjson transcript, shell.log) land in .build/e2e/<mode>-<timestamp>/<scenario>/.
 # See Scripts/e2e/README.md.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 
-MODE="" RECORD="" KEEP="" DRY=""
+MODE="" RECORD="" KEEP="" DRY="" SUITE=""
 SCENARIOS=()
+prev=""
 for a in "$@"; do
+    if [ "$prev" = --suite ]; then SUITE="$a"; prev=""; continue; fi
+    prev="$a"
     case "$a" in
+        --suite) ;;
         --host|--vm|--check) MODE="${a#--}" ;;
         --record) RECORD=--record ;;
         --keep) KEEP=1 ;;
         --dry-run) DRY=1 ;;
-        -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
         *) SCENARIOS+=("$a") ;;
     esac
 done
-[ -n "$MODE" ] || { sed -n '2,13p' "$0"; exit 2; }
+[ -n "$MODE" ] || { sed -n '2,15p' "$0"; exit 2; }
+if [ -n "$SUITE" ]; then
+    [ -d "$HERE/scenarios/$SUITE" ] || { echo "e2e: no suite scenarios/$SUITE" >&2; exit 2; }
+    SCENARIOS+=("$HERE/scenarios/$SUITE"/*.scn)
+fi
 [ ${#SCENARIOS[@]} -gt 0 ] || SCENARIOS=("$HERE"/scenarios/*.scn)
 
 if [ "$MODE" = check ]; then
@@ -71,6 +81,13 @@ if [ -z "$DRY" ]; then
 fi
 
 mkdir -p "$OUT"
+# The guest's build products, kept between runs (#81): every clone starts from the golden image
+# with no .build, and a cold release build of the OpenTelemetry packages is most of a run.
+# guest/run.sh unpacks it before building and packs it afterwards; SwiftPM's own incremental
+# build decides what is stale (the rsync keeps the checkout's mtimes). Keyed in the guest by
+# macOS build and Swift version, so a rebuilt golden image never reuses foreign products.
+CACHE="${SPACIAL_E2E_CACHE:-$REPO/.build/e2e/guest-cache}"
+mkdir -p "$CACHE"
 cleanup() {
     run tart stop "$VM" >/dev/null 2>&1 || true
     if [ -z "$KEEP" ]; then run tart delete "$VM" >/dev/null 2>&1 || true
@@ -83,9 +100,9 @@ run tart clone "$GOLDEN" "$VM"
 # The repo goes in read-only (the guest builds from its own copy); artefacts come out through
 # the writable share, so there is nothing to copy back afterwards.
 if [ -n "$DRY" ]; then
-    echo "+ tart run --no-graphics --dir=repo:$REPO:ro --dir=out:$OUT $VM &"
+    echo "+ tart run --no-graphics --dir=repo:$REPO:ro --dir=out:$OUT --dir=cache:$CACHE $VM &"
 else
-    tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "$VM" >"$OUT/tart-run.log" 2>&1 &
+    tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "--dir=cache:$CACHE" "$VM" >"$OUT/tart-run.log" 2>&1 &
     TART_PID=$!
     echo "e2e: waiting for the guest agent…"
     for i in $(seq 1 90); do tart exec "$VM" true 2>/dev/null && break; sleep 2

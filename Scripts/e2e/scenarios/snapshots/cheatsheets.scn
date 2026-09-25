@@ -1,0 +1,23 @@
+# The empty-workspace cheat sheet (#29) and the hold-Fn cheat sheet. The golden guest has one
+# workspace (Terminal) above the trailing empty one.
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+settle
+run focus-workspace-2
+settle
+wait 1
+shot empty-cheatsheet region=0,560,1024,208 1x
+input flags fn
+wait 1.5
+shot fn-cheatsheet region=0,290,1024,200 1x
+input flags none
+wait 1

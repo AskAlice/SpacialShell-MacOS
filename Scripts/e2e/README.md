@@ -15,9 +15,10 @@ Scripts/e2e/e2e.sh --host Scripts/e2e/scenarios/tabs.scn   # against the app run
 Scripts/e2e/e2e.sh --vm                         # every scenario, in a fresh guest
 Scripts/e2e/e2e.sh --vm --record                # same, and write the screenshots as references
 Scripts/e2e/e2e.sh --vm --dry-run               # print the tart commands only
+Scripts/e2e/e2e.sh --vm --suite snapshots       # the visual snapshot suite (#81), scenarios/snapshots/
 ```
 
-No scenario argument means all of `scenarios/*.scn`. Exit status is non-zero when any check
+No scenario argument means all of `scenarios/*.scn` (`--suite NAME` adds `scenarios/NAME/*.scn`). Exit status is non-zero when any check
 fails. Artefacts go to `.build/e2e/<mode>-<timestamp>/<scenario>/`:
 
 - `*.png` screenshots, and `*.diff.png` (differing pixels in red) when a reference exists
@@ -84,16 +85,33 @@ that dialog would sit in every screenshot, and for `tart-guest-agent` it comes d
 the golden image was provisioned. `guest/run.sh` marks both (`sh.emu.SpacialShell` by bundle id,
 the agent by real path) as alerted in the year 3000 and restarts `replayd`.
 
+`guest/run.sh` also switches off `tipsd` before anything else: macOS's Tips daemon posts a
+persistent "See what's new in macOS" banner about half an hour after boot, into whatever is on
+screen then.
+
 ## What a VM run does
 
 1. `tart clone spacial-e2e-golden spacial-e2e-<pid>`
-2. `tart run --no-graphics --dir=repo:<checkout>:ro --dir=out:<artefacts>`. The repo goes in
-   read-only, and artefacts come out through the writable share, so nothing needs copying back.
-3. `tart exec … guest/run.sh`, which copies the repo into the guest, runs `Scripts/bundle.sh`,
-   installs the app to `/Applications`, writes the TCC rows, launches the app, waits for the
-   control socket, then runs `runner.py --mode vm`
+2. `tart run --no-graphics --dir=repo:<checkout>:ro --dir=out:<artefacts> --dir=cache:<cache>`.
+   The repo goes in read-only, and artefacts come out through the writable share, so nothing
+   needs copying back.
+3. `tart exec … guest/run.sh`, which copies the repo into the guest, unpacks the build cache,
+   runs `Scripts/bundle.sh`, packs the cache again, installs the app to `/Applications`, writes
+   the TCC rows, launches the app, waits for the control socket, then runs `runner.py --mode vm`
 4. With `--record`, copies the new references into `Scripts/e2e/references/vm/`
 5. `tart stop` and `tart delete` the clone (`--keep` leaves it for `tart run` / debugging)
+
+### The build cache
+
+Every clone starts from the golden image with no `.build`, and a cold release build (the
+OpenTelemetry packages most of all) took 1030 s of a run. So the guest's `.build` is kept between
+runs in `.build/e2e/guest-cache/` on the host (`SPACIAL_E2E_CACHE`), as one tar (about 1.4 GB)
+keyed by the guest's macOS build and Swift version: a rebuilt golden image never reuses foreign
+products, and the older key is deleted. `run.sh` unpacks it before `bundle.sh` and packs it
+after. SwiftPM's own incremental build decides what is stale; the rsync keeps the checkout's
+mtimes, so that is exactly what changed. Measured: 285 s with a few app files changed, 662 s
+after changes to Kit (the release whole-module builds of every target that depends on it).
+Delete the directory to force a cold build.
 
 ## Host mode, and how it stays safe
 
@@ -129,14 +147,36 @@ require active t1      # a check that stops the scenario if it fails
 shot fullscreen 0.01   # screenshot; diff against references/<mode>/<scenario>/<name>.png
 ```
 
+Driving the shell like a person, and the guest (VM only where noted):
+
+```
+input move 23 121           # pointer (input.swift, posted at the HID tap: hover, tracking areas)
+input click X Y             # also: key fn-comma, key cmd-m, flags fn / flags none (hold Fn)
+input axclick shell Layout  # click the AX element titled "Layout" in SpacialShell's windows
+input drag 23 121 23 80 4   # press, glide, hold 4 s, release; the steps after it run mid-drag
+sh LINE                     # the rest of the line through /bin/sh, unparsed (VM only)
+relaunch                    # quit and reopen SpacialShell, wait for its socket (VM only)
+appearance dark             # the session's appearance, live (appearance.swift; VM only)
+slide NAME CMD 9 [shot options]  # run CMD, shoot 9 s after the switch overlay appears
+record NAME SECS            # frames of the screen to NAME/ in the background (record.swift)
+shot NAME [TOL] [region=X,Y,W,H] [1x] [thr=N]
+```
+
+`shot` options: `region` is in points, top-left origin; `1x` stores one pixel per point (a
+quarter of the bytes of a Retina capture); `thr` is imgdiff's per-channel threshold. A failed
+`shot` or `slide` fails the scenario, and the run goes on to the next shot. Before every shot,
+a VM run presses Allow on replayd's "bypass the system private window picker" alert if one is
+up. `guest/run.sh` pre-approves it, yet after an hour or so of captures in one guest it can still
+appear, and it would sit in every shot after it. The log says `WARN` when that happens.
+
 Checks: `tab`, `focused`, `active`, `workspace W N`, `same-workspace`, `workspace-count`,
 `layout`, `parked`, `not-parked`, `fullscreen`, `not-fullscreen`, `differs`, `frame`, `onscreen`
 (model says unparked and unhidden, and the window server has it on screen), `panels-hidden`
 (no SpacialShell panel window intersects W's on-screen window).
 
 Screenshot diffs are done by `imgdiff.swift`, compiled once into `.build/e2e/`. Both images are
-scaled to 480 px wide. A pixel counts as different when a channel moves more than 24/255, and the
-check fails when more than the tolerance (default 1%) of pixels differ.
+scaled to 480 px wide. A pixel counts as different when a channel moves more than the threshold
+(default 24/255), and the check fails when more than the tolerance (default 1%) of pixels differ.
 
 ## Scenarios
 
@@ -148,10 +188,66 @@ check fails when more than the tolerance (default 1%) of pixels differ.
   moves focus to a new window with the full tile frame and parks the previous one, and the third
   step wraps back to the first.
 
+## The snapshot suite (#81)
+
+`Scripts/e2e/e2e.sh --vm --suite snapshots` runs `scenarios/snapshots/*.scn` against
+`references/vm/<scenario>/`. Stories (`Tests/ShellStoryTests`) snapshot views in isolation; this
+snapshots the real app on a real desktop: layout, window levels, and panels over real windows.
+
+| Scenario | Shots |
+|---|---|
+| `rail.scn` | the rail; the hover card with window previews; the tray (#73) and its list; the drag-reorder insertion line (#75), mid-drag; the rail after the drop |
+| `tabbar.scn` | tabs in `fit` and `equal` sizing; the layout switcher with split, column, half and grid selected (whole tiling area); overflow past the 88 pt floor, scrolled to the focused tab (#14) |
+| `cheatsheets.scn` | the empty-workspace cheat sheet (#29); the hold-Fn cheat sheet |
+| `settings.scn` | every Settings pane: General, Appearance, Layout, Workspaces (#74), Keybindings |
+| `fullscreen-panels.scn` | native fullscreen with the panels hidden (#72) |
+| `slides.scn` | a mid-slide frame of Fn+D and of Fn+S (#77) |
+| `dark.scn` | dark appearance: the shell, the hover card, the empty cheat sheet, Settings (General, Appearance) |
+
+Every scenario starts from the same place: light appearance, full-speed motion, no
+`config.toml`, a flat Stone desktop, no desktop widgets (their live clock and date show through
+the translucent panels), Full Keyboard Access off (the base image turns it on, and it puts a
+focus ring on a layout button at random), then a fresh shell. Windows are one TextEdit instance
+each, opened in turn. One instance opening several files adopts them in whatever order AX
+reports them, and the tab order would change from run to run.
+
+Shots are crops, in points, stored at 1x: 27 references, about 1.8 MB together. The rail and
+the `fit` tab bar are compared strictly (`thr=0`, tolerance 0): any change to a panel's colour
+fails them. The hover cards allow 5% (the previews are live window captures), the slides 10%, and
+everything else the default 1% at 24/255.
+
+**The mid-slide frames.** A guest has no GPU, and ScreenCaptureKit cannot catch a 200 ms slide in
+it. So `slides.scn` stretches the motion 300x with a test-only default that the switch overlay
+reads (`defaults write sh.emu.SpacialShell SpacialMotionScale 300`, like the Simulator's slow
+animations). It shoots 9 s into the 60 s flight, then relaunches the shell to end the flight.
+
+**When to re-record.** When a change to a surface is intended: run the suite, look at every
+`*.diff.png` it wrote, and when the new pictures are the right ones, re-record just those
+scenarios (`e2e.sh --vm --record scenarios/snapshots/<name>.scn`) and commit the references with
+the change. Re-record everything after rebuilding the golden image or changing the guest's macOS.
+A failure you did not intend is the suite doing its job: the diff shows where.
+
+**Guest quirks it works around**, so they are not rediscovered:
+
+- A long-lived guest's virtiofs share goes stale: files the host rewrote read as their old size,
+  or with NUL bytes. `e2e.sh` boots a fresh clone per run, which never sees this. To iterate in a
+  kept guest, push files with `tar … | tart exec -i <vm> tar -x` instead.
+- `defaults write -g AppleInterfaceStyle Dark` changes nothing before the next login. The
+  `appearance` step uses SkyLight's switch, as System Settings does.
+- A button that a synthetic drag holds down is only down while the posting process lives. So a
+  held drag is a long-lived `input` process, and it re-points at the target before it lets go:
+  otherwise AppKit sometimes drops nothing after a still hold.
+
 ## Status
 
 - `--host`: `tabs.scn` passes on this Mac. `fullscreen.scn` has not been run on the host (it
   takes over the screen).
+- `--vm --suite snapshots`: all 7 scenarios (27 shots) pass against `references/vm/` (macOS 26.6
+  guest). The suite itself takes about 7.5 minutes, and the whole run 16 with a cached build.
+  Proven sensitive: with the panel material overlaid by one step of red (1/255), `rail` and
+  `tabs-fit` fail (96% and 97% of pixels) while every default-threshold shot still passes. On
+  the day it was recorded, the suite also caught two real changes that landed on main between
+  runs: the cheat sheets starting to wrap (#87), and a different tab focused after `focus`.
 - `--vm`: both scenarios pass against the references in `references/vm/` (macOS 26.6 guest).
   `tabs.scn` fails intermittently on a real shell race, #84: a late native focus report pulls
   focus back to the tab just left. Screenshot diffs run well under tolerance (at most 0.5% of

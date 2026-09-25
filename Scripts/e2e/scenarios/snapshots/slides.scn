@@ -1,0 +1,31 @@
+# A mid-slide frame of Fn+D and of Fn+S (#77). The guest cannot record a 200 ms slide, so the
+# motion is stretched 300x (SwitchOverlay's SpacialMotionScale).
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+sh defaults write sh.emu.SpacialShell SpacialMotionScale 300
+relaunch
+open 1 as a
+open 1 as b
+settle
+focus a1
+settle
+input move 600 400
+wait 1
+# 9 s into a 60 s flight: early enough to be mid-slide, and slow enough there that the few
+# hundred ms it takes to see the overlay appear barely move the picture. A relaunch ends the
+# flight at once (the real windows are already at their frames) instead of waiting it out.
+slide fn-d-mid focus-window-right 9 region=0,30,1024,738 1x 0.1
+relaunch
+settle
+slide fn-s-mid focus-workspace-down 9 region=0,30,1024,738 1x 0.1
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale
+relaunch

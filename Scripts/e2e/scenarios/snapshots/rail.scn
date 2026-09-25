@@ -1,0 +1,53 @@
+# The rail (#81): tiles, the hover card with window previews, the tray (#73) and the
+# drag-reorder insertion line (#75). Rail tile centres, top down: search 53, Terminal 88,
+# TextEdit 124, "+" 160; the tray sits at 714, above the cog. Points, top-left origin.
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+# One instance per window, opened in turn: one instance opening several files adopts
+# them in whatever order AX reports, and the tab order would change between runs.
+open 1 as r
+open 1 as q
+settle
+focus r1
+settle
+input move 600 400
+wait 1
+shot rail region=0,30,48,738 1x 0 thr=0
+
+input move 23 121
+wait 5
+shot hover-card region=0,30,440,420 1x 0.05
+
+input move 600 400
+wait 1
+input key cmd-m
+wait 1.5
+settle
+input move 23 714
+wait 3
+shot tray region=0,360,440,408 1x
+
+input move 600 400
+wait 1
+# Grabbed 2 pt below the tile's top edge, so the drag image (whose opacity varies from run to
+# run) sits well below the insertion line drawn over the Terminal tile (tiles: 72-104, 108-140);
+# the shot is the band that holds the line.
+input drag 23 110 23 98 4
+wait 1
+shot reorder-line region=0,62,48,12 1x
+input move 600 400
+settle
+# The drop put TextEdit's workspace first. A synthetic drop is not always taken (about 1 in 4
+# in a long-lived guest); this says so plainly rather than as a pixel diff.
+expect workspace r1 1
+wait 1
+shot reordered region=0,30,48,738 1x

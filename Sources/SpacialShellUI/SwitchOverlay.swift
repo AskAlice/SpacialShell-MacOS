@@ -72,13 +72,17 @@ private final class Stage {
     private var playSpan: (any Span)?
 
     static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "motion")
-    static let duration: CFTimeInterval = 0.2
+    /// Test hook (#81), like the Simulator's slow animations: `defaults write sh.emu.SpacialShell
+    /// SpacialMotionScale 100` stretches every switch (and its watchdog) 100x, so the e2e suite can
+    /// photograph one mid-flight in a guest that cannot record 200 ms of motion. Unset: 1.
+    static let scale = max(1, UserDefaults.standard.double(forKey: "SpacialMotionScale"))
+    static let duration: CFTimeInterval = 0.2 * scale
     /// The pictures must not be pulled before the window server has drawn the real windows under
     /// them; the feasibility study's hand-off rule. 200 ms of flight already covers the AX writes.
     // ponytail: fixed hold rather than polling CGWindowList for the landed frame — poll if a seam shows.
     static let landingHold = Duration.milliseconds(30)
     /// An overlay whose `play` never came (its reconcile was superseded) must not outlive it.
-    static let watchdog = Duration.seconds(1)
+    static let watchdog = Duration.seconds(1 * scale)
     static let preparedKept = 3
     /// How old a picture may be and still fly. The real window is uncovered at landing, so anything
     /// that changed since the picture was taken pops in then; older pictures are taken again.

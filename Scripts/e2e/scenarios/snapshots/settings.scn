@@ -1,0 +1,29 @@
+# Every Settings pane, including Workspaces (#74). Opened with Fn+, through the shell's own event
+# tap; the window is centred, 720x544 with its title bar.
+# Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
+# clock and date show through the translucent panels), then a fresh shell.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; rm -f ~/.config/spacial-shell/config.toml; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+# The base image turns on Full Keyboard Access, which puts a focus ring on a layout button at random.
+sh defaults write -g AppleKeyboardUIMode -int 0
+# A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
+sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
+relaunch
+input move 600 400
+input key fn-comma
+wait 2
+shot general region=152,92,720,544 1x
+input axclick shell Appearance
+wait 1
+shot appearance region=152,92,720,544 1x
+input axclick shell Layout
+wait 1
+shot layout region=152,92,720,544 1x
+input axclick shell Workspaces
+wait 1
+shot workspaces region=152,92,720,544 1x
+input axclick shell Keybindings
+wait 1
+shot keybindings region=152,92,720,544 1x
+input key cmd-w
