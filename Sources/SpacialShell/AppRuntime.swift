@@ -47,6 +47,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var updater: SPUStandardUpdaterController?
     private var layouts: LayoutsController?
     private var cheatSheet: CheatSheetController?
+    /// #130: problems that break something the user is about to reach for (the hotkeys, the
+    /// control socket) open an alert once, as well as being listed under the rail cog.
+    private let alerts = ProblemAlertController()
     private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
     private var reloadTask: Task<Void, Never>?
@@ -76,9 +79,16 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
     private func boot() async {
         log.info("stage 1/8: waiting for the Accessibility grant")
-        // #109: listed while the wait lasts; the grant-wait window itself is B7 (#130).
-        if !AXIsProcessTrusted() { ProblemCenter.shared.report(.accessibilityMissing) }
-        await Permissions.waitForAccessibility(bundleID: Paths.bundleID)
+        // #109: listed while the wait lasts. #130: and shown, in a window with the way to grant it
+        // and the way out — until then the wait was a silent hang. Quit goes straight out: nothing
+        // is armed yet, so there is no window to put back.
+        if !AXIsProcessTrusted() {
+            ProblemCenter.shared.report(.accessibilityMissing)
+            let grantWait = GrantWaitController(openSettings: { Permissions.openAccessibilitySettings() },
+                                                quit: { NSApp.terminate(nil) })
+            await Permissions.waitForAccessibility(bundleID: Paths.bundleID) { grantWait.update(GrantWait(elapsed: $0)) }
+            grantWait.close()
+        }
         ProblemCenter.shared.clear(Problem.Key.accessibility)
         // Takes effect only at the next launch, so one look at boot is the whole check; a declined
         // capture later (#92) reports the same key from `CaptureGate`.
@@ -201,7 +211,14 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         let shell = ShellController(config: config, appMeta: appMeta, send: route)
         self.shell = shell
         // #109: the rail cog's badge. Reporters run on any thread; the panels on the main actor.
-        ProblemCenter.shared.observe { problems in Task { @MainActor in shell.update(problems: problems) } }
+        // #130: the same list feeds the alerts, so a failure is listed and announced by one report.
+        let alerts = alerts
+        ProblemCenter.shared.observe { problems in
+            Task { @MainActor in
+                shell.update(problems: problems)
+                alerts.update(problems: problems)
+            }
+        }
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()

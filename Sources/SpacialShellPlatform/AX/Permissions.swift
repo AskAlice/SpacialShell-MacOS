@@ -1,16 +1,27 @@
 import AppKit
 import ApplicationServices
 import OSLog
+import SpacialShellKit
 
+@MainActor
 public enum Permissions {
-    /// How long the grant is given to appear before a stale TCC row is suspected out loud.
-    /// Long enough that a user who is walking to System Settings, unlocking the padlock and
-    /// ticking the box is never nagged; short enough that a developer staring at a checkbox
-    /// that refuses to stick does not sit there for a minute.
-    private static let suspectStaleAfter = Duration.seconds(20)
+    /// How long the grant is given to appear before a stale TCC row is suspected out loud — the
+    /// grant-wait window's threshold too (#130), so the log and the window agree.
+    private static let suspectStaleAfter = GrantWait.suspectStaleAfter
 
-    /// Spec §10. Prompts once, opens the Accessibility pane, then polls each second until the
-    /// grant lands.
+    /// The Privacy & Security › Accessibility pane: the grant-wait window's button (#130).
+    public static func openAccessibilitySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Spec §10. Prompts once, then polls each second until the grant lands, calling `onTick` with
+    /// the time waited so far (first with zero) so the grant-wait window can show it (#130).
+    ///
+    /// #130: it no longer opens the Accessibility pane by itself. The system prompt already offers
+    /// that, and so does the grant-wait window, which also says *why* — a pane that opens unasked
+    /// over whatever the user was doing explains nothing.
     ///
     /// A rebuilt binary can keep an old TCC row that macOS silently treats as untrusted — the
     /// checkbox is on and the grant does nothing. This used to shell out to
@@ -37,17 +48,15 @@ public enum Permissions {
     /// The residual case the reset never fixed anyway: `Scripts/dev.sh` runs a loose binary, which
     /// TCC identifies by *path*, so a moved checkout is a new subject rather than a stale row and
     /// `tccutil reset <bundleID>` was never the cure.
-    public static func waitForAccessibility(bundleID: String) async {
+    public static func waitForAccessibility(bundleID: String, onTick: (Duration) -> Void = { _ in }) async {
         if AXIsProcessTrusted() { return }
         let log = Logger(subsystem: bundleID, category: "permissions")
         _ = AXIsProcessTrustedWithOptions([axTrustedCheckOptionPrompt: true] as CFDictionary)
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
         let clock = ContinuousClock()
         let start = clock.now
         var didWarn = false
         while !AXIsProcessTrusted() {
+            onTick(start.duration(to: clock.now))
             if !didWarn, start.duration(to: clock.now) >= suspectStaleAfter {
                 didWarn = true
                 log.error("""

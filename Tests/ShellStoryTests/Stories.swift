@@ -297,6 +297,14 @@ enum Stories {
             title: "\(problems.count) problems", subtitle: "Each clears itself once it is fixed",
             content: .problems(problems), onGrantAccess: {}))
 
+        // #130 (M3 B7): the first-launch grant wait — a window, not a silent hang — fresh, and
+        // once a stale TCC row is the likelier story.
+        add("grant-wait", nil, GrantWaitView(wait: GrantWait(elapsed: .seconds(4)), openSettings: {}, quit: {}))
+        add("grant-wait-stale", nil, GrantWaitView(wait: GrantWait(elapsed: .seconds(47)), openSettings: {}, quit: {}))
+        // …and the alert a failed hotkey tap opens, with the socket's queued behind it.
+        add("problem-alert", nil, ProblemAlertView(
+            problem: .hotkeysInactive("the event tap could not be created"), queued: 1, dismiss: {}))
+
         // panel-color / panel-opacity actually reaching the panels. These existed as config keys,
         // as persisted values and as settings-window controls while nothing read them, so the
         // point of these two stories is that a tinted panel is *visibly* tinted.
