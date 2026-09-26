@@ -5,10 +5,11 @@ import SpacialShellProtocol
 // Layouts as data (#9, the "expand" step of docs/superpowers/specs/2026-09-25-custom-grid-layouts-design.md).
 // Only the id crosses the Protocol boundary; the definitions and their geometry live here.
 
-/// The five layouts that are code, not data: each is a function of the window count (and
-/// `maximize`/`split` of the focus), which no fixed zone list can express (design §5).
+/// The layouts that are code, not data: each is a function of the window count (and
+/// `maximize`/`split` of the focus), which no fixed zone list can express (design §5). `ratio`
+/// is material-shell's dwindle (#123), under its material-shell name (#24).
 /// Not `Codable`: nothing stores a `BuiltinLayout`; storage and the wire speak `LayoutID` (#11).
-public enum BuiltinLayout: String, CaseIterable, Sendable { case maximize, split, column, half, grid }
+public enum BuiltinLayout: String, CaseIterable, Sendable { case maximize, split, column, half, grid, ratio }
 
 /// One drawn zone, as a unit rect: `0…1`, origin top-left, y-down (M1 §3.2's AX convention). The
 /// workspace rect it maps onto changes with the display, insets, Zen and the gap (design §4.2).
@@ -45,13 +46,14 @@ public struct LayoutDef: Codable, Hashable, Sendable, Identifiable {
         self.id = id; self.name = name; self.symbol = symbol; self.body = body
     }
 
-    /// The five, in cycle order, with the symbols the switcher has always drawn.
+    /// The built-ins, in cycle order, with the symbols the switcher has always drawn.
     public static let builtins: [LayoutDef] = [
         LayoutDef(id: .maximize, name: "Maximize", symbol: "rectangle", body: .builtin(.maximize)),
         LayoutDef(id: .split, name: "Split", symbol: "rectangle.split.2x1", body: .builtin(.split)),
         LayoutDef(id: .column, name: "Column", symbol: "rectangle.split.3x1", body: .builtin(.column)),
         LayoutDef(id: .half, name: "Half", symbol: "rectangle.lefthalf.filled", body: .builtin(.half)),
         LayoutDef(id: .grid, name: "Grid", symbol: "square.grid.2x2", body: .builtin(.grid)),
+        LayoutDef(id: .ratio, name: "Ratio", symbol: "square.split.bottomrightquarter", body: .builtin(.ratio)),
     ]
 
     /// The TOML shape of design §3.3, and the same keys in `settings.json`:

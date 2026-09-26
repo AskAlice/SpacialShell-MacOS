@@ -27,5 +27,6 @@ public struct LayoutID: RawRepresentable, Codable, Hashable, Sendable, Expressib
     public init(from d: Decoder) throws { rawValue = try d.singleValueContainer().decode(String.self) }
     public func encode(to e: Encoder) throws { var c = e.singleValueContainer(); try c.encode(rawValue) }
     public static let maximize: LayoutID = "maximize", split: LayoutID = "split",
-                      column: LayoutID = "column", half: LayoutID = "half", grid: LayoutID = "grid"
+                      column: LayoutID = "column", half: LayoutID = "half", grid: LayoutID = "grid",
+                      ratio: LayoutID = "ratio"
 }

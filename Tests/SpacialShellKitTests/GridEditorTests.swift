@@ -267,7 +267,7 @@ import SpacialShellProtocol
         let s = ScreenShellState(display: "D1", isFocusedScreen: true, rail: [], tabs: [], layout: "code-3", layouts: cat)
         #expect(s.menuSections.map(\.title) == ["Built-in", "From config.toml", "Drawn"])
         #expect(s.menuSections.map { $0.items.map(\.id.rawValue) }
-                == [["maximize", "split", "column", "half", "grid"], ["wide"], ["code-3"]])
+                == [["maximize", "split", "column", "half", "grid", "ratio"], ["wide"], ["code-3"]])
         // Not on the bar, but active: drawn after the set so the bar shows what is on screen.
         #expect(s.switcher.map(\.id) == cat.bar + ["code-3"])
         #expect(s.layouts.first { $0.id == "code-3" }?.onBar == false)
@@ -292,7 +292,7 @@ import SpacialShellProtocol
         let other = w.screens[w.focus.screen == "D1" ? "D2" : "D1"]!.active.id
         #expect(wire.setLayout("grid", workspace: other.uuidString) == .success(.setWorkspaceLayout(other, .grid)))
         #expect(wire.setLayout("foo", workspace: nil)
-                == .failure(SetLayoutRefusal("unknown layout \"foo\" (known: maximize, split, column, half, grid, code-3)")))
+                == .failure(SetLayoutRefusal("unknown layout \"foo\" (known: maximize, split, column, half, grid, ratio, code-3)")))
         #expect(wire.setLayout("grid", workspace: "nope") == .failure(SetLayoutRefusal("unknown workspace \"nope\"")))
         #expect(wire.setLayout(nil, workspace: nil) == .failure(SetLayoutRefusal("set-layout needs a layout id")))
     }

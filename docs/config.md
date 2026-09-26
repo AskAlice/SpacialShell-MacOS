@@ -19,7 +19,7 @@ below.
 keybinding-preset = "fn"          # or "ctrl-alt"
 gap = 8                           # pt between windows (and to the screen edge, unless screen-gap is set)
 # screen-gap = 8                  # pt between the windows and the screen edge; follows gap when unset
-default-layout = "maximize"       # maximize | split | column | half | grid | a [[layout]] id
+default-layout = "maximize"       # maximize | split | column | half | grid | ratio | a [[layout]] id
 ax-timeout-ms = 1000
 refresh-interval-ms = 2000
 start-at-login = false
@@ -73,7 +73,7 @@ title-regex = "^Picture in Picture$"
 | `keybinding-preset` | `"fn"` \| `"ctrl-alt"` | `"fn"` | Which modifier the built-in bindings (`KeyBindings.core`) are prefixed with. `fn` uses the Globe key; `ctrl-alt` (`⌃⌥`) is for keyboards without one. The arrow-key bindings are always on `⌃⌥` regardless of this setting. |
 | `gap` | number (pt) | `8` | Space left between tiled windows, in every layout. Also the space to the screen edge unless `screen-gap` is set. Also in the settings window's Layout pane (*Window gap*). |
 | `screen-gap` | number (pt) | follows `gap` | Space left between the tiled row and the screen edge (and the rail and tab bar), on all four sides, in every layout — material-shell's `screen-gap`. `0` puts windows flush with the edges while `gap` still separates them. Unset, it follows `gap` (including a gap set in the settings window). Also in the settings window's Layout pane (*Screen edge gap*). |
-| `default-layout` | layout id | `"maximize"` | The layout a newly created workspace starts with: one of the five built-ins or a `[[layout]]` id (see below). |
+| `default-layout` | layout id | `"maximize"` | The layout a newly created workspace starts with: one of the six built-ins or a `[[layout]]` id (see below). |
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
 | `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
@@ -103,11 +103,15 @@ title-regex = "^Picture in Picture$"
 Layout names: `maximize` (one window fills the screen), `split` (a sliding view of N consecutive
 windows as columns — 2 by default, 2–6 per workspace from the layout popover's −/+ or
 `split-columns-more`/`-fewer`; focus moving past either edge slides it by one), `column` (all windows as equal columns), `half` (one window fills the left half, the
-rest stack in the right half), `grid` (a roughly-square grid, row-major, last row widened to fill).
+rest stack in the right half), `grid` (a roughly-square grid, row-major, last row widened to fill),
+`ratio` (material-shell's dwindle: each window takes 0.618 of the space the windows before it left,
+cutting across and down in turn, so the first window is the largest and the last takes what
+remains; resize a workspace's shares with `Fn+⌃`/border drag). `ratio` is not on the default
+`layout-bar`: add it there, or switch it on in the layout popover.
 
 On a display taller than wide (portrait), the built-ins turn to the long axis: `split` and `column`
 stack their windows as rows, `half` gives the top half to one window and lays the rest side by
-side below it, and `grid` has at least as many rows as columns. A square display counts as
+side below it, and `grid` has at least as many rows as columns, and `ratio` makes its first cut across. A square display counts as
 landscape. Resized sizes are kept separately for each orientation. Drawn `[[layout]]` zones are
 drawn as they are, on any display.
 
@@ -129,11 +133,11 @@ remembered per bundle id — see below.
 
 ## `[[layout]]` — drawn layouts
 
-Besides the five built-ins, a layout can be a fixed list of zones (#9). Zones are unit rects —
+Besides the six built-ins, a layout can be a fixed list of zones (#9). Zones are unit rects —
 `0…1`, origin top-left — and their order is the order windows fill them:
 
 ```toml
-layout-bar = ["maximize", "split", "column", "code-3"]   # what Fn+Space cycles; default the five, at most 8
+layout-bar = ["maximize", "split", "column", "code-3"]   # what Fn+Space cycles; default the five before ratio, at most 8
 
 [[layout]]
 id = "code-3"

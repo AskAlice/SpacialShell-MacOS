@@ -216,7 +216,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// is a window you work in, not a visitor. Calculator is the one app that really is a popup.
     public static let defaultEphemeral = [AppRule(bundleId: "com.apple.calculator")]
     public static let defaultTile = [AppRule(bundleId: "com.apple.systempreferences")]
-    public static let defaultLayoutBar: [LayoutID] = LayoutDef.builtins.map(\.id)
+    /// The five built-ins that predate `ratio` (#123): adding a layout does not change the ring an
+    /// existing Fn+Space already cycles. `ratio` goes on it from the popover or `layout-bar`.
+    public static let defaultLayoutBar: [LayoutID] = [.maximize, .split, .column, .half, .grid]
     public static let defaultCategoryOrder: [AppCategory] = [.web, .terminal, .coding, .media, .utilities]
 
     public init() {}

@@ -109,7 +109,8 @@ import SpacialShellProtocol
         let golden = try JSONDecoder().decode([String: [[Double]?]].self, from: Data(contentsOf: url))
         let rects = [CGRect(x: 8, y: 42, width: 1864, height: 1021), CGRect(x: 0, y: 0, width: 500, height: 300)]
         var checked = 0
-        for l in BuiltinLayout.allCases { for (ri, rect) in rects.enumerated() { for n in 1...9 { for f in 0..<n {
+        let pre9: [BuiltinLayout] = [.maximize, .split, .column, .half, .grid]   // #123's ratio came later
+        for l in pre9 { for (ri, rect) in rects.enumerated() { for n in 1...9 { for f in 0..<n {
             // #114: split's view starting at the focused window is the pre-#9 split exactly.
             let now = LayoutEngine.frames(builtin(l), count: n, focused: f, in: rect, gap: 8, split: SplitView(start: f))
                 .map { $0.map { [Double($0.minX), Double($0.minY), Double($0.width), Double($0.height)] } }
@@ -165,14 +166,15 @@ import SpacialShellProtocol
 
     // MARK: - the catalogue
 
-    @Test func theDefaultCatalogueIsTheFiveInCycleOrder() {
+    @Test func theDefaultCatalogueIsTheBuiltinsInCycleOrder() {
         let cat = LayoutCatalogue.builtins
-        #expect(cat.all.map(\.id) == [.maximize, .split, .column, .half, .grid])
-        #expect(cat.bar == cat.all.map(\.id))
+        #expect(cat.all.map(\.id) == [.maximize, .split, .column, .half, .grid, .ratio])
+        #expect(cat.bar == [.maximize, .split, .column, .half, .grid], "#123: ratio is not on the default bar")
         #expect(cat.all.map(\.name) == BuiltinLayout.allCases.map { $0.rawValue.capitalized })   // what the Hint printed
         #expect(cat.all.map(\.body) == BuiltinLayout.allCases.map { .builtin($0) })
-        let ids = cat.all.map(\.id)
+        let ids = cat.bar
         for (i, id) in ids.enumerated() { #expect(cat.next(after: id) == ids[(i + 1) % ids.count]) }
+        #expect(cat.next(after: .ratio) == .maximize, "from off the bar, its start")
     }
 
     @Test func unknownIdsFallBackThroughDefaultThenMaximize() {
@@ -191,7 +193,7 @@ import SpacialShellProtocol
         c.layouts = [LayoutDef(id: .split, name: "Evil", body: .zones([LayoutZone(x: 0, y: 0, w: 1, h: 1)])), columnZones(2)]
         let cat = LayoutCatalogue(config: c)
         #expect(cat[.split]?.isBuiltin == true)
-        #expect(cat.all.map(\.id) == [.maximize, .split, .column, .half, .grid, "test"])
+        #expect(cat.all.map(\.id) == [.maximize, .split, .column, .half, .grid, .ratio, "test"])
     }
 
     @Test func theBarIsFilteredDedupedAndCappedAtEight() {
@@ -334,7 +336,7 @@ import SpacialShellProtocol
         #expect(now.screens == old.screens)
         // #109 `problems`, #117 `subscribe`; #131's verbs are appended after them.
         #expect(Array(now.capabilities.prefix(7)) == old.capabilities + ["layouts", "problems", "subscribe"])
-        #expect(now.layouts.map(\.id) == ["maximize", "split", "column", "half", "grid"])
+        #expect(now.layouts.map(\.id) == ["maximize", "split", "column", "half", "grid", "ratio"])   // #123
         #expect(now.layouts.allSatisfy { $0.builtin && $0.zones == nil })
     }
 

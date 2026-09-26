@@ -25,6 +25,10 @@ public enum LayoutEngine {
     /// overflow instead of shrinking everyone into slivers.
     public static let minSize = CGSize(width: 120, height: 80)
 
+    /// #123 (M4 G7): the share of the remaining space each `ratio` window takes — the golden
+    /// ratio, as in material-shell. A workspace changes it with resize (#113), not config.
+    public static let ratio = 0.618
+
     /// One entry per tiled window index; nil means this layout parks that window. Spec §5.
     ///
     /// **Overflow rule (#54).** When `count` windows cannot all get `minSize`, the layout is laid
@@ -135,7 +139,27 @@ public enum LayoutEngine {
             var out: [CGRect?] = []
             for r in 0..<nRows { out += columns(min(cols, count - r * cols), in: rowRects[r], gap: gap).map { $0 as CGRect? } }
             return out
+        case .ratio:
+            return ratioZones(count, portrait: portrait).map { LayoutEngine.rect(for: $0, in: rect, gap: gap) }
         }
+    }
+
+    /// #123: dwindle in unit zones. Window `i` takes `ratio` of what windows `0..<i` left, at its
+    /// leading edge, cutting across the long axis first and alternating; the last takes the rest.
+    /// Mapped through design §4.2's zone rule, so the gaps match the resize model's frames exactly.
+    static func ratioZones(_ n: Int, portrait: Bool) -> [LayoutZone] {
+        var x = 0.0, y = 0.0, w = 1.0, h = 1.0, cutX = !portrait
+        var out: [LayoutZone] = []
+        for i in 0..<n {
+            if i == n - 1 { out.append(LayoutZone(x: x, y: y, w: w, h: h)); break }
+            if cutX {
+                out.append(LayoutZone(x: x, y: y, w: w * ratio, h: h)); x += w * ratio; w -= w * ratio
+            } else {
+                out.append(LayoutZone(x: x, y: y, w: w, h: h * ratio)); y += h * ratio; h -= h * ratio
+            }
+            cutX.toggle()
+        }
+        return out
     }
 
     static func columns(_ n: Int, in rect: CGRect, gap: CGFloat) -> [CGRect] {

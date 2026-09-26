@@ -108,6 +108,8 @@ public struct GridEditor: Equatable, Sendable {
             case .column: cells = Preset.threeColumns.cells
             case .grid: cells = Preset.grid2x2.cells
             case .half: cells = [Cell(x: 0, y: 0, w: 24, h: 48), Cell(x: 24, y: 0, w: 24, h: 24), Cell(x: 24, y: 24, w: 24, h: 24)]
+            // #123: three windows of the dwindle, on the lattice (30/48 ≈ 0.618).
+            case .ratio: cells = [Cell(x: 0, y: 0, w: 30, h: 48), Cell(x: 30, y: 0, w: 18, h: 30), Cell(x: 30, y: 30, w: 18, h: 18)]
             }
         }
         symbol = def.symbol
