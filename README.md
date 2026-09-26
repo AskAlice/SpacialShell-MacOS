@@ -1,61 +1,80 @@
 # SpacialShell
 
-<p align="center">
-  <img src="docs/media/screenshot-grid.webp" width="920" alt="SpacialShell M2 — rail, tab bar, grid layout (render)">
-</p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
-
-A spatial window manager for macOS: workspaces stacked vertically, windows arranged horizontally,
-every window has one address.
+**material-shell's spatial desktop, on the Mac.** A tiling window manager for macOS where every
+window has one address, you move by direction, and the shell remembers where you put things.
 
 <p align="center">
-  <img src="docs/media/general-showcase.webp" width="920" alt="M2: focus a window, switch workspace, come back (render)">
+  <a href="#get-started"><b>Get started</b></a> ·
+  <a href="#install">Install</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="https://askalice.github.io/SpacialShell-MacOS/">Docs site</a> ·
+  <a href="docs/keybindings.md">Keybindings</a> ·
+  <a href="docs/config.md">Config</a> ·
+  <a href="docs/ipc.md">spacialctl</a>
 </p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
-
-## What it is
-
-SpacialShell reimplements the GNOME **material-shell** paradigm on macOS. material-shell itself is
-discontinued; its authors moved on to **Veshell**, a Wayland compositor whose specifications carry
-the same thesis further. SpacialShell is the continuation of that lineage on macOS — not a port of
-either project, and no code is shared with them.
-
-The idea: every workspace is a row of apps. Open a new app and it lands at the end of the current
-row. Add a workspace and it appears underneath. Up/down moves between workspaces, left/right
-between windows, and windows are always tiled, never overlapping — there is never any doubt where
-a window went. Veshell calls this a **"not-desktop"**: a place you inhabit rather than a desktop
-you tidy.
-
-M1 is the headless spatial core. **M2** is the face: a left workspace rail, a top window tab bar,
-tiling layouts (five built in, plus your own from the layout editor), and switches that slide.
 
 <p align="center">
-  <img src="docs/media/hero-still.webp" width="720" alt="M2 chrome — rail, tabs, split (render)">
+  <img src="docs/media/live-overview.webp" width="920" alt="Live: rail, tab bar and tiled windows; Fn+Space through the layouts, Fn+D / Fn+A along the row, Fn+W / Fn+S between rows">
 </p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
+<p align="center"><sub>Live capture: <code>Fn+Space</code> through the layouts, <code>Fn+D</code>/<code>Fn+A</code> along the row, <code>Fn+W</code>/<code>Fn+S</code> between rows.</sub></p>
+
+## Get started
+
+```sh
+brew install --cask askalice/tools/spacialshell
+```
+
+Launch it, grant **Accessibility** when asked, and press `Fn+S`. Hold `Fn` on its own for a cheat
+sheet of every binding. More in [Install](#install).
+
+## Why it exists
+
+Your brain is already a very good window manager, if you give it a *place* to work with.
+**Spatial memory** is how you know where the mugs are in your own kitchen; **mental mapping** is
+how you plan a route through a place you know. A pile of overlapping windows gives neither anything
+to hold on to. A stable grid gives them everything.
+
+So SpacialShell lays your apps out in two dimensions — **every workspace is a row, every window a
+cell** — grouped by use case: browsers on one row, editor and terminal on the next, media below. It
+**remembers** that arrangement as you use it, with nothing to configure. You **move by direction**,
+like in a game world: `Fn+W`/`Fn+S` between rows, `Fn+A`/`Fn+D` along one. And the rail and tab
+bar **show the whole map at a glance**, so the mouse works as well as the keyboard. Finding a window
+stops being a search and becomes wayfinding.
+
+This is the paradigm of GNOME's [**material-shell**](https://github.com/material-shell/material-shell)
+and its successor [**Veshell**](https://github.com/free-explorers/veshell) — a "not-desktop" you
+inhabit rather than tidy. SpacialShell is that lineage **rebuilt for macOS, not Linux**: not a port,
+and no shared code.
+
+### Built on Apple's terms
+
+Both of those projects own the compositor. On a Mac nobody does, which shapes everything here:
+
+- **The public Accessibility API instead of a compositor** — the same interface screen readers use.
+- **Screenshot-proxy animations** — switches slide *pictures* of the windows, then move the real
+  ones once, because macOS has no hooks for animating another app's window.
+- **Beside Spaces, fullscreen and the menu bar**, not replacing them; an app can't drag you out of a
+  fullscreen Space by stealing focus.
+- **No private APIs, SIP stays on** — nothing to reinstall after a macOS update.
+- **Notarised, outside the App Store** — the App Store sandbox forbids the control a tiler needs.
+- **Native look** — vibrancy materials, your accent colour, light/dark from System Settings.
 
 ## Live captures
 
-Recorded in the test VM (macOS 26.6, one 1024x768 display) while a scenario drives the real shell
-through `spacialctl` and synthetic input: `Scripts/e2e/e2e.sh --vm --suite media`, then
-`Scripts/e2e/media.sh` for the loops. The guest has a single display, so the multi-display
-features (a tab dragged to another display's bar, the #33 spill) are not in these; they still
-need a capture on a real multi-monitor Mac.
-
-<p align="center">
-  <img src="docs/media/live-overview.webp" width="720" alt="Live: rail, tab bar and tiled windows; Fn+Space through the layouts, Fn+D / Fn+A along the row, Fn+W / Fn+S between rows">
-</p>
-<p align="center"><sub>The shell at a glance: <code>Fn+Space</code> through the layouts, <code>Fn+D</code>/<code>Fn+A</code> along the row, <code>Fn+W</code>/<code>Fn+S</code> between rows.</sub></p>
+Recorded in the test VM (one 1024×768 display) while a scenario drives the real shell through
+`spacialctl` and synthetic input: `Scripts/e2e/e2e.sh --vm --suite media`, then
+`Scripts/e2e/media.sh`. Multi-display features aren't in these; they need a real multi-monitor Mac.
 
 <p align="center">
   <img src="docs/media/live-rail-apps.webp" width="512" alt="Live: the rail with Safari, Terminal, Finder, Notes and TextEdit; hover cards with window previews">
 </p>
-<p align="center"><sub>The rail with real apps, each in the workspace its category sends it to; hover cards with live previews.</sub></p>
+<p align="center"><sub>The rail with real apps, each in the row its category sends it to; hover cards with live previews.</sub></p>
 
 <p align="center">
   <img src="docs/media/live-tab-drag.webp" width="720" alt="Live: a tab dragged along the bar, then onto a workspace in the rail">
 </p>
-<p align="center"><sub>A tab dragged along the bar (insertion caret), then onto a workspace in the rail, which moves its window there.</sub></p>
+<p align="center"><sub>A tab dragged along the bar, then onto a workspace in the rail, which moves its window there.</sub></p>
 
 <p align="center">
   <img src="docs/media/live-settings.webp" width="720" alt="Live: the Settings window, pane by pane">
@@ -67,167 +86,115 @@ need a capture on a real multi-monitor Mac.
 <p align="center">
   <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells (render)">
 </p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
+<p align="center"><sub>Render, not a live capture.</sub></p>
 
-*(The zoomed-out spatial view above illustrates the model — it ships as a toggleable mode with
-M3b's spatialisation view; today you ride it with `Fn+W`/`Fn+S`.)*
+A **workspace** is a row; an **application window** is a cell. New windows append to the current
+row, new workspaces append underneath. **Up/down** changes workspace, **left/right** changes
+window. The screen is a viewport over a larger, always-sorted grid.
 
-A **workspace** is a row. An **application** is a cell. New windows append to the current row;
-new workspaces append underneath. Navigate **up/down** to change workspace, **left/right** to
-change window. The screen is a viewport over a larger, always-sorted grid.
+- **Single address.** Every managed window lives in exactly one workspace of exactly one display.
+- **There's always a way down.** Each display's stack ends with one empty workspace; empty rows in
+  the middle disappear on their own.
+- **Per-display stacks.** Every display has its own rail; a window (`Fn+⇧+arrows`) or a whole
+  workspace (`Fn+⌥⇧+arrows`) can move to the display that way.
+- **Categories are identity.** The rail shows what each row *is* — web, terminal, coding, media —
+  and `category-order` gives each category its own row, so a new browser window lands with the
+  other browsers.
+- **Placement memory.** Windows go back to their workspace and display across restarts (displays
+  matched by UUID), and nothing is ever left invisible: every window the shell lists is one click
+  away, and parked windows are recovered after a crash.
 
-- **Single address.** Every managed window lives in exactly one workspace of exactly one screen —
-  never two places, never none.
-- **New windows append.** A window that appears lands at the end of the active workspace on the
-  screen it mostly overlaps; a dialog joins its owner's workspace right after it.
-- **New workspaces append.** A freshly created workspace always goes to the bottom of its screen's
-  stack.
-- **There's always a way down.** Each screen's stack ends with one empty workspace, so "down" is
-  always meaningful; once it gains a window a fresh empty one appears below it, and empty
-  workspaces in the middle disappear on their own — except pinned ones (seeded from config), which
-  stick around even empty so named categories survive before windows do.
-- **Focus is always somewhere real.** The focused window is always in the active workspace of the
-  focused screen, or is a floating "visitor" window that belongs to no workspace at all.
-
-## Interface
-
-<p align="center">
-  <img src="docs/media/interface-showcase.webp" width="720" alt="Rail tiles and window tabs tracking focus (render)">
-</p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
-
-<p align="center">
-  <img src="docs/media/m2-ui-showcase.webp" width="720" alt="Overview search, hold-Fn cheat sheet, Zen mode (render)">
-</p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
-
-Two panels, one job: show *where you are*.
-
-- **System panel** (left rail, 140 pt): search, one row per workspace, `+`, settings. Each row
-  shows the apps actually in that workspace (one icon per app, then `+N`), how many windows it
-  holds, and what kind of work it is for — "web browsing", "coding", "terminal". Click a row to go
-  there; `+` opens the overview so the new workspace starts with something in it.
-- **Workspace panel** (top bar, 34 pt): a tab per window on the active row, plus the layout
-  switcher.
-
-## Layouts
+## Interface and layouts
 
 <p align="center">
   <img src="docs/media/tiling-showcase.webp" width="720" alt="Cycle maximize, split, column, half, grid (render)">
 </p>
-<p align="center"><sub>Render, not a live capture (see <a href="#live-captures">Live captures</a>).</sub></p>
+<p align="center"><sub>Render, not a live capture.</sub></p>
 
-`Fn+Space` cycles them: **maximize** · **split** · **column** · **half** · **grid**.
-
-## Status
-
-**M1 — spatial core**, shipped and running (headless). Screen/workspace/window model and its
-invariants, all five tiling layouts, the full hotkey set under two presets, TOML config with live
-reload, JSON state persistence for pinned workspaces, window classification (tiled / floating /
-ephemeral / ignored), and parking.
-
-**M2 — shell UI**, in progress. Landed so far: the `ScreenPanel` workspace rail (one row per
-workspace showing its apps and category, the trailing empty one drawn as "+", search glyph opening
-the configured launcher, a settings cog on the primary display), the
-`WorkspacePanel` tab bar + layout switcher (one tab per window in the active row, in `Fn+A`/`Fn+D`
-order), **Zen mode** on `Fn+Esc` (hides both panels and gives their edges back to the layout;
-survives relaunch), a built-in **overview** on `Fn+Tab` (search over open windows and installed
-apps — the fallback when `launcher-url` has no handler), a **hold-`Fn` cheat sheet** showing your
-live bindings, `Fn+,` opening the config file, and the control surface: unix-socket IPC,
-`spacialctl`, and the Raycast extension under [`raycast/`](raycast/). Panels are Apple-native
-materials, never take key focus (the overview's search field is the one exception), and every
-click re-enters the same command pipeline as a hotkey. Drag a window by its title bar onto another
-tile to swap them. Still to come: workspace menus, and window titles in tabs (app name + icon until then).
-
-Loops are served as animated **webp** (and **gif** next to them) from
-[`docs/media/`](docs/media/). The `live-*` ones are screen recordings from the test VM (see
-[Live captures](#live-captures)). Every other loop and still is a render: regenerate those with
-`Scripts/render-m2-media.py`.
-
-## Install
-
-1. Grab a DMG from [Releases](https://github.com/AskAlice/SpacialShell-MacOS/releases), or build the
-   app bundle: `Scripts/bundle.sh`. That produces `build/SpacialShell.app`, ad-hoc signed with a
-   stable bundle id (`sh.emu.SpacialShell`) so the Accessibility grant survives rebuilds.
-   Tag `v*` (or run **Release** from Actions) to rebuild, run unit tests, and publish a DMG.
-2. Move `build/SpacialShell.app` to `/Applications` (or anywhere you like — just keep it in place
-   afterwards; moving it invalidates the grant, see below).
-3. Launch it. On first launch SpacialShell asks for the **Accessibility** permission and opens
-   System Settings → Privacy & Security → Accessibility for you; tick the checkbox next to
-   SpacialShell and it continues on its own.
-4. *Optional:* hovering a workspace tile shows live miniatures of that workspace's windows,
-   which needs the **Screen Recording** permission on top of Accessibility. It is not asked for
-   on launch — hover a tile and the card offers it, because that is the only moment it matters.
-   macOS applies this grant at launch, so **restart SpacialShell after granting it**; until then
-   the card says so rather than drawing blank rectangles. Everything else works without it.
-5. That's it — no menu bar UI in M1, and no Dock icon (it runs as an accessory app), so there is no
-   `⌘Q` to quit with, and `Fn+Q` with no window focused is simply a no-op, not a quit shortcut.
-   Quit with `Ctrl-C` if you're running the dev binary in a terminal, or `kill`/SIGTERM otherwise —
-   either one runs the termination gate: state is saved, every managed window is restored to the
-   centre of its screen, then the process exits.
-
-**Development**: `Scripts/dev.sh` builds debug and runs `.build/debug/SpacialShell` in the
-foreground. Its TCC identity is the raw binary **path**, so the Accessibility grant is tied to that
-exact path and has to be re-granted if you move or rename the checkout — see `Scripts/README` for
-the full explanation and `SPACIAL_LOG_KEYS=1 Scripts/dev.sh` for hotkey debugging.
+- **The rail** (left): one row per workspace with its apps and category, hover previews, a tray
+  for hidden and minimized windows, right-click menus (quit an app, set a row's category), scroll
+  to switch, and Dock-style auto-hide.
+- **The tab bar** (top): a tab per window, drag to reorder or onto a rail row, right-click for
+  Close / Float / Move to workspace, middle-click to close; plus the layout switcher.
+- **Layouts:** `Fn+Space` cycles **maximize** · **split** (an N-column sliding view) · **column** ·
+  **half** · **grid**. Draw your own in the layout editor or as `[[layout]]` blocks.
+- **Resize:** drag a border, or `Fn+⌃A/D/W/S` in 5% steps that stop on 25/50/75%; `Fn+⌃=`
+  balances. Sizes are kept per workspace and per layout.
+- Hold `Fn` for the cheat sheet, `Fn+Tab` for the overview, `Fn+Esc` for Zen mode.
 
 ## Hotkeys
 
-`Fn`/Globe is the default modifier (Super-equivalent); `⌃⌥` is the preset for keyboards without a
-Globe key (`keybinding-preset = "ctrl-alt"` in config). The four arrow-key pairs are bound to
-`⌃⌥` in **both** presets — `Fn+arrows` are Home/End/Page Up/Page Down system-wide on Apple
-keyboards and can never be bound.
+`Fn`/Globe is the default modifier; `⌃⌥` is the preset for keyboards without a Globe key
+(`keybinding-preset = "ctrl-alt"`). The grammar: **Fn** navigates, **+⇧** moves the window, **+⌃**
+resizes, **+⌥** reaches displays or the whole app.
 
 | Command | `fn` preset | `ctrl-alt` preset |
 |---|---|---|
 | Focus workspace up / down | `Fn+W` / `Fn+S` | `⌃⌥W` / `⌃⌥S` |
-| Focus window left / right † | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` |
-| Focus workspace 1…10 | `Fn+1` … `Fn+0` | `⌃⌥1` … `⌃⌥0` |
-| Close focused window | `Fn+Q` | `⌃⌥Q` |
+| Focus window left / right | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` |
+| Focus workspace 1…10 (again to go back) | `Fn+1` … `Fn+0` | `⌃⌥1` … `⌃⌥0` |
+| Focus tab 1…9 | `Fn+⌥1` … `Fn+⌥9` | — |
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` |
-| Move window to workspace up / down | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` |
-| Cycle layout | `Fn+Space` | `⌃⌥Space` |
-| Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` |
-| Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` |
-| Open the config file | `Fn+,` | `⌃⌥,` |
-| Focus screen prev / next | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` |
-| Move window to screen prev / next | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` |
+| Move window to workspace up / down / N | `Fn+⇧W` / `Fn+⇧S` / `Fn+⇧1…0` | `⌃⌥⇧W` / `⌃⌥⇧S` / — |
+| Move every window of the app up / down | `Fn+⌥⇧W` / `Fn+⌥⇧S` | — |
+| Resize narrower / wider / shorter / taller | `Fn+⌃A` / `D` / `W` / `S` | `⌃⌥⌘A` / `D` / `W` / `S` |
+| Balance sizes | `Fn+⌃=` | `⌃⌥⌘=` |
+| Focus display that way | `Fn+⌥W/A/S/D` | — |
+| Move window / workspace to display that way | `Fn+⇧+arrows` / `Fn+⌥⇧+arrows` | — |
+| Focus / move to display prev, next | `Fn+[` `Fn+]` / `Fn+⇧[` `Fn+⇧]` | `⌃⌥[` `⌃⌥]` / `⌃⌥⇧[` `⌃⌥⇧]` |
+| Cycle layout / backwards | `Fn+Space` / `Fn+⇧Space` | `⌃⌥Space` / `⌃⌥⇧Space` |
 | Toggle float | `Fn+G` | `⌃⌥G` |
-| Focus window / move window (arrows) | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` |
+| Close focused window | `Fn+Q` | `⌃⌥Q` |
+| Zen mode / overview / config file | `Fn+Esc` / `Fn+Tab` / `Fn+,` | `⌃⌥Esc` / `⌃⌥Tab` / `⌃⌥,` |
 
-† Window focus walks every *visible* window in the active workspace, floating ones included —
-a floating window keeps its index in the row even though it takes no tiling slot. Minimized and
-hidden windows are skipped, and ephemeral "visitor" windows are in no row at all (spec §4.3).
+`Fn+F` is deliberately unbound — Globe+F is Apple's full-screen shortcut. Every chord can be
+rebound in `config.toml` or Settings; see [`docs/keybindings.md`](docs/keybindings.md).
 
-`Fn+F` is deliberately **unbound** — Globe+F is Apple's own full-screen shortcut, and SpacialShell
-does not fight macOS for it. All chords are configurable — see [`docs/keybindings.md`](docs/keybindings.md)
-for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/config.md` for the full reference.
+## Install
+
+1. `brew install --cask askalice/tools/spacialshell`, or download the notarised DMG from
+   [Releases](https://github.com/AskAlice/SpacialShell-MacOS/releases) and move
+   `SpacialShell.app` to `/Applications`. Keep it where you put it: moving it invalidates the
+   Accessibility grant.
+2. Launch it. It asks for **Accessibility** and opens System Settings → Privacy & Security →
+   Accessibility; tick SpacialShell and it continues on its own.
+3. *Optional:* hover previews and sliding switches need **Screen Recording**; the hover card offers
+   it when it matters. Restart SpacialShell after granting it. Without it, switches are instant and
+   everything else works.
+4. Quit from the rail's app menu. Quitting restores every managed window to the centre of its
+   screen and saves your layout.
+
+## Build from source
+
+Requires macOS 14+ and a Swift 6 toolchain (Xcode 16 or later).
+
+```sh
+git clone https://github.com/AskAlice/SpacialShell-MacOS.git && cd SpacialShell-MacOS
+swift test          # the gate for every change
+Scripts/dev.sh      # build debug and run in the foreground
+Scripts/bundle.sh   # build/SpacialShell.app, signed with a stable identity
+```
+
+`Scripts/dev.sh` runs the raw binary, whose Accessibility grant is tied to its path; see
+[`Scripts/README`](Scripts/README) for the TCC details and `SPACIAL_LOG_KEYS=1` for hotkey
+debugging. `make hooks` installs the pre-commit hook. [CONTRIBUTING.md](CONTRIBUTING.md) has the
+rest.
 
 ## Known limitations
 
-- **One native macOS Space per display.** Workspaces are emulated by parking inactive windows in a
-  screen corner, not by native Spaces — SIP stays on and there's no scripting addition to
-  reinstall on every OS update.
-- **Mission Control and `⌘Tab` see parked windows.** Because parking is a corner-of-the-screen
-  trick rather than a real Space switch, the OS's own window-switching UI shows windows that
-  SpacialShell has tucked away.
-- **`Fn+letter` may conflict with macOS's own symbolic hotkeys** (Quick Note, Show Desktop, Dock,
-  Type-to-Siri, and friends). Whether the session-level hotkey tap wins that race is an open
-  empirical question — see `docs/platform-notes.md` (currently `pending grant`) — and if it
-  doesn't, the shipped default preset may become `ctrl-alt` instead of `fn`.
-- **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
-  the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
-  keyboard) or the `ctrl-alt` preset instead.
-- **The shell UI is young.** The rail, tab bar, overview and drag-to-swap are in; and tabs show app names, not window titles. `show-panels = false` in
-  config brings back the panel-less behaviour (the overview and `spacialctl` stay).
+- **One native macOS Space per display.** Workspaces are emulated by parking inactive windows, not
+  by native Spaces, so Mission Control and `⌘Tab` can still see parked windows.
+- **Non-Apple keyboards never send `Fn`.** Use the `ctrl-alt` preset or Karabiner-Elements.
+- **Some `Fn+letter` chords collide with macOS's own shortcuts.** The keyboard hook runs at the
+  HID level to win that race; see [`docs/keybindings.md`](docs/keybindings.md) for known conflicts.
 
 ## Licence and attribution
 
 SpacialShell is licensed under the GNU General Public License v3.0 (GPL-3.0) — see `LICENSE`.
 
-Its Accessibility/platform layer harvests MIT-licensed code from
-[AeroSpace](https://github.com/nikitabobko/AeroSpace) (Copyright (c) 2023 Nikita Bobko); the full
-licence text ships in `legal/third-party/LICENSE-AeroSpace.txt`, every adapted file carries an
-"Adapted from AeroSpace" header, and `NOTICE` lists them all. The spatial paradigm itself — the
-workspace-as-row model, the "not-desktop" framing — is design inspiration from GNOME material-shell
-and Veshell (both GPL-3); no code from either was used.
+Its Accessibility/platform layer adapts MIT-licensed code from
+[AeroSpace](https://github.com/nikitabobko/AeroSpace) (Copyright (c) 2023 Nikita Bobko); the licence
+ships in `legal/third-party/LICENSE-AeroSpace.txt`, every adapted file carries an attribution
+header, and `NOTICE` lists them all. The spatial paradigm is design inspiration from
+[material-shell](https://github.com/material-shell/material-shell) and
+[Veshell](https://github.com/free-explorers/veshell) (both GPL-3); no code from either was used.

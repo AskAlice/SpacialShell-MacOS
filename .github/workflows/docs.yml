@@ -1,0 +1,39 @@
+name: Docs
+
+# Builds the docs site on every change to it, and publishes it to GitHub Pages from main.
+on:
+  push:
+    branches: [main]
+    paths: [docs/**, mkdocs.yml, .github/workflows/docs.yml]
+  pull_request:
+    paths: [docs/**, mkdocs.yml, .github/workflows/docs.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency: { group: pages, cancel-in-progress: true }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # Material 9 needs MkDocs 1.x; MkDocs 2.0 drops the plugin/theme system it relies on.
+      - run: pip install "mkdocs<2" "mkdocs-material==9.*"
+      - run: mkdocs build --strict
+        env: { NO_MKDOCS_2_WARNING: "1" }
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,43 @@
+site_name: SpacialShell
+site_description: material-shell's spatial desktop, on the Mac — a tiling window manager for macOS.
+site_url: https://askalice.github.io/SpacialShell-MacOS/
+repo_url: https://github.com/AskAlice/SpacialShell-MacOS
+repo_name: AskAlice/SpacialShell-MacOS
+edit_uri: edit/main/docs/
+
+# Only user-facing docs are published; design specs, agent guides, drafts and notes stay in the repo.
+exclude_docs: |
+  superpowers/
+  agents/
+  learning/
+  blog/
+  media/mockups/
+
+nav:
+  - Home: index.md
+  - Keybindings: keybindings.md
+  - Config reference: config.md
+  - Control socket (spacialctl): ipc.md
+  - Platform notes: platform-notes.md
+  - Contributing:
+      - Testing: testing.md
+      - Releasing: release.md
+      - Design system: design-system.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features: [navigation.sections, navigation.top, content.code.copy, search.highlight]
+
+markdown_extensions:
+  - attr_list
+  - admonition
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.superfences

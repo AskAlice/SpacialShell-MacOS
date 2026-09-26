@@ -24,3 +24,6 @@ raycast/raycast-env.d.ts
 *.mobileprovision
 *.provisionprofile
 Scripts/sign-identity
+
+# mkdocs output
+site/
