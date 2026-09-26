@@ -259,8 +259,8 @@ A failure you did not intend is the suite doing its job: the diff shows where.
 ## Performance: re-tile motion (#140)
 
 `SPACIAL_E2E_XCODE=/Applications/Xcode.app Scripts/e2e/e2e.sh --vm --suite perf` runs
-`scenarios/perf/retile.scn`. It measures the re-tile prototype (`SPACIAL_PROTO_RETILE=1`) for 2, 4
-and 8 windows, under Instruments' Time Profiler. The guest has no xctrace, so the host's Xcode is
+`scenarios/perf/retile.scn`. It measures re-tile motion (`animate-retile = true`, with the probe's
+debug flag `SPACIAL_LOG_RETILE=1`) for 2, 4 and 8 windows, under Instruments' Time Profiler. The guest has no xctrace, so the host's Xcode is
 shared in read-only as `xcode`. `Scripts/profiling/retile-report.py .build/e2e/vm-…/retile
 --pprof docs/perf` prints the table and writes pprof profiles. Method and results: the M4 spec,
 §7.

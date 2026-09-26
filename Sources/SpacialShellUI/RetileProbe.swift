@@ -3,33 +3,26 @@ import Darwin
 import OSLog
 import QuartzCore
 
-/// #140 (G13) prototype: re-tile motion on the switch overlay, measured. Off unless the app is
-/// launched with `SPACIAL_PROTO_RETILE=1` (e.g. `launchctl setenv SPACIAL_PROTO_RETILE 1`, then
-/// relaunch); without it nothing here runs and re-tiles behave exactly as before.
+/// #140 (G13): what a re-tile on the switch overlay costs, measured. A debug flag, and only
+/// instruments: launch with `SPACIAL_LOG_RETILE=1` (e.g. `launchctl setenv SPACIAL_LOG_RETILE 1`,
+/// then relaunch). It changes nothing about how a re-tile runs: that is `animate-retile` and
+/// `MotionRules`. `Scripts/e2e/scenarios/perf/retile.scn` sets both.
 ///
-/// With it, a reconcile whose transitions are all re-tiles (`Transition.isRetile`: a layout
-/// change, a resize, a neighbour opening or closing) goes through the overlay as:
-/// 1. capture the moving windows and the backdrop, with no capture budget and no cached pictures,
-///    so every re-tile animates and every capture is timed;
-/// 2. cover the tiling area with the pictures at their old frames, and let the store commit the
-///    real AX writes underneath (the switch overlay's hand-off, #65: the real windows are always
-///    at real frames);
-/// 3. slide and scale the pictures to the reconciler's new frames over `duration`;
-/// 4. drop the overlay on landing.
-///
-/// Every re-tile logs one `retile N=…` line (category `motion`) and emits signposts on
-/// `sh.emu.SpacialShell` / Points of Interest, which Instruments' Time Profiler template records:
-/// intervals `retile` (command to landing), `retile.capture`, `retile.shot` (one per picture),
-/// `retile.play`, and events `retile.shown` and `retile.firstFrame`.
+/// Every re-tile the overlay animates logs one `retile N=…` line (category `motion`), and one
+/// `retile N=… abandoned: <why>` when it is placed instantly after all (over the capture budget, a
+/// capture failed, superseded). It emits signposts on `sh.emu.SpacialShell` / Points of Interest,
+/// which Instruments' Time Profiler template records: intervals `retile` (command to landing),
+/// `retile.capture`, `retile.shot` (one per picture), `retile.play`, and events `retile.shown` and
+/// `retile.firstFrame`.
 @MainActor
 final class RetileProbe {
-    nonisolated static let enabled = ProcessInfo.processInfo.environment["SPACIAL_PROTO_RETILE"] == "1"
-    /// The issue's ~250 ms, a little longer than a switch's 200 ms: sizes change as well as places.
-    static let duration: CFTimeInterval = 0.25
+    nonisolated static let enabled = ProcessInfo.processInfo.environment["SPACIAL_LOG_RETILE"] == "1"
     nonisolated static let signposter = OSSignposter(subsystem: "sh.emu.SpacialShell", category: .pointsOfInterest)
     static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "motion")
 
     let windows: Int
+    /// The flight's length, for the frames it should have drawn.
+    private let flight: CFTimeInterval
     private let since: ContinuousClock.Instant
     private let started = ContinuousClock.now
     private let cpu0 = RetileProbe.mainThreadCPU()
@@ -47,9 +40,10 @@ final class RetileProbe {
     private var ticker: Ticker?
     private var done = false
 
-    init(windows: Int, since: ContinuousClock.Instant) {
+    init(windows: Int, since: ContinuousClock.Instant, flight: CFTimeInterval) {
         self.windows = windows
         self.since = since
+        self.flight = flight
         whole = Self.signposter.beginInterval("retile", id: Self.signposter.makeSignpostID(), "N=\(self.windows)")
     }
 
@@ -109,7 +103,7 @@ final class RetileProbe {
             capture.backdrop.ms=\(self.backdropShots.map(Self.ms).max() ?? 0, format: .fixed(precision: 1)) \
             shown.ms=\(self.shownAt.map { Self.ms($0 - self.since) } ?? -1, format: .fixed(precision: 1)) \
             firstFrame.ms=\(self.firstFrame.map(Self.ms) ?? -1, format: .fixed(precision: 1)) \
-            frames=\(self.ticks.count) expected=\(Int((Self.duration / self.period).rounded())) dropped=\(dropped) \
+            frames=\(self.ticks.count) expected=\(Int((self.flight / self.period).rounded())) dropped=\(dropped) \
             maxGap.ms=\(maxGap * 1000, format: .fixed(precision: 1)) hz=\(1 / self.period, format: .fixed(precision: 0)) \
             mainCPU.ms=\(cpu * 1000, format: .fixed(precision: 1)) wall.ms=\(wallMs, format: .fixed(precision: 1))
             """)

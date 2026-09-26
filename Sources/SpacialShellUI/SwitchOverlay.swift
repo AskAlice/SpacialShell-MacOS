@@ -23,6 +23,10 @@ import SpacialShellProtocol
 /// takes it again), and a switch with nothing kept waits at most `captureBudget` for its capture
 /// before placing instantly; the late capture still lands in the cache for next time.
 ///
+/// #140: re-tiles (a layout change, a window opening or closing next to the others) fly on the same
+/// overlay, under `MotionRules`: a little longer, captured fresh every time, never cached, and
+/// without feeding the rail thumbnails. The store only asks with `animate-retile` on.
+///
 /// The overlay is click-through and never key, like every other panel here. Anything that goes
 /// wrong — no Screen Recording grant, reduce-motion, a window ScreenCaptureKit will not hand over —
 /// answers "place instantly", which is always safe: the
@@ -65,15 +69,17 @@ private final class Stage {
     private var content: (listing: SCShareableContent, at: ContinuousClock.Instant)?
     /// #148: the flight in the air, ended when it lands or is dropped.
     private var playSpan: (any Span)?
-    /// #140 prototype: the re-tile being measured, only with `SPACIAL_PROTO_RETILE=1`.
+    /// #140: the re-tile being measured, only with `SPACIAL_LOG_RETILE=1` (see `RetileProbe`).
     private var probe: RetileProbe?
+    /// How long the flight `play` starts lasts: the prepared pass's `MotionRules.duration`.
+    private var flight: CFTimeInterval = Stage.duration
 
     static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "motion")
     /// Test hook (#81), like the Simulator's slow animations: `defaults write sh.emu.SpacialShell
     /// SpacialMotionScale 100` stretches every switch (and its watchdog) 100x, so the e2e suite can
     /// photograph one mid-flight in a guest that cannot record 200 ms of motion. Unset: 1.
     static let scale = max(1, UserDefaults.standard.double(forKey: "SpacialMotionScale"))
-    static let duration: CFTimeInterval = 0.2 * scale
+    static let duration: CFTimeInterval = seconds(MotionRules([]).duration) * scale
     /// The pictures must not be pulled before the window server has drawn the real windows under
     /// them; the feasibility study's hand-off rule. 200 ms of flight already covers the AX writes.
     // ponytail: fixed hold rather than polling CGWindowList for the landed frame — poll if a seam shows.
@@ -83,7 +89,7 @@ private final class Stage {
     /// #97: how long a switch with no kept pictures waits for its capture before placing instantly.
     /// Much longer and the switch reads as firing on key-up. Scaled by the test hook, so a slow
     /// guest still gets its slide.
-    static let captureBudget = Duration.milliseconds(80) * scale
+    static let captureBudget = MotionRules.captureBudget * scale
     /// One window-server listing serves a burst of switches and their prefetches.
     static let listingFreshFor = Duration.seconds(1)
 
@@ -109,54 +115,59 @@ private final class Stage {
         // motion. Skipping instead meant the second of two quick presses never animated (#66).
         // ponytail: restart, not a smooth retarget — a held key restarts every repeat and only the
         // last one slides; blend from the in-flight positions if that feels choppy.
+        let rules = MotionRules(transitions)
+        let kind = rules.kind.rawValue
         let moves = transitions.reduce(0) { $0 + $1.moves.count }
         span.setAttribute(key: "moves", value: moves)
         span.setAttribute(key: "displays", value: transitions.count)
-        if busy { teardown(); Self.log.notice("switch restarted: previous still in flight") }
-        guard ScreenRecordingAccess.isGranted else {
-            outcome = "no-grant"; Self.log.notice("switch instant: no Screen Recording grant"); return false
-        }
-        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
-            outcome = "reduce-motion"; Self.log.notice("switch instant: reduce motion"); return false
+        span.setAttribute(key: "kind", value: kind)
+        if busy { teardown(); Self.log.notice("\(kind, privacy: .public) restarted: previous still in flight") }
+        if case .instant(let why) = MotionRules.gate(screenRecording: ScreenRecordingAccess.isGranted,
+                                                    reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) {
+            outcome = why.rawValue
+            Self.log.notice("\(kind, privacy: .public) instant: \(why.rawValue, privacy: .public)")
+            return false
         }
         busy = true
         token += 1
         let mine = token
+        flight = Self.seconds(rules.duration) * Self.scale
 
-        // #140 prototype: a re-tile is captured fresh, in full, and timed (see `RetileProbe`).
-        let retile = RetileProbe.enabled && transitions.allSatisfy(\.isRetile)
-        let probe = retile ? RetileProbe(windows: moves, since: since) : nil
+        let probe = RetileProbe.enabled && rules.kind == .retile ? RetileProbe(windows: moves, since: since, flight: flight) : nil
         self.probe = probe
         let started = ContinuousClock.now
-        // #97: a kept set flies whatever its age; the prefetch after landing takes it again.
-        let hits = transitions.map { retile ? nil : cache.take(Key($0)) }
+        // #97: a kept set flies whatever its age; the prefetch after landing takes it again. A
+        // re-tile is captured fresh every time and never kept (#140: `MotionRules.usesPictureCache`).
+        let hits = transitions.map { rules.usesPictureCache ? cache.take(Key($0)) : nil }
         let missing = zip(transitions, hits).filter { $0.1 == nil }.map(\.0)
         let hit = missing.isEmpty ? "hit" : missing.count == transitions.count ? "miss" : "partial"
         span.setAttribute(key: "cache", value: hit)
         var result: [Pictures]?? = .some([])
         if !missing.isEmpty {
-            // Its own task, so a capture that overruns the budget still lands in the cache.
+            // Its own task, so a switch's capture that overruns the budget still lands in the cache.
             let job = Task { [weak self] () -> [Pictures]? in
-                guard let self, let got = await self.capture(missing, probe: probe) else { return nil }
-                if !retile { for p in got { self.cache.add(p.key, p, taken: p.taken) } }
+                guard let self, let got = await self.capture(missing, rules: rules, probe: probe) else { return nil }
+                if rules.usesPictureCache { for p in got { self.cache.add(p.key, p, taken: p.taken) } }
                 return got
             }
             probe?.captureBegan()
-            result = retile ? .some(await job.value) : await job.value(within: Self.captureBudget)
+            result = await job.value(within: Self.captureBudget)
         }
         let capture = ContinuousClock.now - started
         probe?.captureEnded(capture)
         span.setAttribute(key: "capture.ms", value: Self.ms(capture))
         guard mine == token else { outcome = "superseded"; probe?.abandoned(outcome); return false }
-        guard let captured = result ?? nil else {
+        // #97, #140: over the budget, or any picture missing, and the windows are placed instantly.
+        let captured = result ?? nil
+        if case .instant(let why) = MotionRules.verdict(took: result == nil ? nil : capture, complete: captured != nil,
+                                                       budget: Self.captureBudget) {
             busy = false
-            let late = result == nil
-            outcome = late ? "over-budget" : "capture-failed"
+            outcome = why.rawValue
             probe?.abandoned(outcome); self.probe = nil
-            Self.log.notice("switch instant: \(late ? "capture over budget" : "capture failed", privacy: .public) (\(moves) moves); latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
+            Self.log.notice("\(kind, privacy: .public) instant: \(why.rawValue, privacy: .public) (\(moves) moves); capture \(Self.ms(capture), format: .fixed(precision: 1), privacy: .public) ms; latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
             return false
         }
-        var fresh = captured.makeIterator()
+        var fresh = (captured ?? []).makeIterator()
         let pictures = hits.map { $0 ?? fresh.next()! }
         show(transitions, pictures)
         probe?.shown()
@@ -164,7 +175,7 @@ private final class Stage {
         try? await Task.sleep(for: .milliseconds(16))
         guard mine == token else { outcome = "superseded"; return false }
         outcome = "animating"
-        Self.log.notice("switch animating \(moves) moves on \(transitions.count) display(s); cache \(hit, privacy: .public); capture \(Self.ms(capture), format: .fixed(precision: 1), privacy: .public) ms; latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
+        Self.log.notice("\(kind, privacy: .public) animating \(moves) moves on \(transitions.count) display(s); cache \(hit, privacy: .public); capture \(Self.ms(capture), format: .fixed(precision: 1), privacy: .public) ms; latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
         Task { [weak self] in
             try? await Task.sleep(for: Self.watchdog)
             guard let self, self.token == mine else { return }
@@ -182,7 +193,7 @@ private final class Stage {
         playSpan?.setAttribute(key: "sprites", value: sprites.count)
         probe?.playing(on: panels.first?.contentView)
         CATransaction.begin()
-        CATransaction.setAnimationDuration(probe == nil ? Self.duration : RetileProbe.duration * Self.scale)
+        CATransaction.setAnimationDuration(flight)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1))
         CATransaction.setCompletionBlock { [weak self] in
             Task { @MainActor [weak self] in
@@ -217,6 +228,7 @@ private final class Stage {
     private static func ms(_ d: Duration) -> Double {
         Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
     }
+    private static func seconds(_ d: Duration) -> CFTimeInterval { ms(d) / 1000 }
 
     // MARK: - cache
 
@@ -234,7 +246,8 @@ private final class Stage {
             for ts in predicted {
                 guard let self, !Task.isCancelled, !self.busy else { return }
                 let missing = ts.filter { self.cache.needsRefresh(Key($0), now: .now) }
-                guard !missing.isEmpty, let pictures = await self.capture(missing), !Task.isCancelled else { continue }
+                guard !missing.isEmpty, let pictures = await self.capture(missing, rules: MotionRules(missing)),
+                      !Task.isCancelled else { continue }
                 for p in pictures { self.cache.prefetch(p.key, p, taken: p.taken) }
             }
         }
@@ -308,7 +321,7 @@ private final class Stage {
 
     /// Every picture the transitions need, in their order, or nil if any is missing — a window with
     /// no image would pop in at the end instead of sliding, which is worse than no animation at all.
-    private func capture(_ transitions: [Transition], probe: RetileProbe? = nil) async -> [Pictures]? {
+    private func capture(_ transitions: [Transition], rules: MotionRules, probe: RetileProbe? = nil) async -> [Pictures]? {
         guard !transitions.isEmpty else { return [] }
         let taken = ContinuousClock.now
         // A reused listing can predate a window that has just opened: one retry with a new one.
@@ -345,7 +358,8 @@ private final class Stage {
             case .window(let i, let id): windows[i, default: [:]][id] = image
             }
         }
-        WindowThumbnails.shared.ingest(windows.values.joined())   // #90: rail hover thumbnails, no extra capture
+        // #90: rail hover thumbnails, no extra capture. Not from a re-tile (#140: its CPU hot spot).
+        if rules.feedsThumbnails { WindowThumbnails.shared.ingest(windows.values.joined()) }
         var out: [Pictures] = []
         for (i, t) in transitions.enumerated() {
             guard let back = backdrops[i] else { return nil }
@@ -358,7 +372,7 @@ private final class Stage {
         let ownPID = ProcessInfo.processInfo.processIdentifier
         var byID: [CGWindowID: SCWindow] = [:]
         for w in content.windows where w.owningApplication?.processID != ownPID { byID[w.windowID] = w }
-        let refs = transitions.flatMap { $0.moves.map(\.ref) }
+        let refs = transitions.flatMap { $0.moves.map(\.ref) + $0.offstage }
         // `ref.id` is minted by SpacialShell (#18); `captureIDs` is the public match to the window server.
         let captureIDs = WindowIdentities.captureIDs(for: refs.map(\.id))
 
@@ -369,13 +383,16 @@ private final class Stage {
             let scale = Self.scale(of: display)
             let moving = t.moves.compactMap { captureIDs[$0.ref.id].flatMap { byID[$0] } }
             guard moving.count == t.moves.count else { return nil }
+            // #140: a re-tile's arriving and leaving windows are left out of the backdrop too. One
+            // the window server no longer lists (closed) is simply not there to leave out.
+            let offstage = t.offstage.compactMap { captureIDs[$0.id].flatMap { byID[$0] } }
 
             let backdrop = SCStreamConfiguration()
             backdrop.sourceRect = t.viewport.offsetBy(dx: -display.frame.minX, dy: -display.frame.minY)
             backdrop.width = Int((t.viewport.width * scale).rounded())
             backdrop.height = Int((t.viewport.height * scale).rounded())
             backdrop.showsCursor = false
-            shots.append(Shot(slot: .backdrop(i), filter: SCContentFilter(display: display, excludingWindows: moving),
+            shots.append(Shot(slot: .backdrop(i), filter: SCContentFilter(display: display, excludingWindows: moving + offstage),
                               config: backdrop))
 
             for (m, window) in zip(t.moves, moving) {

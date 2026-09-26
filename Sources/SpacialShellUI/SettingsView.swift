@@ -190,7 +190,7 @@ struct SettingsView: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, what the rail's tiles show, switch motion, and whether the rail hides.")
+            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, what the rail's tiles show, switch and re-tile motion, and whether the rail hides.")
             row("Panel colour", overridden: overrides.panelColor != nil) {
                 HStack(spacing: 8) {
                     ColorPicker("", selection: colorBinding).labelsHidden()
@@ -218,6 +218,12 @@ struct SettingsView: View {
             row("Switch animation", overridden: overrides.animations != nil) {
                 Toggle("", isOn: binding(\.animations, default: file.animations)).labelsHidden()
             } reset: { overrides.animations = nil }
+            // #140: off by default; only while switches animate at all.
+            row("Re-tile animation", overridden: overrides.animateRetile != nil) {
+                Toggle("", isOn: binding(\.animateRetile, default: file.animateRetile)).labelsHidden()
+                    .disabled(!(overrides.animations ?? file.animations))
+                    .help("Windows slide to their new places when the layout changes or a window opens or closes. Instant when the capture takes longer than 80 ms, or with Reduce Motion on.")
+            } reset: { overrides.animateRetile = nil }
             row("Empty cheat sheet", overridden: overrides.emptyCheatsheet != nil) {
                 Toggle("", isOn: binding(\.emptyCheatsheet, default: file.emptyCheatsheet)).labelsHidden()
             } reset: { overrides.emptyCheatsheet = nil }

@@ -22,6 +22,8 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var dockAttention: Bool?
     public var keybindingPreset: KeybindingPreset?
     public var animations: Bool?
+    /// #140.
+    public var animateRetile: Bool?
     public var emptyCheatsheet: Bool?
     public var railAutohide: Bool?
     public var pointerWarp: Bool?
@@ -81,6 +83,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         dockAttention = try c.decodeIfPresent(Bool.self, forKey: .dockAttention)
         keybindingPreset = try c.decodeIfPresent(KeybindingPreset.self, forKey: .keybindingPreset)
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations)
+        animateRetile = try c.decodeIfPresent(Bool.self, forKey: .animateRetile)
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet)
         railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide)
         pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp)
@@ -150,6 +153,7 @@ public enum Settings {
         if let v = overrides.dockAttention { c.dockAttention = v }
         if let v = overrides.keybindingPreset { c.keybindingPreset = v }
         if let v = overrides.animations { c.animations = v }
+        if let v = overrides.animateRetile { c.animateRetile = v }
         if let v = overrides.emptyCheatsheet { c.emptyCheatsheet = v }
         if let v = overrides.railAutohide { c.railAutohide = v }
         if let v = overrides.pointerWarp { c.pointerWarp = v }

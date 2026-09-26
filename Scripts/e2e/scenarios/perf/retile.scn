@@ -1,5 +1,7 @@
 # #140 (G13): what re-tile motion costs on the switch overlay, for 2, 4 and 8 windows re-tiling at
-# once. Needs the prototype flag (SPACIAL_PROTO_RETILE=1, set below before the relaunch).
+# once. Turns `animate-retile` on in the config below, and the probe's debug flag (SPACIAL_LOG_RETILE=1)
+# before the relaunch. Since the feature (#140) a re-tile over the 80 ms budget is placed instantly
+# and logs `retile N=… abandoned: over-budget`; the report counts those as dropped.
 #
 #   SPACIAL_E2E_XCODE=/Applications/Xcode.app Scripts/e2e/e2e.sh --vm --suite perf
 #   Scripts/profiling/retile-report.py .build/e2e/vm-…/retile     # the table, and the pprof files
@@ -16,8 +18,8 @@ appearance light
 sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; true
 sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
 sh defaults write -g AppleKeyboardUIMode -int 0
-sh mkdir -p ~/.config/spacial-shell && printf '%s\n' '[[layout]]' 'id = "wide"' 'name = "Wide"' 'zones = [' '  { x = 0.0, y = 0.0, w = 0.25, h = 0.5 }, { x = 0.25, y = 0.0, w = 0.25, h = 0.5 },' '  { x = 0.5, y = 0.0, w = 0.25, h = 0.5 }, { x = 0.75, y = 0.0, w = 0.25, h = 0.5 },' '  { x = 0.0, y = 0.5, w = 0.25, h = 0.5 }, { x = 0.25, y = 0.5, w = 0.25, h = 0.5 },' '  { x = 0.5, y = 0.5, w = 0.25, h = 0.5 }, { x = 0.75, y = 0.5, w = 0.25, h = 0.5 },' ']' > ~/.config/spacial-shell/config.toml
-sh launchctl setenv SPACIAL_PROTO_RETILE 1
+sh mkdir -p ~/.config/spacial-shell && printf '%s\n' 'animate-retile = true' '[[layout]]' 'id = "wide"' 'name = "Wide"' 'zones = [' '  { x = 0.0, y = 0.0, w = 0.25, h = 0.5 }, { x = 0.25, y = 0.0, w = 0.25, h = 0.5 },' '  { x = 0.5, y = 0.0, w = 0.25, h = 0.5 }, { x = 0.75, y = 0.0, w = 0.25, h = 0.5 },' '  { x = 0.0, y = 0.5, w = 0.25, h = 0.5 }, { x = 0.25, y = 0.5, w = 0.25, h = 0.5 },' '  { x = 0.5, y = 0.5, w = 0.25, h = 0.5 }, { x = 0.75, y = 0.5, w = 0.25, h = 0.5 },' ']' > ~/.config/spacial-shell/config.toml
+sh launchctl setenv SPACIAL_LOG_RETILE 1
 relaunch
 input move 1000 740
 
@@ -169,4 +171,4 @@ run set-layout-wide
 wait 3.5
 run set-layout-grid
 wait 3.5
-sh launchctl unsetenv SPACIAL_PROTO_RETILE; rm -f ~/.config/spacial-shell/config.toml
+sh launchctl unsetenv SPACIAL_LOG_RETILE; rm -f ~/.config/spacial-shell/config.toml

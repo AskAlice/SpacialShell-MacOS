@@ -23,8 +23,8 @@ public struct ShownRow: Sendable, Equatable {
     }
 }
 
-/// #64: a switch, as motion. Every window that changes place on one display, from where it was
-/// to where the reconcile is putting it, in AX top-left coordinates.
+/// #64: a switch, as motion (and, #140, a re-tile: see `Kind`). Every window that changes place on
+/// one display, from where it was to where the reconcile is putting it, in AX top-left coordinates.
 ///
 /// The rail is a vertical stack and the tab row a horizontal strip, so a switch has a direction:
 /// down the rail and the rows travel up (#66); along the row and the strip travels the other way,
@@ -40,22 +40,61 @@ public struct Transition: Sendable, Equatable {
         public init(ref: WindowRef, from: CGRect, to: CGRect) { self.ref = ref; self.from = from; self.to = to }
     }
 
+    /// #140 (G13): what kind of motion this is. A **switch** takes the user somewhere: another
+    /// workspace, or along the row to another window, and things slide in and out. A **re-tile**
+    /// keeps the user where they are while the row rearranges: a layout change, a swap, a window
+    /// opening or closing next to it. Only the windows on screen before and after move, between
+    /// their frames; nothing slides in from an edge. Re-tiles animate only with `animate-retile`.
+    public enum Kind: String, Sendable, Equatable { case `switch`, retile }
+
     public let display: DisplayID
     /// The tiling area, and the overlay's clip: windows slide out of it, not across the panels.
     public let viewport: CGRect
     public let moves: [Move]
+    public let kind: Kind
+    /// #140: a re-tile's windows that were shown before or after but do not fly: arriving (opened,
+    /// paged in) or leaving (paged out; a closed one is simply gone). The overlay takes them out of
+    /// its backdrop, so none sits frozen where it was while the others fly; the real ones are
+    /// already in place when it drops. Always empty for a switch, whose every such window moves.
+    public let offstage: [WindowRef]
 
-    public init(display: DisplayID, viewport: CGRect, moves: [Move]) {
+    public init(display: DisplayID, viewport: CGRect, moves: [Move], kind: Kind = .switch, offstage: [WindowRef] = []) {
         self.display = display; self.viewport = viewport; self.moves = moves
+        self.kind = kind; self.offstage = offstage
     }
 
-    /// #140 (G13): a re-tile, not a switch. Nothing slides in or out; every moving window starts
-    /// and ends inside the tiling area (a layout change, a resize, a window opening or closing next
-    /// to it). A switch always has a window travelling out of or into the viewport.
-    public var isRetile: Bool {
-        !moves.isEmpty && moves.allSatisfy { !$0.from.intersection(viewport).isEmpty && !$0.to.intersection(viewport).isEmpty }
+    public var isRetile: Bool { kind == .retile }
+
+    /// One display's motion between two reconciles, or nil when nothing on it changes place.
+    ///
+    /// A re-tile is the same workspace with the same window still focused, or with windows joining
+    /// or leaving the row (a window opened or closed: focus may follow it in the same pass), as
+    /// long as some window stays on screen and changes frame. Everything else is a switch, planned
+    /// by `moves`. So a window opening under `maximize`, where nothing stays on screen, is still
+    /// the switch it always was: the new one slides in, the old one out.
+    public static func plan(display: DisplayID, before: ShownRow, after: ShownRow, viewport: CGRect, gap: CGFloat) -> Transition? {
+        if before.workspace == after.workspace, Set(before.row) != Set(after.row) || before.focused == after.focused {
+            let stay = stayers(before: before, after: after)
+            if !stay.isEmpty {
+                let shown = Set(before.frames.keys).union(after.frames.keys)
+                let once = shown.filter { (before.frames[$0] == nil) != (after.frames[$0] == nil) }
+                return Transition(display: display, viewport: viewport, moves: stay, kind: .retile,
+                                  offstage: once.sorted { $0.id < $1.id })
+            }
+        }
+        let ms = moves(before: before, after: after, viewport: viewport, gap: gap)
+        return ms.isEmpty ? nil : Transition(display: display, viewport: viewport, moves: ms)
     }
 
+    /// The windows on screen both times whose frame changed, straight from one to the other.
+    static func stayers(before: ShownRow, after: ShownRow) -> [Move] {
+        before.frames.sorted { $0.key.id < $1.key.id }.compactMap { r, from in
+            guard let to = after.frames[r], to != from else { return nil }
+            return Move(ref: r, from: from, to: to)
+        }
+    }
+
+    /// A switch's moves: the stayers, plus every window leaving or arriving along the direction.
     public static func moves(before: ShownRow, after: ShownRow, viewport: CGRect, gap: CGFloat) -> [Move] {
         let delta = direction(before: before, after: after, viewport: viewport, gap: gap)
         var out: [Move] = []

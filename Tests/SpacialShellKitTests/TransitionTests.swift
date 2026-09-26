@@ -117,29 +117,91 @@ import Foundation
         #expect(Transition.moves(before: r, after: r, viewport: viewport, gap: 8).isEmpty)
     }
 
-    /// #140 (G13): a layout change moves every window inside the viewport; that is a re-tile.
-    @Test func aLayoutChangeIsARetile() {
-        let left = CGRect(x: 8, y: 8, width: 488, height: 584), right = CGRect(x: 504, y: 8, width: 488, height: 584)
-        let top = CGRect(x: 8, y: 8, width: 984, height: 288), bottom = CGRect(x: 8, y: 304, width: 984, height: 288)
-        let before = row(wsA, 0, [w1, w2], focused: w1, frames: [w1: left, w2: right])
-        let after = row(wsA, 0, [w1, w2], focused: w1, frames: [w1: top, w2: bottom])
-        let t = Transition(display: "d", viewport: viewport,
-                           moves: Transition.moves(before: before, after: after, viewport: viewport, gap: 8))
-        #expect(t.moves.count == 2)
-        #expect(t.isRetile)
+    func plan(_ before: ShownRow, _ after: ShownRow) -> Transition? {
+        Transition.plan(display: "d", before: before, after: after, viewport: viewport, gap: 8)
     }
 
-    /// A switch is never a re-tile: something travels out of the viewport (or in), whole.
+    let left = CGRect(x: 8, y: 8, width: 488, height: 584), right = CGRect(x: 504, y: 8, width: 488, height: 584)
+
+    /// #140 (G13): a layout change, the same window focused, moves every window between its
+    /// frames, inside the viewport; that is a re-tile.
+    @Test func aLayoutChangeIsARetile() {
+        let top = CGRect(x: 8, y: 8, width: 984, height: 288), bottom = CGRect(x: 8, y: 304, width: 984, height: 288)
+        let t = plan(row(wsA, 0, [w1, w2], focused: w1, frames: [w1: left, w2: right]),
+                     row(wsA, 0, [w1, w2], focused: w1, frames: [w1: top, w2: bottom]))
+        #expect(t?.kind == .retile && t?.isRetile == true)
+        #expect(t?.moves == [.init(ref: w1, from: left, to: top), .init(ref: w2, from: right, to: bottom)])
+        #expect(t?.offstage == [])
+    }
+
+    /// #140: to `maximize` from two columns — the focused window grows; the other one leaves the
+    /// screen without flying anywhere, so the overlay leaves it out of its backdrop.
+    @Test func aLayoutThatPagesAWindowAwayLeavesItOffstage() {
+        let t = plan(row(wsA, 0, [w1, w2], focused: w1, frames: [w1: left, w2: right]),
+                     row(wsA, 0, [w1, w2], focused: w1, frames: [w1: full]))
+        #expect(t?.kind == .retile)
+        #expect(t?.moves == [.init(ref: w1, from: left, to: full)])
+        #expect(t?.offstage == [w2])
+    }
+
+    /// #140: a window opening next to the others is a re-tile even when focus follows it in the
+    /// same pass: the others make room between their frames, and the new one does not slide in
+    /// from an invented edge (it is offstage and appears when the overlay drops).
+    @Test func aWindowOpeningIsARetileEvenWhenFocusFollowsIt() {
+        let third = { (i: CGFloat) in CGRect(x: 8 + i * 330, y: 8, width: 322, height: 584) }
+        let before = row(wsA, 0, [w1, w2], focused: w2, frames: [w1: left, w2: right])
+        for focus in [w2, w3] {
+            let t = plan(before, row(wsA, 0, [w1, w2, w3], focused: focus, frames: [w1: third(0), w2: third(1), w3: third(2)]))
+            #expect(t?.kind == .retile, "focus on \(focus)")
+            #expect(t?.moves.map(\.ref) == [w1, w2])
+            #expect(t?.offstage == [w3])
+        }
+    }
+
+    /// #140: closing the focused window re-tiles the rest when they make room; the closed one is
+    /// not a move (it has no picture to take).
+    @Test func closingTheFocusedWindowIsARetileWhenTheOthersMakeRoom() {
+        let t = plan(row(wsA, 0, [w1, w2, w3], focused: w3, frames: [w1: left, w3: right]),
+                     row(wsA, 0, [w1, w2], focused: w2, frames: [w1: left, w2: right]))
+        // w1 kept its frame: nothing stays on screen *and* moves, so this is the page-change switch.
+        #expect(t?.kind == .switch)
+        let grid = plan(row(wsA, 0, [w1, w2, w3], focused: w3, frames: [w1: left, w2: right, w3: full]),
+                        row(wsA, 0, [w1, w2], focused: w2, frames: [w1: full, w2: right]))
+        #expect(grid?.kind == .retile)
+        #expect(grid?.moves.map(\.ref) == [w1])
+        #expect(grid?.offstage == [w3])
+    }
+
+    /// Under `maximize` nothing stays on screen when a window opens with focus: that stays the
+    /// switch it always was, the new window sliding in and the old one out.
+    @Test func openingUnderMaximizeWithFocusIsStillASwitch() {
+        let t = plan(row(wsA, 0, [w1], focused: w1, frames: [w1: full]),
+                     row(wsA, 0, [w1, w2], focused: w2, frames: [w2: full]))
+        #expect(t?.kind == .switch)
+        #expect(Set(t?.moves.map(\.ref) ?? []) == [w1, w2])
+        #expect(t?.offstage == [])
+    }
+
+    /// A switch is never a re-tile: focus moving along the same row, or another workspace. That
+    /// holds when windows that stay on screen shift, as a sliding `split` does.
     @Test func aSwitchIsNotARetile() {
-        let tab = Transition(display: "d", viewport: viewport, moves: Transition.moves(
-            before: row(wsA, 0, [w1, w2], focused: w1, frames: [w1: full]),
-            after: row(wsA, 0, [w1, w2], focused: w2, frames: [w2: full]), viewport: viewport, gap: 8))
-        let rowDown = Transition(display: "d", viewport: viewport, moves: Transition.moves(
-            before: row(wsA, 0, [w1], focused: w1, frames: [w1: full]),
-            after: row(wsB, 1, [w2], focused: w2, frames: [w2: full]), viewport: viewport, gap: 8))
-        #expect(!tab.isRetile)
-        #expect(!rowDown.isRetile)
+        let tab = plan(row(wsA, 0, [w1, w2], focused: w1, frames: [w1: full]),
+                       row(wsA, 0, [w1, w2], focused: w2, frames: [w2: full]))
+        let rowDown = plan(row(wsA, 0, [w1], focused: w1, frames: [w1: full]),
+                           row(wsB, 1, [w2], focused: w2, frames: [w2: full]))
+        let slide = plan(row(wsA, 0, [w1, w2, w3], focused: w2, frames: [w1: left, w2: right]),
+                         row(wsA, 0, [w1, w2, w3], focused: w3, frames: [w2: left, w3: right]))
+        #expect(tab?.kind == .switch && rowDown?.kind == .switch && slide?.kind == .switch)
+        #expect(slide?.moves.count == 3, "the leaving and arriving windows slide, as before")
         #expect(!Transition(display: "d", viewport: viewport, moves: []).isRetile)
+    }
+
+    /// Nothing changes place: no transition at all, of either kind.
+    @Test func nothingMovingPlansNoTransition() {
+        let r = row(wsA, 0, [w1, w2], focused: w1, frames: [w1: left, w2: right])
+        #expect(plan(r, r) == nil)
+        // Focus moving inside a row that shows every window moves nothing either.
+        #expect(plan(r, row(wsA, 0, [w1, w2], focused: w2, frames: [w1: left, w2: right])) == nil)
     }
 
     /// No direction (a window closed, a new one adopted): what stays visible still moves between

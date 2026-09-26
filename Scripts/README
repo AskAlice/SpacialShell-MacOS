@@ -145,3 +145,11 @@ subsystem `sh.emu.SpacialShell`, category `hotkeys`. Read it live with:
     /usr/bin/log stream --predicate 'subsystem == "sh.emu.SpacialShell"' --info
 
 That is the instrument for the checklist in docs/platform-notes.md.
+
+Measuring re-tile motion
+------------------------
+`SPACIAL_LOG_RETILE=1 Scripts/dev.sh` (with `animate-retile = true` in the config) logs one
+`retile N=…` line per animated re-tile under category `motion` (capture per window, first frame,
+dropped frames, main-thread CPU), and emits `retile*` signposts on Points of Interest for
+Instruments. It measures only; it changes nothing about how a re-tile runs. The full benchmark is
+`Scripts/e2e/scenarios/perf/retile.scn` (#140, M4 spec §7).

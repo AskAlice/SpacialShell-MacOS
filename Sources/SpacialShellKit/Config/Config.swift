@@ -161,6 +161,11 @@ public struct Config: Codable, Equatable, Sendable {
     /// Switching is motion (#64, ruled in #65): windows slide as screenshot proxies when the Screen
     /// Recording grant is present, and are placed instantly without it or with this off.
     public var animations: Bool = true
+    /// #140 (G13): re-tiles move too — a layout change, a swap, a window opening or closing next to
+    /// the others — sliding and scaling from the old frames to the new over ~250 ms. Off by default:
+    /// the VM measurement met the 80 ms capture budget only in 8 of 10 re-tiles at 8 windows, so a
+    /// re-tile whose capture overruns it is placed instantly, as a switch is. Only with `animations`.
+    public var animateRetile: Bool = false
     /// #29: an empty workspace on the focused display shows the cheat sheet, dimmed, as its
     /// background, so a fresh screen answers "what can I press?" without holding anything.
     public var emptyCheatsheet: Bool = true
@@ -242,6 +247,7 @@ public struct Config: Codable, Equatable, Sendable {
              ephemeral, float, ignore, tile, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing", tabStyle = "tab-style",
              launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
+             animateRetile = "animate-retile",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
         case railIconStyle = "rail-icon-style", categoryColors = "category-colors", dockAttention = "dock-attention"
@@ -288,6 +294,7 @@ public struct Config: Codable, Equatable, Sendable {
         otherWindowManagers = try c.decodeIfPresent([String].self, forKey: .otherWindowManagers) ?? OtherWindowManagers.defaults
         persistState = try c.decodeIfPresent(Bool.self, forKey: .persistState) ?? true
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
+        animateRetile = try c.decodeIfPresent(Bool.self, forKey: .animateRetile) ?? false
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
         railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide) ?? false
         pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp) ?? true
@@ -389,6 +396,7 @@ public struct Config: Codable, Equatable, Sendable {
         persist-state = \(persistState)
         other-window-managers = [\(otherWindowManagers.map { q($0) }.joined(separator: ", "))]
         animations = \(animations)
+        animate-retile = \(animateRetile)
         empty-cheatsheet = \(emptyCheatsheet)
         rail-autohide = \(railAutohide)
         pointer-warp = \(pointerWarp)

@@ -274,3 +274,24 @@ Before building, run the same benchmark once on a real Mac. The scenario uses VM
 a host variant of the scenario. If 8 windows still overrun 80 ms in more than 1 of 10 re-tiles there, or
 flights drop frames that switches do not, close #140 as not planned with this section as the
 reason.
+
+### Built with limits (2026-09-26, #140 grilling Q3)
+
+The user decided to **build it with limits**, ahead of the bare-metal run, behind a config key that
+is off by default. As built (`MotionRules`, `Transition.plan`, `SwitchOverlay`):
+
+- **`animate-retile`, default `false`,** only while `animations` is on. Off, a re-tile never
+  reaches the overlay and is placed instantly. This is a change: before, re-tiles rode the switch
+  rules unmeasured (see "What already happens today").
+- **What a re-tile is** is now decided from the rows, not the geometry (`Transition.plan`): the
+  same workspace, with the same window focused or with windows joining or leaving the row, and
+  at least one window on screen before and after that changes frame. Only those windows fly;
+  windows arriving or leaving (`Transition.offstage`) are left out of the backdrop and appear or
+  go when the overlay drops. With nothing staying on screen (a window opening under `maximize`)
+  the pass is still the switch it was.
+- **Limits:** the 80 ms budget is a hard cutoff, over it the windows are placed instantly;
+  re-tiles are always captured fresh, never cached, and skip the rail-thumbnail ingest. 250 ms,
+  instant under Reduce Motion. A pass mixing a switch and a re-tile runs under switch rules.
+- **The prototype is gone:** `SPACIAL_PROTO_RETILE` no longer exists. `RetileProbe` stays as
+  instruments only, behind `SPACIAL_LOG_RETILE=1`, and `perf/retile.scn` turns on both the key and
+  the flag. The bare-metal run above still decides whether the default can change.

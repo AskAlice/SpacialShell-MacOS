@@ -51,7 +51,7 @@ end)
     sleep 1   # the last landing's log line
     /usr/bin/log show --start "$(cat "$STATE.t0")" --style compact \
         --predicate 'subsystem == "sh.emu.SpacialShell" AND category == "motion"' \
-        | grep -E 'retile N=|switch (instant|animating)' > "$OUT/$TAG.log"
+        | grep -E 'retile N=|(switch|retile) (instant|animating)' > "$OUT/$TAG.log"
     echo "retile-pass: $TAG: $(grep -c 'retile N=[0-9]* capture' "$OUT/$TAG.log") re-tiles measured"
     ;;
 *) echo "usage: retile-pass.sh begin|end TAG" >&2; exit 2 ;;

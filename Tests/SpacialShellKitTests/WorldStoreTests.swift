@@ -661,6 +661,51 @@ import OpenTelemetryApi
         #expect(await anim.prepared.isEmpty)
     }
 
+    /// #140: a layout change is a re-tile. With `animate-retile` off (the default) the animator is
+    /// never asked and the windows are placed instantly; on, it gets the re-tile: the focused
+    /// window flies to its column, the one arriving from its parked page is offstage.
+    @Test func aLayoutChangeAnimatesOnlyWithAnimateRetile() async {
+        let (quiet, _, idle) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        await quiet.run(.setLayout(.column))
+        #expect(await idle.prepared.isEmpty)
+
+        var on = m1Config(); on.animateRetile = true
+        let (store, be, anim) = await makeAnimated(snap([win(a), win(b)], focused: a), config: on)
+        await be.reset()
+        await store.run(.setLayout(.column))
+        let prepared = await anim.prepared
+        #expect(prepared.count == 1)
+        let t = prepared.first?.first
+        #expect(t?.kind == .retile)
+        #expect(t?.moves.map(\.ref) == [a])
+        #expect(t?.offstage == [b])
+        #expect(await anim.writesAtPrepare == [0], "the overlay is up before the first write, as for a switch")
+        #expect(await anim.writesAtPlay == [await be.calls.count])
+    }
+
+    /// #140: a window opening next to the others re-tiles them; the new one is offstage.
+    @Test func aWindowOpeningIsAnimatedAsARetile() async {
+        let c = WindowRef(id: 3, pid: 1)
+        var on = m1Config(); on.animateRetile = true
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a), config: on)
+        await store.run(.setLayout(.column))
+        let before = await anim.prepared.count
+        await store.apply(.snapshot(snap([win(a), win(b), win(c)], focused: a)))
+        let prepared = await anim.prepared
+        #expect(prepared.count == before + 1)
+        let t = prepared.last?.first
+        #expect(t?.kind == .retile)
+        #expect(Set(t?.moves.map(\.ref) ?? []) == [a, b])
+        #expect(t?.offstage == [c])
+    }
+
+    /// Off, a re-tile never reaches the animator — but switches still slide as they always did.
+    @Test func retileOffLeavesSwitchesAlone() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        await store.run(.focusWindow(.right))
+        #expect(await anim.prepared.last?.first?.kind == .switch)
+    }
+
     /// An animator that declines (no grant, a switch mid-flight) gets no `play`, and the switch
     /// still happens.
     @Test func aDeclinedPrepareStillSwitches() async {

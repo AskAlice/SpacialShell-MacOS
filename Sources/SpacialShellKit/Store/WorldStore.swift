@@ -1036,12 +1036,14 @@ public actor WorldStore {
         // and would never play this one: the pictures sat frozen until the watchdog cut them (#66).
         defer { if animating, let animator { Task { await animator.play(trace: trace) } } }
         // #113: a border drag lays out on every move; the hand is the motion, so nothing slides.
-        if let animator, config.animations, grab == nil {
-            if !transitions.isEmpty {
-                animating = await animator.prepare(transitions, trace: trace, since: since)
-                span.setAttribute(key: "animating", value: animating)
-                if gen != generation { return }      // superseded: the deferred play still lands it
-            }
+        // #140: re-tiles only with `animate-retile`; see `MotionRules.animated`.
+        let motion = MotionRules.animated(transitions, animations: config.animations,
+                                          animateRetile: config.animateRetile, grabbing: grab != nil)
+        if let animator, !motion.isEmpty {
+            span.setAttribute(key: "motion", value: MotionRules(motion).kind.rawValue)
+            animating = await animator.prepare(motion, trace: trace, since: since)
+            span.setAttribute(key: "animating", value: animating)
+            if gen != generation { return }          // superseded: the deferred play still lands it
         }
         // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
         // of them (superseded mid-write) used to leave the queue full, so the next pass centred the
@@ -1172,8 +1174,7 @@ public actor WorldStore {
             guard let before = lastShown[sid], let after = shownNow[sid], let screen = world.screens[sid],
                   let display = displays.first(where: { $0.id == sid }) else { return nil }
             let viewport = Reconciler.viewport(screen: screen, display: display, insets: insets[sid, default: .zero])
-            let moves = Transition.moves(before: before, after: after, viewport: viewport, gap: config.gap)
-            return moves.isEmpty ? nil : Transition(display: sid, viewport: viewport, moves: moves)
+            return Transition.plan(display: sid, before: before, after: after, viewport: viewport, gap: config.gap)
         }
     }
 
