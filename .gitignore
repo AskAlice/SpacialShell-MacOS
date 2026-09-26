@@ -12,3 +12,6 @@ raycast/raycast-env.d.ts
 
 # Agent worktrees (git worktrees live here; never part of the tree itself)
 .claude/worktrees/
+
+# Playwright MCP session artefacts (page snapshots, logs, downloads — once a private key)
+.playwright-mcp/
