@@ -9,12 +9,12 @@ Control the [SpacialShell](https://github.com/AskAlice/spacial-shell) tiling win
 
 ## Commands
 
-- **Switch Workspace** — list the current screen's workspaces (categories) and jump to one
+- **Switch Workspace** — list every display's workspaces (categories), focused display first, and jump to one by id
 - **No-view verbs** — cycle layout, focus workspace up/down, focus/move window in all four directions, toggle float, close window. Bind Raycast hotkeys to any of them.
 
 ## Known limits (v0)
 
-- Switch Workspace targets the focused screen only; jump to another screen first (`Fn+]`).
+- Against a shell older than `focus-workspace` (#131), Switch Workspace falls back to the focused screen's first ten rows.
 - No window rows yet — the daemon's v0 `state` payload is workspaces only.
 
 ## Development

@@ -4,10 +4,21 @@ import OpenTelemetryApi
 import SpacialShellProtocol
 import os
 
+public enum IPCServerError: Error, Equatable, CustomStringConvertible {
+    /// Another process accepted a connection on the socket: it is the running shell's.
+    case alreadyRunning(String)
+    public var description: String {
+        switch self { case .alreadyRunning(let path): "another SpacialShell is already listening at \(path)" }
+    }
+}
+
 /// v0 control socket: one NDJSON `IPCRequest` per line, one `IPCResponse` back, over a unix
 /// socket at `IPCProtocol.defaultSocketPath()` (0600). Enough for `spacialctl` and Raycast.
-/// ponytail: blocking write(2) for replies, unconditional stale unlink — replaced by the full M2
-/// IPCServer (SnapshotHub, NWListener) when Tasks 9–13 land.
+/// ponytail: blocking write(2) for replies — replaced by the full M2 IPCServer (SnapshotHub,
+/// NWListener) when Tasks 9–13 land.
+///
+/// #131: one shell per socket. `start()` probes an existing socket file before unlinking it, and a
+/// live answer is `IPCServerError.alreadyRunning` — a second instance used to steal the socket.
 ///
 /// #117: `subscribe` turns a connection into an event stream — an ok reply, one `shell` baseline
 /// event (the full snapshot), then only the typed deltas `ShellEvents.diff` finds per publish.
@@ -17,7 +28,7 @@ import os
 public final class IPCServer: @unchecked Sendable {
     private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "ipc")
     private let path: String
-    private let handle: @Sendable (IPCRequest) async -> IPCResponse
+    private let handle: @Sendable (IPCRequest) async -> IPCReply
     private let queue = DispatchQueue(label: "sh.emu.SpacialShell.ipc")
     private var listenFD: Int32 = -1
     private var acceptSource: (any DispatchSourceRead)?
@@ -29,18 +40,37 @@ public final class IPCServer: @unchecked Sendable {
     private let subscriberSendBuffer: Int32
 
     public init(path: String = IPCProtocol.defaultSocketPath(), subscriberSendBuffer: Int32 = 1 << 20,
-         handle: @escaping @Sendable (IPCRequest) async -> IPCResponse) {
+         reply: @escaping @Sendable (IPCRequest) async -> IPCReply) {
         self.path = path
         self.subscriberSendBuffer = subscriberSendBuffer
-        self.handle = handle
+        self.handle = reply
     }
 
-    public func start() throws {
-        try FileManager.default.createDirectory(
-            at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
-        unlink(path)
+    /// A handler with nothing to do after its reply.
+    public convenience init(path: String = IPCProtocol.defaultSocketPath(), subscriberSendBuffer: Int32 = 1 << 20,
+                            handle: @escaping @Sendable (IPCRequest) async -> IPCResponse) {
+        self.init(path: path, subscriberSendBuffer: subscriberSendBuffer) { IPCReply(await handle($0)) }
+    }
+
+    /// True when something accepts a connection at `path` — a running shell. A stale file (the
+    /// shell crashed), a missing one, or a file that is not a socket all answer false. Non-blocking
+    /// and immediate: a unix-socket connect either lands in the backlog or is refused.
+    public static func isAnswering(path: String) -> Bool {
+        guard var addr = socketAddress(path) else { return false }
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        let rc = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        // A full backlog (EAGAIN) is still a live listener.
+        return rc == 0 || errno == EINPROGRESS || errno == EAGAIN
+    }
+
+    private static func socketAddress(_ path: String) -> sockaddr_un? {
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
         let ok = path.utf8CString.withUnsafeBufferPointer { src -> Bool in
@@ -48,7 +78,18 @@ public final class IPCServer: @unchecked Sendable {
             withUnsafeMutableBytes(of: &addr.sun_path) { $0.copyMemory(from: UnsafeRawBufferPointer(src)) }
             return true
         }
-        guard ok else { close(fd); throw POSIXError(.ENAMETOOLONG) }
+        return ok ? addr : nil
+    }
+
+    public func start() throws {
+        try FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+        // #131, M2 design: probe before unlink. Only a file nobody answers on is ours to replace.
+        if Self.isAnswering(path: path) { throw IPCServerError.alreadyRunning(path) }
+        unlink(path)
+        guard var addr = Self.socketAddress(path) else { throw POSIXError(.ENAMETOOLONG) }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
         let bound = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
@@ -110,18 +151,21 @@ public final class IPCServer: @unchecked Sendable {
                 // (a command name at most) are not recorded.
                 let span = Telemetry.tracer().spanBuilder(spanName: "ipc.request").setNoParent().startSpan()
                 span.setAttribute(key: "ipc.cmd", value: request?.cmd ?? "invalid")
-                let response: IPCResponse =
-                    if let request { await handle(request) } else { .failure(id: 0, "invalid request") }
+                let reply: IPCReply =
+                    if let request { await handle(request) } else { IPCReply(.failure(id: 0, "invalid request")) }
                 span.end()
-                self.send(response, to: fd)
+                self.send(reply.response, to: fd, then: reply.afterSend)
             }
         }
     }
 
-    private nonisolated func send(_ response: IPCResponse, to fd: Int32) {
-        guard let data = try? IPCCodec.line(response) else { return }
+    /// `then` runs on the IPC queue once the reply is written — or would have been, had the client
+    /// gone: a `quit` whose caller hung up still quits.
+    private nonisolated func send(_ response: IPCResponse, to fd: Int32, then: (@Sendable () -> Void)? = nil) {
+        let data = try? IPCCodec.line(response)
         queue.async {
-            guard self.readers[fd] != nil else { return }
+            defer { then?() }
+            guard let data, self.readers[fd] != nil else { return }
             if self.subscribers.contains(fd) { return self.writeOrDrop(data, to: fd) }
             _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
         }

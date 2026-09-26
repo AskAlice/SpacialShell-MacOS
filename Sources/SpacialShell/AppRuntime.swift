@@ -3,6 +3,7 @@ import CoreGraphics
 import SpacialShellKit
 import struct SpacialShellProtocol.WindowRef
 import enum SpacialShellProtocol.JSONValue
+import enum SpacialShellProtocol.IPCProtocol
 import SpacialShellPlatform
 import SpacialShellUI
 import OpenTelemetryApi
@@ -56,6 +57,15 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private nonisolated let termination = TerminationGate()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // #131: one shell at a time. Two would fight over every window, and the second used to take
+        // the control socket from the first. Checked before anything is touched, so leaving is free.
+        let socket = IPCProtocol.defaultSocketPath()
+        if IPCServer.isAnswering(path: socket) {
+            log.error("another SpacialShell is running (\(socket, privacy: .public)); exiting")
+            FileHandle.standardError.write(Data(
+                "SpacialShell is already running. Quit it first (`spacialctl quit`, or the rail menu's Quit).\n".utf8))
+            exit(1)
+        }
         NSApp.setActivationPolicy(.accessory)
         // Before the Accessibility wait: an update must still reach a copy that never got its grant.
         updater = Updates.makeController()
@@ -198,36 +208,14 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         await store.start()
 
         log.info("stage 6b/8: starting the control socket")
-        let ipc = IPCServer { request in
-            switch request.cmd {
-            case "version":
-                return .ok(id: request.id, data: .object(["version": .string(SpacialShellKit.version)]))
-            case "run":
-                let name = request.args["command"]?.stringValue ?? ""
-                guard let command = KeyBindings.command(named: name)
-                else { return .failure(id: request.id, "unknown command \"\(name)\"") }
-                // #88: exactly like a hotkey. App-layer commands go through `route` to their
-                // controllers (the store would drop them); model commands are awaited, so a
-                // `spacialctl state` straight after sees their effect. #109: the reply carries
-                // the store's report — done, a no-op and why, or the error.
-                if command.isAppLayer { route(command); return CommandReport.done.response(id: request.id) }
-                return await store.run(command).response(id: request.id)
-            case "state":
-                let state = await store.wireState()
-                return .ok(id: request.id, data: (try? JSONValue(encoding: state)) ?? .null)
-            case "set-layout":
-                // #10, design §6: refuses an id the catalogue does not know (spacialctl exits 1).
-                switch await store.wireState().setLayout(request.args["layout"]?.stringValue,
-                                                         workspace: request.args["workspace"]?.stringValue) {
-                case .success(let command):
-                    return await store.run(command).response(id: request.id)
-                case .failure(let refusal):
-                    return .failure(id: request.id, refusal.message)
-                }
-            default:
-                return .failure(id: request.id, "unknown cmd \(request.cmd)")
-            }
-        }
+        // #131: the verb table lives in Kit (`IPCDispatch`), where it is tested and `capabilities`
+        // is built from it. App-layer commands, `quit` included, go through `route` like a hotkey.
+        let dispatch = IPCDispatch(
+            version: SpacialShellKit.version,
+            wireState: { await store.wireState() },
+            run: { await store.run($0) },
+            route: route)
+        let ipc = IPCServer(reply: { await dispatch.handle($0) })
         do {
             try ipc.start()
             self.ipc = ipc

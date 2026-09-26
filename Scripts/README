@@ -3,7 +3,8 @@ SpacialShell dev scripts
 
 dev.sh      swift build (debug) + run .build/debug/SpacialShell in the foreground.
             Ctrl-C is a clean quit: SIGINT restores every managed window to the centre
-            of its screen before exiting (spec §7.4).
+            of its screen before exiting (spec §7.4). One shell at a time (#131): with the
+            installed app running, it exits 1 at once; `spacialctl quit` that one first.
 bundle.sh   swift build -c release + assemble build/SpacialShell.app (Sparkle.framework embedded),
             signed with the best identity available (below); hardened runtime unless ad-hoc.
 package-dmg.sh  bundle.sh + UDZO DMG (Applications symlink). VERSION= overrides the name and

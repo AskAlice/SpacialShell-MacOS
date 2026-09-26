@@ -5,35 +5,12 @@ import SpacialShellProtocol
 // spacialctl — one-shot NDJSON client for the SpacialShell control socket.
 // Exit codes: 0 ok · 1 daemon returned an error · 2 usage · 3 daemon not reachable.
 
-let usage = """
-usage: spacialctl [--socket PATH] <subcommand>
-  version              daemon version
-  state                spatial model as JSON
-  run <command-name>   run a bound command, e.g. `run focus-workspace-2`; a command that
-                       fails (unknown workspace, no focused window, ...) exits 1
-  set-layout <id> [--workspace <uuid>]
-                       set a workspace's layout (default: the focused one); unknown ids exit 1
-  subscribe            stream events, one JSON object per line: a `shell` snapshot first, then
-                       only changes (workspace-activated, focus-changed, window-adopted, ...)
-"""
-
 var args = Array(CommandLine.arguments.dropFirst())
 var socketPath = IPCProtocol.defaultSocketPath()
 if args.first == "--socket", args.count >= 2 { socketPath = args[1]; args.removeFirst(2) }
 
-let request: IPCRequest
-switch args.first {
-case "version": request = IPCRequest(id: 1, cmd: "version")
-case "state": request = IPCRequest(id: 1, cmd: "state")
-case "subscribe": request = IPCRequest(id: 1, cmd: "subscribe")
-// #109: extra words are passed through, so `run switch 42` is the daemon's clear "unknown command".
-case "run" where args.count >= 2:
-    request = IPCRequest(id: 1, cmd: "run", args: ["command": .string(args.dropFirst().joined(separator: " "))])
-case "set-layout" where args.count == 2: request = IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1])])
-case "set-layout" where args.count == 4 && args[2] == "--workspace":
-    request = IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1]), "workspace": .string(args[3])])
-default:
-    FileHandle.standardError.write(Data((usage + "\n").utf8))
+guard let request = SpacialCtlCommandLine.request(args) else {
+    FileHandle.standardError.write(Data((SpacialCtlCommandLine.usage + "\n").utf8))
     exit(2)
 }
 
