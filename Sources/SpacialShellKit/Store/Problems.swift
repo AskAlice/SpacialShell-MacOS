@@ -33,6 +33,8 @@ extension Problem {
         public static let hotkeys = "hotkeys"
         public static let controlSocket = "control-socket"
         public static let telemetry = "telemetry"
+        /// #141: macOS also uses three fingers, so a swipe does two things at once.
+        public static let gestureConflict = "gestures.system-conflict"
         /// Followed by the app's bundle id (or `pid:<n>`): one entry per app, not per window.
         public static let axWritePrefix = "ax-write:"
     }
@@ -61,6 +63,20 @@ extension Problem {
     /// new message is a change the UI redraws for. With a fixed text, repeats de-duplicate.
     public static func telemetryFailing(host: String) -> Problem {
         Problem(key: Key.telemetry, severity: .warning, message: "Traces aren't reaching \(host). See the telemetry log for why.")
+    }
+    /// #141. A warning: the swipes work, but macOS's own gesture fires with them, because a global
+    /// monitor can only watch. `swipes`: Mission Control or full-screen swipes are on three fingers.
+    /// `drag`: three-finger drag is on.
+    public static func gestureConflict(swipes: Bool, drag: Bool) -> Problem {
+        var fixes: [String] = []
+        if swipes {
+            fixes.append("set Mission Control and \"Swipe between full-screen apps\" to four fingers in System Settings → Trackpad → More Gestures")
+        }
+        if drag {
+            fixes.append("turn off three-finger drag in System Settings → Accessibility → Pointer Control → Trackpad Options")
+        }
+        return Problem(key: Key.gestureConflict, severity: .warning,
+                       message: "macOS also uses three fingers on the trackpad, so each swipe does two things. To keep only SpacialShell's, \(fixes.joined(separator: ", and ")).")
     }
     public static func axWriteFailing(app: String) -> Problem {
         Problem(key: Key.axWritePrefix + app, severity: .warning,

@@ -155,6 +155,14 @@ public struct Config: Codable, Equatable, Sendable {
     /// #120 (G3): Fn+W on the first workspace goes to the last non-empty one, and Fn+S on the last
     /// non-empty one goes to the first. Off by default: the ends of the stack stay ends.
     public var workspaceWrap: Bool = false
+    /// #141 (G27): trackpad swipes navigate like Fn+W/A/S/D — up/down a workspace, left/right a
+    /// window, one step per swipe, content following the fingers as natural scrolling does.
+    public var gestures: Bool = true
+    /// #141: how many fingers a swipe takes, exactly. Clamped to 3…5: two fingers is scrolling.
+    public var gestureFingers: Int = 3
+    /// #141: swipe the way the keys point instead (swipe left runs Fn+A, swipe up Fn+W).
+    public var gestureInvert: Bool = false
+    public static let gestureFingerRange = 3...5
     /// Both panels' material tint and how opaque they are. "system" means the stock vibrancy
     /// material; a hex colour replaces it. One pair for both surfaces — split them only if the
     /// rail and bar ever need to differ.
@@ -207,6 +215,7 @@ public struct Config: Codable, Equatable, Sendable {
              keybindingOverrides = "keybinding-overrides"
         case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
              workspaceWrap = "workspace-wrap"
+        case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
         case layouts = "layout", layoutBar = "layout-bar"
         case telemetry
@@ -234,6 +243,12 @@ public struct Config: Codable, Equatable, Sendable {
         railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide) ?? false
         pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp) ?? true
         workspaceWrap = try c.decodeIfPresent(Bool.self, forKey: .workspaceWrap) ?? false
+        gestures = try c.decodeIfPresent(Bool.self, forKey: .gestures) ?? true
+        // Clamped rather than refused, like `panel-opacity`: a 2 or a 10 is a typo, not a reason to
+        // throw the whole file away.
+        let fingers = try c.decodeIfPresent(Int.self, forKey: .gestureFingers) ?? 3
+        gestureFingers = min(Config.gestureFingerRange.upperBound, max(Config.gestureFingerRange.lowerBound, fingers))
+        gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert) ?? false
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
             guard let n = HexColor.normalize(raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
@@ -317,6 +332,9 @@ public struct Config: Codable, Equatable, Sendable {
         rail-autohide = \(railAutohide)
         pointer-warp = \(pointerWarp)
         workspace-wrap = \(workspaceWrap)
+        gestures = \(gestures)
+        gesture-fingers = \(gestureFingers)
+        gesture-invert = \(gestureInvert)
         layout-bar = [\(layoutBar.map { q($0.rawValue) }.joined(separator: ", "))]
 
         """

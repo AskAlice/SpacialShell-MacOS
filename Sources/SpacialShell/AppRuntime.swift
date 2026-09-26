@@ -38,6 +38,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     private var tap: HotkeyTap?
+    private var gestures: TrackpadGestures?
     private var shell: ShellController?
     private var overview: OverviewController?
     private var settingsWindow: SettingsWindowController?
@@ -264,6 +265,17 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             ProblemCenter.shared.report(.hotkeysInactive(String(describing: error)))
         }
 
+        // #141: trackpad swipes are Fn+W/A/S/D by another route — the same `route`, the same
+        // commands, so the slide animation and command outcomes are the hotkeys' own. Only
+        // installed while `gestures` is on; `push` turns it on and off on config changes.
+        let gestures = TrackpadGestures { direction in
+            guard !gate.isTerminating else { return }   // the tap is already stopped; so is this
+            backend.noteHumanInput()
+            route(SwipeRecognizer.command(for: direction))
+        }
+        gestures.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
+        self.gestures = gestures
+
         log.info("stage 8/8: config watch and signal handlers")
         watchConfig()
         installSignalHandlers()
@@ -394,6 +406,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             log.notice("ax-timeout-ms / refresh-interval-ms changed; those take effect at the next launch")
         }
         tap?.update(table: KeyBindings.table(for: config))
+        gestures?.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
         shell?.update(config: config)
         cheatSheet?.update(config: config)
         layouts?.update(config: config, overrides: overrides)
@@ -492,6 +505,10 @@ final class TerminationGate: @unchecked Sendable {
     func arm(tracing: TracerProviderSdk?) {
         lock.lock(); self.tracing = tracing; lock.unlock()
     }
+
+    /// Once true, command sources that cannot be stopped from this queue (the trackpad monitor is
+    /// main-actor bound) drop what they see instead of moving windows the restore has decided about.
+    var isTerminating: Bool { lock.withLock { didTerminate } }
 
     /// Called from `WorldStore`'s `onChange`, off the main actor.
     func note(world: World) {

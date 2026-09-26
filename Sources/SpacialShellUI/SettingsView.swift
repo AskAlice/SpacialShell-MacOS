@@ -90,6 +90,17 @@ struct SettingsView: View {
                     .help("Fn+W on the first workspace goes to the last one, and Fn+S on the last back to the first")
             } reset: { overrides.workspaceWrap = nil }
 
+            // #141: swipes are Fn+W/A/S/D; `gesture-fingers` is file-only.
+            row("Trackpad swipes", overridden: overrides.gestures != nil) {
+                Toggle("", isOn: binding(\.gestures, default: file.gestures)).labelsHidden()
+                    .help("Swipe with \(file.gestureFingers) fingers to move between windows (left, right) and workspaces (up, down), like Fn+W/A/S/D")
+            } reset: { overrides.gestures = nil }
+
+            row("Invert swipes", overridden: overrides.gestureInvert != nil) {
+                Toggle("", isOn: binding(\.gestureInvert, default: file.gestureInvert)).labelsHidden()
+                    .help("Off: content follows your fingers, as with natural scrolling (swipe left for the next window). On: swipe the way the keys point (swipe left for Fn+A)")
+            } reset: { overrides.gestureInvert = nil }
+
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("config.toml").font(.system(size: 12, weight: .semibold))

@@ -184,6 +184,33 @@ and logs the error).
 - **Colemak / Dvorak:** key names are physical positions, so `w`/`a`/`s`/`d` stay where they are
   on the board regardless of layout — usually what you want for a spatial-navigation cluster.
 
+## Trackpad swipes
+
+Swiping with three fingers does what `Fn+W/A/S/D` do, one step per swipe:
+
+| Swipe | Runs | Same as |
+|---|---|---|
+| left | `focus-window-right` | `Fn+D` |
+| right | `focus-window-left` | `Fn+A` |
+| up | `focus-workspace-down` | `Fn+S` |
+| down | `focus-workspace-up` | `Fn+W` |
+
+Content follows the fingers, as with natural scrolling: the swipe pushes the current window or
+workspace away and pulls in its neighbour. `gesture-invert = true` flips it, so the swipe points
+the way the keys do. A swipe fires once it has travelled about an eighth of the trackpad along one
+axis, clearly more along that axis than the other; a diagonal does nothing. Lift your fingers to
+swipe again. `gesture-fingers` picks 3, 4 or 5 fingers, and `gestures = false` turns swipes off
+(see [config](config.md)). Both toggles are also in the settings window's General pane.
+
+**Set macOS's own three-finger gestures to four fingers.** SpacialShell can watch trackpad
+gestures but, through public API, not take them away from macOS, so a three-finger swipe that
+macOS also uses switches Space or opens Mission Control as well. In System Settings → Trackpad →
+More Gestures, set **Mission Control**, **App Exposé** and **Swipe between full-screen apps** to four
+fingers (or off); if "Swipe between pages" uses three fingers, change that too. Three-finger drag
+(Accessibility → Pointer Control → Trackpad Options) turns three-finger movement into a drag and
+also conflicts. While a conflicting setting is on, a warning under the rail cog says which to change;
+it clears the next time you leave System Settings with it fixed.
+
 ## Conflicts and edge cases
 
 - `Fn+F` is intentionally unbound (Apple full screen). `Fn+F1…F20` are never bindable (media keys /
