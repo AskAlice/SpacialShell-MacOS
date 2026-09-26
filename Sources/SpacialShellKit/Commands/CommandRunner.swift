@@ -13,18 +13,33 @@ public enum CommandRunner {
         /// the end), carrying its pin, and follow it. Workspace moves, display moves, a dragged
         /// tab and the edge spill (#33) differ only in how they name the destination, so they
         /// share this outright rather than drifting apart.
-        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int), at position: Int? = nil) -> Bool {
+        ///
+        /// `follow: false` is a drop (#95): the window becomes its new row's anchor (parked there
+        /// if that row is inactive), and nothing else moves — every active row stays active, and
+        /// focus stays put unless it was on this window, when it falls to the neighbour exactly as
+        /// on a close. A focus change is emitted here; the caller adds the rest.
+        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int), at position: Int? = nil,
+                  follow: Bool = true) -> Bool {
             guard let from = w.location(of: ref) else { return false }
             guard from.screen != dest.screen || from.index != dest.index else { return false }
-            let wasFloating = w.screens[from.screen]!.workspaces[from.index].floating.contains(ref)
+            let source = w.screens[from.screen]!.workspaces[from.index]
+            let neighbour = w.neighbour(of: ref, in: source)
             w.screens[from.screen]!.workspaces[from.index].windows.removeAll { $0 == ref }
             w.screens[from.screen]!.workspaces[from.index].floating.remove(ref)
             w.screens[dest.screen]!.workspaces[dest.index].windows.insert(
                 ref, at: position ?? w.screens[dest.screen]!.workspaces[dest.index].windows.count)
-            if wasFloating { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
+            if source.floating.contains(ref) { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
             w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
-            w.screens[dest.screen]!.activeIndex = dest.index
-            w.focus = Focus(screen: dest.screen, window: ref)
+            if follow {
+                w.screens[dest.screen]!.activeIndex = dest.index
+                w.focus = Focus(screen: dest.screen, window: ref)
+            } else {
+                if source.anchor == ref { w.screens[from.screen]!.workspaces[from.index].anchor = neighbour }
+                if w.focus.window == ref {
+                    w.focus.window = neighbour
+                    if let neighbour { effects.append(.focus(neighbour)) }
+                }
+            }
             w.normalize()
             return true
         }
@@ -130,13 +145,14 @@ public enum CommandRunner {
             guard move(f, to: (sid, target)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
 
-        case .moveWindowRefToWorkspace(let ref, let workspace):
+        case .moveWindowRefToWorkspace(let ref, let workspace, let follow):
             // Dropping on the rail's "+" needs no special case: the trailing empty workspace is a
             // workspace like any other, and normalize() grows a fresh "+" underneath it the moment
             // it stops being empty (invariant 4) — the same thing that makes clicking "+" work.
             guard let dest = w.location(ofWorkspace: workspace) else { return (w, []) }
-            guard move(ref, to: dest) else { return (w, []) }
-            effects.append(.focus(ref)); effects.append(.relayout)
+            guard move(ref, to: dest, follow: follow) else { return (w, []) }
+            if follow { effects.append(.focus(ref)) }
+            effects.append(.relayout)
 
         case .moveWindowRefBefore(let ref, let before):
             // A row operation, not a focus one: dragging a tab into a new position must not take
@@ -146,12 +162,12 @@ public enum CommandRunner {
             guard let i = row.firstIndex(of: ref) else { return (w, []) }
             // Decision 2026-09-24 (#32): `before` in another row (another display's bar, or another
             // workspace) is a drop there, not a reorder here — the window moves into that row just
-            // before it and focus follows, exactly as a rail drop would.
+            // before it, exactly as a rail drop would, and like one (#95) focus does not follow.
             if let before, !row.contains(before) {
                 guard let dest = w.location(of: before),
                       let j = w.screens[dest.screen]!.workspaces[dest.index].windows.firstIndex(of: before),
-                      move(ref, to: dest, at: j) else { return (w, []) }
-                effects.append(.focus(ref)); effects.append(.relayout)
+                      move(ref, to: dest, at: j, follow: false) else { return (w, []) }
+                effects.append(.relayout)
                 return (w, effects)
             }
             // Resolve the destination before removing, so `before` is still findable; then convert

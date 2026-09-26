@@ -171,16 +171,20 @@ extension World {
         return ws.id
     }
 
+    /// Who takes over when `w` leaves `ws` (closed, or dropped elsewhere without following, #95):
+    /// the visible window before it, else the one after, else nobody.
+    func neighbour(of w: WindowRef, in ws: Workspace) -> WindowRef? {
+        let vis = visible(in: ws)
+        guard let i = vis.firstIndex(of: w) else { return nil }
+        return i > 0 ? vis[i - 1] : (vis.count > 1 ? vis[i + 1] : nil)
+    }
+
     public mutating func remove(_ w: WindowRef) {
         ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]
-            let vis = visible(in: ws)
-            if focus.window == w {
-                let i = vis.firstIndex(of: w)!
-                focus.window = i > 0 ? vis[i - 1] : (vis.count > 1 ? vis[i + 1] : nil)
-            }
+            if focus.window == w { focus.window = neighbour(of: w, in: ws) }
             ws.windows.removeAll { $0 == w }; ws.floating.remove(w)
             if ws.anchor == w { ws.anchor = focus.window.flatMap { ws.windows.contains($0) ? $0 : nil } ?? ws.windows.first }
             screens[loc.screen]!.workspaces[loc.index] = ws

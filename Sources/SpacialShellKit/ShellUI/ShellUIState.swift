@@ -106,12 +106,13 @@ public struct ScreenShellState: Equatable, Sendable {
     }
 
     /// A tab dropped on this bar's empty end (#32). The bar names its own destination: a window
-    /// from another row moves into this bar's workspace; one already in it goes to the end.
+    /// from another row moves into this bar's workspace (without following, #95); one already in
+    /// it goes to the end.
     public func endOfRowDrop(_ ref: WindowRef) -> Command {
         guard !tabs.contains(where: { $0.ref == ref }), let ws = rail.first(where: \.isActive) else {
             return .moveWindowRefBefore(ref, nil)
         }
-        return .moveWindowRefToWorkspace(ref, ws.id)
+        return .moveWindowRefToWorkspace(ref, ws.id, follow: false)
     }
 
     /// A rail tile dropped on another tile of this rail (#75) lands just before it, like a tab in

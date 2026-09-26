@@ -249,7 +249,8 @@ import Foundation
     // MARK: bar drops across rows (#32) — a tab dropped on another row's bar goes to that row.
 
     /// Dropped on a tab in another display's bar: the window lands in that tab's workspace,
-    /// immediately before it, and focus follows it there — the same as a rail drop.
+    /// immediately before it. #95: focus does not follow — it falls to the neighbour in the row
+    /// the window left, exactly as if it had closed — the same as a rail drop.
     @Test func dragBeforeATabInAnotherRowMovesItThere() {
         var w = twoDisplays()                             // D1 [a*, b, c], D2 [d]
         (w, _) = run(w, .moveWindowRefToWorkspace(a, w.screens["D2"]!.active.id))   // D2 [d, a]
@@ -257,8 +258,9 @@ import Foundation
         let (out, effects) = run(w, .moveWindowRefBefore(b, a))
         #expect(out.screens["D1"]!.workspaces[0].windows == [c])
         #expect(out.screens["D2"]!.active.windows == [d, b, a])
-        #expect(out.focus == Focus(screen: "D2", window: b))
-        #expect(effects == [.focus(b), .relayout])
+        #expect(out.focus == Focus(screen: "D1", window: c))
+        #expect(out.screens["D2"]!.active.anchor == b)
+        #expect(effects == [.focus(c), .relayout])
     }
 
     @Test func dragBeforeTheFirstTabInAnotherRowLandsFirst() {
@@ -283,7 +285,8 @@ import Foundation
         (w, _) = run(w, .moveWindowRefToWorkspace(c, target))   // D1 [[a, b], [c], []]
         (w, _) = run(w, .moveWindowRefBefore(a, c))
         #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[b], [a, c], []])
-        #expect(w.focus.window == a)
+        // #95: the [c] row stays active (the setup's move followed c there); a is not focused.
+        #expect(w.focus == Focus(screen: "D1", window: c) && w.screens["D1"]!.activeIndex == 1)
     }
 
     /// Dropped on the empty end of another display's bar: the bar names its own workspace, and
@@ -294,7 +297,7 @@ import Foundation
         (w, _) = run(w, bar.endOfRowDrop(b))
         #expect(w.screens["D1"]!.active.windows == [a, c])
         #expect(w.screens["D2"]!.active.windows == [d, b])
-        #expect(w.focus == Focus(screen: "D2", window: b))
+        #expect(w.focus == Focus(screen: "D1", window: a))   // #95: a drop does not follow
     }
 
     /// The same drop on the window's own bar is the old row-end reorder, focus untouched.
@@ -306,6 +309,85 @@ import Foundation
         #expect(w.screens["D1"]!.active.windows == [b, c, a])
         #expect(w.screens["D2"]!.active.windows == [d])
         #expect(w.focus.window == a)
+    }
+
+    // MARK: drops do not follow (#95) — a dropped tab moves its window; the active row, the focus
+    // and the rail highlight stay where the user was.
+
+    func drop(_ w: World, _ ref: WindowRef, to ws: UUID) -> (World, [Effect]) {
+        run(w, .moveWindowRefToWorkspace(ref, ws, follow: false))
+    }
+
+    /// Same display, unfocused window: only the rows change. The window is its new row's anchor,
+    /// and since that row is inactive the reconciler parks it.
+    @Test func dropOnAnotherRowOfTheSameDisplayStaysPut() {
+        let w = base()                                    // D1 [a*, b, c]
+        let (out, effects) = drop(w, b, to: w.screens["D1"]!.workspaces.last!.id)
+        #expect(out.screens["D1"]!.workspaces.map(\.windows) == [[a, c], [b], []])
+        #expect(out.screens["D1"]!.activeIndex == 0)
+        #expect(out.focus == Focus(screen: "D1", window: a))
+        #expect(out.screens["D1"]!.workspaces[1].anchor == b)
+        #expect(effects == [.relayout])
+        let d1 = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+                             visibleFrame: CGRect(x: 0, y: 25, width: 1440, height: 875), isMain: true)
+        let desired = Reconciler.desired(world: out, displays: [d1], config: LayoutConfig(gap: 8),
+                                         observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
+        if case .parked = desired[b] {} else { Issue.record("b should be parked, got \(String(describing: desired[b]))") }
+    }
+
+    /// The focused window leaves: focus falls to its neighbour by the close rule — the one before
+    /// it, else the one after — and its row stays active.
+    @Test func droppingTheFocusedWindowFocusesItsNeighbourLikeAClose() {
+        var w = base()                                    // D1 [a*, b, c]
+        let plus = w.screens["D1"]!.workspaces.last!.id
+        var (out, effects) = drop(w, a, to: plus)         // first → the one after
+        #expect(out.focus == Focus(screen: "D1", window: b) && out.screens["D1"]!.activeIndex == 0)
+        #expect(out.screens["D1"]!.workspaces[1].windows == [a] && out.screens["D1"]!.workspaces[1].anchor == a)
+        #expect(effects == [.focus(b), .relayout])
+        (w, _) = run(w, .focusWindowRef(c))
+        (out, effects) = drop(w, c, to: plus)             // last → the one before
+        #expect(out.focus == Focus(screen: "D1", window: b))
+        #expect(effects == [.focus(b), .relayout])
+        var closed = w; closed.remove(c)                  // the same rule as a close
+        #expect(closed.focus == out.focus)
+    }
+
+    /// Across displays: the other display's active row and the focused display both stay as they
+    /// were. Dropped onto the other display's inactive "+" row, the window is filed there.
+    @Test func dropOnAnotherDisplayStaysPut() {
+        let w = twoDisplays()                             // D1 [a*, b, c], D2 [d]
+        var (out, effects) = drop(w, a, to: w.screens["D2"]!.active.id)
+        #expect(out.screens["D1"]!.active.windows == [b, c] && out.screens["D2"]!.active.windows == [d, a])
+        #expect(out.focus == Focus(screen: "D1", window: b))
+        #expect(out.screens["D2"]!.active.anchor == a)
+        #expect(effects == [.focus(b), .relayout])
+        (out, effects) = drop(w, c, to: w.screens["D2"]!.workspaces.last!.id)
+        #expect(out.screens["D2"]!.workspaces.map(\.windows) == [[d], [c], []])
+        #expect(out.screens["D2"]!.activeIndex == 0 && out.screens["D1"]!.activeIndex == 0)
+        #expect(out.focus == Focus(screen: "D1", window: a))
+        #expect(effects == [.relayout])
+    }
+
+    /// The bar's end-of-row drop sends the non-following form, as the rail does.
+    @Test func endOfRowDropDoesNotFollow() {
+        let w = twoDisplays()
+        #expect(ShellUI.state(for: "D2", in: w)!.endOfRowDrop(b)
+                == .moveWindowRefToWorkspace(b, w.screens["D2"]!.active.id, follow: false))
+    }
+
+    /// Fn+Shift+S / Fn+Shift+W, the edge spill (#33) and the default form keep following.
+    @Test func keyboardMovesStillFollow() {
+        var w = base()
+        (w, _) = run(w, .moveWindowToWorkspace(.down))
+        #expect(w.focus == Focus(screen: "D1", window: a) && w.screens["D1"]!.activeIndex == 1)
+        (w, _) = run(w, .moveWindowToWorkspace(.up))
+        #expect(w.focus == Focus(screen: "D1", window: a) && w.screens["D1"]!.activeIndex == 0)
+        var two = twoDisplays()
+        (two, _) = run(two, .focusWindowRef(c)); (two, _) = run(two, .moveWindow(.right))
+        #expect(two.focus == Focus(screen: "D2", window: c))
+        let w0 = base()
+        let (out, _) = run(w0, .moveWindowRefToWorkspace(b, w0.screens["D1"]!.workspaces.last!.id))
+        #expect(out.focus == Focus(screen: "D1", window: b) && out.screens["D1"]!.activeIndex == 1)
     }
 
     // MARK: workspace reorder (#75) — a rail tile dragged to a new place in its display's stack.

@@ -28,9 +28,12 @@ public enum Command: Sendable, Hashable {
     case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
     /// Tab dragged onto a rail row. Absolute where `moveWindowToWorkspace(Vertical)` is relative:
     /// a drag names both the window and the destination, and neither need be the focused one.
-    case moveWindowRefToWorkspace(WindowRef, UUID)
+    /// `follow` (#95): the store's own moves follow the window, as the keyboard does; a drop passes
+    /// false, so the active rows and the focus stay put and the window is only re-filed.
+    case moveWindowRefToWorkspace(WindowRef, UUID, follow: Bool = true)
     /// Tab dragged within the bar: put the first window immediately before the second, or at the
-    /// end of the row when the second is nil. Reference-based rather than index-based because an
+    /// end of the row when the second is nil; a second in another row is a drop there, which does
+    /// not follow (#95). Reference-based rather than index-based because an
     /// index means something different before and after the removal — a classic off-by-one.
     case moveWindowRefBefore(WindowRef, WindowRef?)
     /// Rail tile dragged to a new place in its own display's stack (#75): the workspace ends up at

@@ -565,8 +565,9 @@ public actor WorldStore {
     }
 
     /// #57: a window the user drags onto another display moves there in the model — into that
-    /// display's active workspace, focused, exactly as a tab dropped on its rail would — so the tab
-    /// follows the window instead of the window being snapped back. Every other disagreement about
+    /// display's active workspace, focused (the window is in the user's hand, so unlike a tab drop,
+    /// #95, it follows) — so the tab follows the window instead of the window being snapped back.
+    /// Every other disagreement about
     /// which display a window is on (placement memory, an app moving its own window) is left to the
     /// reconciler, which puts the window where its tab is: the model wins.
     ///

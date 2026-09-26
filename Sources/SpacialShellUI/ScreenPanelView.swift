@@ -89,8 +89,9 @@ struct ScreenPanelView: View {
                     onHoverTile(item, inside, tileFrames[item.id] ?? .zero)
                 }
                 .modifier(Reorderable(item: item) { reordering = item.id })
-                // Dropping a tab here sends its window to this workspace. The trailing "+" row is
-                // not special-cased: it is a workspace, and moving into it grows a new one.
+                // Dropping a tab here sends its window to this workspace without following it
+                // (#95): the rail highlight and focus stay put. The trailing "+" row is not
+                // special-cased: it is a workspace, and moving into it grows a new one.
                 // Dropping a tile here puts it just before this one (#75). Only within this
                 // display: a tile from another display's rail is not in `state.rail`, so
                 // `railReorder` refuses it — moving a workspace across displays is out of scope.
@@ -98,7 +99,7 @@ struct ScreenPanelView: View {
                     defer { reordering = nil }
                     switch items.first {
                     case .window(let dropped)?:
-                        send(.moveWindowRefToWorkspace(dropped.ref, item.id))
+                        send(.moveWindowRefToWorkspace(dropped.ref, item.id, follow: false))
                         return true
                     case .workspace(let dragged)?:
                         guard let command = state.railReorder(dragged.workspace, before: item.id) else { return false }
