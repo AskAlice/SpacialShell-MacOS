@@ -164,6 +164,7 @@ public actor WorldStore {
 
     public func run(_ command: Command) async {
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
+        let issued = now()
         // #83: the root of a command's trace. The case name is the low-cardinality key; the detail
         // carries only ids and enum values — `Command` has no string payloads.
         let span = startSpan("command", parent: nil)
@@ -188,7 +189,7 @@ public actor WorldStore {
             case .focus, .relayout: break
             }
         }
-        await reconcile(parent: span)
+        await reconcile(parent: span, since: issued)
         switch command {
         case .rescueWindows, .recoverWindow: await rescueBeyondReach(reason: "command")   // #73: the tray's "off every display"
         default: break
@@ -645,7 +646,8 @@ public actor WorldStore {
 
     // MARK: reconcile
 
-    private func reconcile(parent: (any Span)? = nil) async {
+    private func reconcile(parent: (any Span)? = nil, since: ContinuousClock.Instant? = nil) async {
+        let since = since ?? now()
         // Placement memory follows the model: whatever the last command or snapshot did, the
         // windows on screen now define where their apps belong.
         placements.merge(PersistedState.placements(world: world, bundleIDs: bundleIDs)) { _, live in live }
@@ -702,7 +704,7 @@ public actor WorldStore {
         defer { if animating, let animator { Task { await animator.play(trace: trace) } } }
         if let animator, config.animations {
             if !transitions.isEmpty {
-                animating = await animator.prepare(transitions, trace: trace)
+                animating = await animator.prepare(transitions, trace: trace, since: since)
                 span.setAttribute(key: "animating", value: animating)
                 if gen != generation { return }      // superseded: the deferred play still lands it
             }

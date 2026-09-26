@@ -17,8 +17,11 @@ import SpacialShellProtocol
 /// and drops the overlay on landing, when the pictures sit exactly over the windows they show.
 ///
 /// #77: the pictures are kept. `prefetch` takes the next switches' pictures ahead of time, and the
-/// last few prepared sets stay, so a switch whose pictures are already here and fresh starts with
-/// no capture at all.
+/// last few prepared sets stay, so a switch whose pictures are already here starts with no capture.
+///
+/// #97: stale-while-revalidate — a kept set flies however old it is (the prefetch after landing
+/// takes it again), and a switch with nothing kept waits at most `captureBudget` for its capture
+/// before placing instantly; the late capture still lands in the cache for next time.
 ///
 /// The overlay is click-through and never key, like every other panel here. Anything that goes
 /// wrong — no Screen Recording grant, reduce-motion, a window ScreenCaptureKit will not hand over —
@@ -30,7 +33,9 @@ public final class SwitchOverlay: SwitchAnimator {
 
     @MainActor public init() { stage = Stage() }
 
-    public func prepare(_ transitions: [Transition], trace: SpanContext?) async -> Bool { await stage.prepare(transitions, trace: trace) }
+    public func prepare(_ transitions: [Transition], trace: SpanContext?, since: ContinuousClock.Instant) async -> Bool {
+        await stage.prepare(transitions, trace: trace, since: since)
+    }
     public func play(trace: SpanContext?) async { await stage.play(trace: trace) }
     public func prefetch(_ predicted: [[Transition]]) async { await stage.prefetch(predicted) }
 }
@@ -39,17 +44,11 @@ public final class SwitchOverlay: SwitchAnimator {
 private final class Stage {
     private struct Sprite { let layer: CALayer; let to: CGRect }
 
-    /// One display's share of a switch: which windows move, from where. A different arrangement of
-    /// the same windows is a different key, so pictures are never stretched over another layout.
-    private struct Key: Equatable {
-        let display: DisplayID, ids: [WindowID], from: [CGRect]
-        init(_ t: Transition) {
-            let ms = t.moves.sorted { $0.ref.id < $1.ref.id }
-            display = t.display; ids = ms.map(\.ref.id); from = ms.map(\.from)
-        }
+    private typealias Key = SwitchPictureKey
+    /// Every picture one transition needs; never partial. Immutable, and so is a `CGImage`.
+    private struct Pictures: @unchecked Sendable {
+        let key: Key; let backdrop: CGImage; let windows: [WindowID: CGImage]; let taken: ContinuousClock.Instant
     }
-    /// Every picture one transition needs; never partial.
-    private struct Pictures { let key: Key; let backdrop: CGImage; let windows: [WindowID: CGImage]; let taken: ContinuousClock.Instant }
 
     private var panels: [NSPanel] = []
     private var sprites: [Sprite] = []
@@ -57,13 +56,9 @@ private final class Stage {
     /// that has since been dropped does nothing.
     private var token = 0
     private var busy = false
-    /// The last `preparedKept` sets a switch flew, most recently used first, and the current
-    /// prefetches. A key comes from the store's own world, so a closed window is never asked for;
-    /// `listing` still evicts what the window server no longer has, to free the memory.
-    // ponytail: up to ~7 sets of full-viewport backdrops (tens of MB each on a 5K display); share
-    // one backdrop per display if memory shows up.
-    private var prepared: [Pictures] = []
-    private var prefetched: [Pictures] = []
+    /// The sets switches flew and the current prefetches; `listing` evicts what the window server
+    /// no longer has.
+    private var cache = SwitchPictureCache<Pictures>()
     private var prefetchTask: Task<Void, Never>?
     /// A prefetch that arrived mid-flight; it starts once the overlay lands.
     private var pendingPrefetch: [[Transition]]?
@@ -83,11 +78,10 @@ private final class Stage {
     static let landingHold = Duration.milliseconds(30)
     /// An overlay whose `play` never came (its reconcile was superseded) must not outlive it.
     static let watchdog = Duration.seconds(1 * scale)
-    static let preparedKept = 3
-    /// How old a picture may be and still fly. The real window is uncovered at landing, so anything
-    /// that changed since the picture was taken pops in then; older pictures are taken again.
-    // ponytail: a fixed age, not change tracking — watch window damage with an SCStream if 3 s shows.
-    static let freshFor = Duration.seconds(3)
+    /// #97: how long a switch with no kept pictures waits for its capture before placing instantly.
+    /// Much longer and the switch reads as firing on key-up. Scaled by the test hook, so a slow
+    /// guest still gets its slide.
+    static let captureBudget = Duration.milliseconds(80) * scale
     /// One window-server listing serves a burst of switches and their prefetches.
     static let listingFreshFor = Duration.seconds(1)
 
@@ -98,12 +92,16 @@ private final class Stage {
         return b.startSpan()
     }
 
-    func prepare(_ transitions: [Transition], trace: SpanContext?) async -> Bool {
+    func prepare(_ transitions: [Transition], trace: SpanContext?, since: ContinuousClock.Instant) async -> Bool {
         // A real switch outranks every prefetch.
         prefetchTask?.cancel(); prefetchTask = nil
         let span = Self.span("animation.prepare", trace: trace)
         var outcome = "instant"
-        defer { span.setAttribute(key: "outcome", value: outcome); span.end() }
+        // #97: command to slide (or to instant placement): the delay the key press feels.
+        defer {
+            span.setAttribute(key: "latency.ms", value: Self.ms(.now - since))
+            span.setAttribute(key: "outcome", value: outcome); span.end()
+        }
         // A switch that arrives mid-flight drops that flight (its real windows are already at their
         // final frames) and animates from there, never queueing, so the model is never behind the
         // motion. Skipping instead meant the second of two quick presses never animated (#66).
@@ -124,27 +122,39 @@ private final class Stage {
         let mine = token
 
         let started = ContinuousClock.now
-        let hits = transitions.map { cached(Key($0)) }
+        // #97: a kept set flies whatever its age; the prefetch after landing takes it again.
+        let hits = transitions.map { cache.take(Key($0)) }
         let missing = zip(transitions, hits).filter { $0.1 == nil }.map(\.0)
-        guard let captured = await capture(missing), mine == token else {
-            if mine == token { busy = false }
-            outcome = "capture-failed"
-            Self.log.notice("switch instant: capture failed or superseded (\(moves) moves)")
+        let hit = missing.isEmpty ? "hit" : missing.count == transitions.count ? "miss" : "partial"
+        span.setAttribute(key: "cache", value: hit)
+        var result: [Pictures]?? = .some([])
+        if !missing.isEmpty {
+            // Its own task, so a capture that overruns the budget still lands in the cache.
+            let job = Task { [weak self] () -> [Pictures]? in
+                guard let self, let got = await self.capture(missing) else { return nil }
+                for p in got { self.cache.add(p.key, p, taken: p.taken) }
+                return got
+            }
+            result = await job.value(within: Self.captureBudget)
+        }
+        let capture = ContinuousClock.now - started
+        span.setAttribute(key: "capture.ms", value: Self.ms(capture))
+        guard mine == token else { outcome = "superseded"; return false }
+        guard let captured = result ?? nil else {
+            busy = false
+            let late = result == nil
+            outcome = late ? "over-budget" : "capture-failed"
+            Self.log.notice("switch instant: \(late ? "capture over budget" : "capture failed", privacy: .public) (\(moves) moves); latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
             return false
         }
         var fresh = captured.makeIterator()
         let pictures = hits.map { $0 ?? fresh.next()! }
-        remember(pictures)
-        let cache = missing.isEmpty ? "hit" : missing.count == transitions.count ? "miss" : "partial"
-        let capture = ContinuousClock.now - started
-        span.setAttribute(key: "cache", value: cache)
-        span.setAttribute(key: "capture.ms", value: Double(capture.components.attoseconds) / 1e15 + Double(capture.components.seconds) * 1000)
-        Self.log.notice("switch animating \(moves) moves on \(transitions.count) display(s); cache \(cache, privacy: .public); capture \(String(describing: ContinuousClock.now - started), privacy: .public)")
         show(transitions, pictures)
         // One frame for the window server to composite the overlay before anything moves under it.
         try? await Task.sleep(for: .milliseconds(16))
         guard mine == token else { outcome = "superseded"; return false }
         outcome = "animating"
+        Self.log.notice("switch animating \(moves) moves on \(transitions.count) display(s); cache \(hit, privacy: .public); capture \(Self.ms(capture), format: .fixed(precision: 1), privacy: .public) ms; latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
         Task { [weak self] in
             try? await Task.sleep(for: Self.watchdog)
             guard let self, self.token == mine else { return }
@@ -191,39 +201,28 @@ private final class Stage {
         sprites = []
     }
 
+    private static func ms(_ d: Duration) -> Double {
+        Double(d.components.seconds) * 1000 + Double(d.components.attoseconds) / 1e15
+    }
+
     // MARK: - cache
 
-    private func cached(_ key: Key) -> Pictures? {
-        (prepared + prefetched).first { $0.key == key && ContinuousClock.now - $0.taken < Self.freshFor }
-    }
-
-    private func remember(_ used: [Pictures]) {
-        for p in used.reversed() {
-            prepared.removeAll { $0.key == p.key }
-            prepared.insert(p, at: 0)
-        }
-        prepared = Array(prepared.prefix(Self.preparedKept))
-    }
-
-    /// Takes whatever the predicted switches still lack, one switch at a time at low priority, and
+    /// Takes whatever the predicted switches lack or hold only stale (#97: the revalidate half),
+    /// one switch at a time at low priority, and
     /// stops the moment a real switch starts (`prepare` cancels it; `busy` is checked between).
     private func startPrefetch() {
         guard let predicted = pendingPrefetch else { return }
         pendingPrefetch = nil
         prefetchTask?.cancel()
         guard ScreenRecordingAccess.isGranted, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-        let wanted = predicted.joined().map(Key.init)
-        prefetched.removeAll { !wanted.contains($0.key) }
+        cache.keepPrefetches(predicted.joined().map(Key.init))
         prefetchTask = Task(priority: .utility) { [weak self] in
             guard await CaptureGate.shared.admitsPrefetch else { return }   // #92: never the first capture
             for ts in predicted {
                 guard let self, !Task.isCancelled, !self.busy else { return }
-                let missing = ts.filter { self.cached(Key($0)) == nil }
+                let missing = ts.filter { self.cache.needsRefresh(Key($0), now: .now) }
                 guard !missing.isEmpty, let pictures = await self.capture(missing), !Task.isCancelled else { continue }
-                for p in pictures {
-                    self.prefetched.removeAll { $0.key == p.key }
-                    self.prefetched.append(p)
-                }
+                for p in pictures { self.cache.prefetch(p.key, p, taken: p.taken) }
             }
         }
     }
@@ -237,12 +236,10 @@ private final class Stage {
         }) else { return nil }
         content = (listing, .now)
         let live = Set(listing.windows.map(\.windowID))
-        func alive(_ p: Pictures) -> Bool {
-            let ids = WindowIdentities.captureIDs(for: p.key.ids)
-            return p.key.ids.allSatisfy { ids[$0].map(live.contains) == true }
+        cache.removeAll { key in
+            let ids = WindowIdentities.captureIDs(for: key.ids)
+            return !key.ids.allSatisfy { ids[$0].map(live.contains) == true }
         }
-        prepared.removeAll { !alive($0) }
-        prefetched.removeAll { !alive($0) }
         return listing
     }
 

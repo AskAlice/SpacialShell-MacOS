@@ -102,8 +102,9 @@ public protocol SwitchAnimator: Sendable {
     /// instantly" — no Screen Recording grant, reduce-motion, or a capture that failed. A switch
     /// arriving while the last is still in flight drops that one and starts over (never queues).
     /// `trace` is the reconcile pass this switch belongs to (#83): the animator's own spans are its
-    /// children, so a switch reads as one trace, command to landing.
-    func prepare(_ transitions: [Transition], trace: SpanContext?) async -> Bool
+    /// children, so a switch reads as one trace, command to landing. `since` is when the command
+    /// (or, with none, the reconcile pass) began: #97 measures the latency to the slide from it.
+    func prepare(_ transitions: [Transition], trace: SpanContext?, since: ContinuousClock.Instant) async -> Bool
     /// Start the motion to each `to` and return; the overlay removes itself when it lands.
     func play(trace: SpanContext?) async
     /// #77: the switches the keys could make next, as the planner would draw them from here (see

@@ -109,7 +109,7 @@ extension TracerProviderSdk: @retroactive @unchecked Sendable {}
         var prepared: [SpanId] = []
         var duringPrepare: (@Sendable () async -> Void)?
         func setDuringPrepare(_ f: @escaping @Sendable () async -> Void) { duringPrepare = f }
-        func prepare(_ t: [Transition], trace: SpanContext?) async -> Bool {
+        func prepare(_ t: [Transition], trace: SpanContext?, since: ContinuousClock.Instant) async -> Bool {
             if let trace { prepared.append(trace.spanId) }
             if let f = duringPrepare { duringPrepare = nil; await f() }
             return true

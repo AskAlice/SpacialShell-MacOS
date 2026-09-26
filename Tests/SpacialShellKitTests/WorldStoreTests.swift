@@ -517,8 +517,9 @@ import OpenTelemetryApi
         var duringPrepare: (@Sendable () async -> Void)?
         init(be: FakeBackend, accept: Bool = true) { self.be = be; self.accept = accept }
         func setDuringPrepare(_ f: @escaping @Sendable () async -> Void) { duringPrepare = f }
-        func prepare(_ t: [Transition], trace: SpanContext?) async -> Bool {
-            prepared.append(t); writesAtPrepare.append(await be.calls.count)
+        var since: [ContinuousClock.Instant] = []
+        func prepare(_ t: [Transition], trace: SpanContext?, since: ContinuousClock.Instant) async -> Bool {
+            prepared.append(t); writesAtPrepare.append(await be.calls.count); self.since.append(since)
             if let f = duringPrepare { duringPrepare = nil; await f() }
             return accept
         }
@@ -571,6 +572,15 @@ import OpenTelemetryApi
         let (quiet, _, idle) = await makeAnimated(snap([win(a), win(b)], focused: a), config: off)
         await quiet.run(.focusWindow(.right))
         #expect(await idle.prefetched.isEmpty)
+    }
+
+    /// #97: the overlay measures the latency to the slide from the command, not from its own call.
+    @Test func prepareIsToldWhenTheCommandBegan() async {
+        let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a))
+        let before = ContinuousClock.now
+        await store.run(.focusWindow(.right))
+        let since = await anim.since.last
+        #expect(since.map { $0 >= before && $0 <= .now } == true)
     }
 
     func makeAnimated(_ s: Snapshot, config: Config? = nil, accept: Bool = true) async -> (WorldStore, FakeBackend, FakeAnimator) {
