@@ -10,7 +10,7 @@ public struct AppRule: Codable, Equatable, Sendable {
     public var bundleId: String
     public var titleRegex: String?
     public init(bundleId: String, titleRegex: String? = nil) { self.bundleId = bundleId; self.titleRegex = titleRegex }
-    enum CodingKeys: String, CodingKey { case bundleId = "bundle-id", titleRegex = "title-regex" }
+    enum CodingKeys: String, CodingKey, CaseIterable { case bundleId = "bundle-id", titleRegex = "title-regex" }
     func matches(bundleID: String?, title: String) -> Bool {
         guard bundleID == bundleId else { return false }
         guard let re = titleRegex else { return true }
@@ -23,6 +23,7 @@ public struct WorkspaceSeed: Codable, Equatable, Sendable {
     public var symbol: String
     public var layout: LayoutID
     public init(name: String, symbol: String = "square.grid.2x2", layout: LayoutID = .maximize) { self.name = name; self.symbol = symbol; self.layout = layout }
+    enum CodingKeys: String, CodingKey, CaseIterable { case name, symbol, layout }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
@@ -71,6 +72,7 @@ public struct TelemetryConfig: Codable, Equatable, Sendable {
     public var user = ""
     public var token = ""
     public init() {}
+    enum CodingKeys: String, CodingKey, CaseIterable { case enabled, endpoint, user, token }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
@@ -195,7 +197,7 @@ public struct Config: Codable, Equatable, Sendable {
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, tile, keybindings,
@@ -257,6 +259,37 @@ public struct Config: Codable, Equatable, Sendable {
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }
     public static func load(from url: URL) throws -> Config { try parse(toml: String(contentsOf: url, encoding: .utf8)) }
+
+    /// #133: keys the file sets that nothing reads, a typo or a key since removed (#60's
+    /// `focus-ring`). Decoding skips them, so the file still loads and reload stays armed; this
+    /// names them so the app can warn. A table's keys are dotted (`telemetry.tokn`), each named
+    /// once however many `[[float]]` blocks repeat it, sorted: the parser keeps neither source
+    /// order nor positions, so there is no line number to give either. `[keybindings]`,
+    /// `[keybinding-overrides]` and `[app-categories]` are free-form maps: any key there is data.
+    public static func unknownKeys(toml: String) -> [String] {
+        guard let root = try? TOMLTable(source: toml) else { return [] }
+        func names<K: CodingKey & CaseIterable>(_: K.Type) -> Set<String> { Set(K.allCases.map(\.stringValue)) }
+        let rule = names(AppRule.CodingKeys.self)
+        let tables: [String: Set<String>] = [
+            "workspace": names(WorkspaceSeed.CodingKeys.self), "layout": names(LayoutDef.CodingKeys.self),
+            "ephemeral": rule, "float": rule, "ignore": rule, "tile": rule,
+            "telemetry": names(TelemetryConfig.CodingKeys.self),
+        ]
+        let top = names(CodingKeys.self)
+        var out: [String] = []
+        for key in root.keys {
+            guard top.contains(key) else { out.append(key); continue }
+            guard let known = tables[key] else { continue }
+            let blocks: [TOMLTable]
+            if let t = try? root.table(forKey: key) { blocks = [t] }
+            else if let a = try? root.array(forKey: key) { blocks = (0..<a.count).compactMap { try? a.table(atIndex: $0) } }
+            else { blocks = [] }
+            for sub in blocks.flatMap(\.keys) where !known.contains(sub) && !out.contains("\(key).\(sub)") {
+                out.append("\(key).\(sub)")
+            }
+        }
+        return out.sorted()
+    }
 
     /// ponytail: hand-written TOML (no encoder in deps). Round-trips values; drops comments.
     public func render() -> String {

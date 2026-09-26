@@ -2,7 +2,9 @@
 
 SpacialShell reads `~/.config/spacial-shell/config.toml`. The file is watched for changes and
 reloaded live; an invalid config is rejected (the previous one keeps running) and the rejection is
-logged. Every key is optional — an empty or missing file gives you `Config()`'s defaults, shown
+logged and listed under the rail cog's problems badge. An unknown key (a typo, or a key since
+removed) does not reject the file: it is skipped, the rest applies, and a warning naming it is
+logged and listed the same way. Every key is optional — an empty or missing file gives you `Config()`'s defaults, shown
 below.
 
 > **Sandboxed builds read the same path inside the app's container**, i.e.
@@ -39,6 +41,8 @@ name = "Code"                     # (material-shell "categories")
 symbol = "terminal"               # SF Symbol name
 layout = "half"
 
+# [[ephemeral]] (like [[tile]]) REPLACES the default list, it does not add to it: once your file
+# has any [[ephemeral]] block, Calculator is ephemeral only if you list it too, as here.
 [[ephemeral]]
 bundle-id = "com.apple.calculator"
 

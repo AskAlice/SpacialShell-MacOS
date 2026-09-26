@@ -25,6 +25,8 @@ public struct Problem: Codable, Equatable, Sendable, Identifiable {
 extension Problem {
     public enum Key {
         public static let config = "config"
+        /// #133: keys the file sets that nothing reads. A warning, apart from `config`: the file loaded.
+        public static let configUnknownKeys = "config.unknown-keys"
         public static let accessibility = "grant.accessibility"
         /// Both the missing grant and a declined capture (#92): the same fix, so one entry.
         public static let screenRecording = "grant.screen-recording"
@@ -38,6 +40,10 @@ extension Problem {
     public static func configInvalid(_ detail: String) -> Problem {
         Problem(key: Key.config, severity: .error,
                 message: "config.toml has an error, so the previous config is still in use: \(detail)")
+    }
+    public static func configUnknownKeys(_ keys: [String]) -> Problem {
+        Problem(key: Key.configUnknownKeys, severity: .warning,
+                message: "config.toml has keys SpacialShell doesn't know, so they were skipped: \(keys.joined(separator: ", ")). Check the spelling; the rest of the file is in use.")
     }
     public static let accessibilityMissing = Problem(
         key: Key.accessibility, severity: .error,

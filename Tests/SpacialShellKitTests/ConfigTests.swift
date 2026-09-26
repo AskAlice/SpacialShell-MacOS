@@ -65,15 +65,67 @@ import Foundation
         #expect(c.launcherURL == "raycast://extensions/foo" && !c.showPanels)
     }
     /// #60: the focus ring was removed, but config files written before then still carry its keys.
-    /// Unknown keys are ignored, so they must load rather than fail.
+    /// They load, and warn like any other unknown key (#133): they do nothing now.
     @Test func removedFocusRingKeysStillLoad() throws {
-        let c = try Config.parse(toml: """
+        let toml = """
         focus-ring = true
         highlight-ms = 300
         highlight-color = "#FF0000"
         gap = 4
-        """)
-        #expect(c.gap == 4)
+        """
+        #expect(try Config.parse(toml: toml).gap == 4)
+        #expect(Config.unknownKeys(toml: toml) == ["focus-ring", "highlight-color", "highlight-ms"])
+    }
+
+    // MARK: #133 unknown keys warn
+
+    @Test func unknownTopLevelKeyIsNamed() throws {
+        let toml = "gapp = 4\nrail-side = \"right\"\n"
+        let c = try Config.parse(toml: toml)
+        #expect(c.gap == 8 && c.railSide == .right)
+        #expect(Config.unknownKeys(toml: toml) == ["gapp"])
+    }
+
+    /// Dotted, once per key however many blocks repeat it; the free-form maps are data, not keys.
+    @Test func unknownKeyInsideATableIsNamed() throws {
+        let toml = """
+        [telemetry]
+        enabled = true
+        tokn = "x"
+        [[float]]
+        bundle-id = "com.a"
+        title-regx = "PiP"
+        [[float]]
+        bundle-id = "com.b"
+        title-regx = "PiP"
+        [keybindings]
+        "fn-shift-g" = "toggle-float"
+        [app-categories]
+        "com.a" = "web"
+        """
+        let c = try Config.parse(toml: toml)
+        #expect(c.telemetry.enabled && c.float.map(\.bundleId) == ["com.a", "com.b"])
+        #expect(Config.unknownKeys(toml: toml) == ["float.title-regx", "telemetry.tokn"])
+    }
+
+    /// A typo must not disarm the file: every other key applies, and only the typo is reported.
+    /// A bad *value* still rejects (`unknownRailSideRejects`).
+    @Test func typoDoesNotDisarmTheRest() throws {
+        let toml = """
+        gap = 4
+        rail-sde = "right"
+        tab-style = "icon"
+        [[workspace]]
+        name = "Code"
+        symbl = "terminal"
+        """
+        let c = try Config.parse(toml: toml)
+        #expect(c.gap == 4 && c.tabStyle == .icon && c.railSide == .left)
+        #expect(c.workspaces == [WorkspaceSeed(name: "Code")])
+        let unknown = Config.unknownKeys(toml: toml)
+        #expect(unknown == ["rail-sde", "workspace.symbl"])
+        #expect(Problem.configUnknownKeys(unknown).severity == .warning)
+        #expect(Config.unknownKeys(toml: try Config.parse(toml: toml).render()).isEmpty)
     }
     /// #116: `tab-style`, default `full`; rendered back out; a typo rejects like `rail-side`.
     @Test func tabStyleParsesAndRoundTrips() throws {

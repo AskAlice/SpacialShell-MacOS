@@ -57,7 +57,7 @@ public struct LayoutDef: Codable, Hashable, Sendable, Identifiable {
     /// The TOML shape of design §3.3, and the same keys in `settings.json`:
     /// `{ id, name, symbol?, zones = [{x, y, w, h}, …] }`. A built-in is written as `builtin = "…"`
     /// only so the type round-trips; neither store ever holds one (a user layout cannot shadow one).
-    enum CodingKeys: String, CodingKey { case id, name, symbol, zones, builtin }
+    enum CodingKeys: String, CodingKey, CaseIterable { case id, name, symbol, zones, builtin }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         id = try c.decode(LayoutID.self, forKey: .id)

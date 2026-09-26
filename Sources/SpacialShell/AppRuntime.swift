@@ -273,16 +273,28 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     // MARK: - Config
 
     /// A malformed config keeps the previous one: an editor mid-save must not disarm the window
-    /// manager. A *missing* config is not an error — it means "all defaults".
+    /// manager. A *missing* config is not an error — it means "all defaults". An unknown key is
+    /// neither: it is skipped with a warning and the rest of the file applies (#133).
     private func loadConfig() {
         do {
-            fileConfig = try Config.load(from: Paths.configFile)
+            let text = try String(contentsOf: Paths.configFile, encoding: .utf8)
+            fileConfig = try Config.parse(toml: text)
             log.info("config loaded from \(Paths.configFile.path, privacy: .public)")
             ProblemCenter.shared.clear(Problem.Key.config)
+            // #133: a typo is skipped, not fatal; say which keys, or the user never learns why
+            // their setting did nothing.
+            let unknown = Config.unknownKeys(toml: text)
+            if unknown.isEmpty {
+                ProblemCenter.shared.clear(Problem.Key.configUnknownKeys)
+            } else {
+                log.warning("config has unknown keys, skipped: \(unknown.joined(separator: ", "), privacy: .public)")
+                ProblemCenter.shared.report(.configUnknownKeys(unknown))
+            }
         } catch CocoaError.fileReadNoSuchFile {
             fileConfig = Config()
             log.info("no config file; using defaults")
             ProblemCenter.shared.clear(Problem.Key.config)
+            ProblemCenter.shared.clear(Problem.Key.configUnknownKeys)
         } catch {
             log.error("config invalid, keeping previous: \(String(describing: error), privacy: .public)")
             ProblemCenter.shared.report(.configInvalid(String(describing: error)))
