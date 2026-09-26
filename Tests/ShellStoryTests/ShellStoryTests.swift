@@ -67,6 +67,14 @@ import SpacialShellKit
     }
 
     /// #87: a sheet that fits stays the designed single row; one that does not wraps until it does.
+    /// Every cheat-sheet row names an SF Symbol this macOS actually has. A missing one is a SwiftUI
+    /// fault on every render, and the flood got the whole process's logging quarantined (#94).
+    @Test func everyCheatSheetSymbolExists() {
+        let missing = CheatSheet.rows(for: Config()).map(\.symbol)
+            .filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil }
+        #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
+    }
+
     @Test func cheatSheetWrapsToFitItsArea() {
         let groups = CheatSheetController.grouped(CheatSheet.rows(for: Config()))
         #expect(CheatSheetView.fitting(groups, in: 4000).view.rows == 1)
