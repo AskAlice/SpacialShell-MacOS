@@ -22,6 +22,40 @@ import SpacialShellProtocol
         #expect(!bad.ok && bad.error == "unknown cmd")
     }
 
+    /// #157: `stop()` closed each open connection and then let its source's cancel handler close
+    /// the same number again — by then often a new descriptor someone else owns (a client socket,
+    /// another server's connection in a parallel test), so round trips died with EOF or EBADF.
+    @Test func stopClosesEachConnectionOnce() async throws {
+        let path = testSocketPath()
+        let server = IPCServer(path: path) { .ok(id: $0.id) }
+        try server.start()
+        let client = socket(AF_UNIX, SOCK_STREAM, 0)
+        defer { close(client) }
+        var tv = socketTestReceiveTimeout
+        _ = setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        var addr = unixAddress(path)
+        let rc = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(client, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        try #require(rc == 0)
+        // One answered request: the server has registered this connection, and stop() must close it.
+        let line = try IPCCodec.line(IPCRequest(id: 1, cmd: "x"))
+        _ = line.withUnsafeBytes { write(client, $0.baseAddress, $0.count) }
+        let n = try await offPool { () -> Int in
+            var buf = [UInt8](repeating: 0, count: 4096)
+            return read(client, &buf, buf.count)
+        }
+        try #require(n > 0)
+
+        server.stop()
+        // Descriptors opened now reuse the numbers stop() freed; a second close must not reach them.
+        let probes = (0..<8).map { _ in socket(AF_UNIX, SOCK_STREAM, 0) }
+        try await Task.sleep(for: .milliseconds(100))
+        let open = probes.map { fcntl($0, F_GETFD) != -1 }
+        for (fd, isOpen) in zip(probes, open) where isOpen { close(fd) }
+        #expect(open.allSatisfy { $0 })
+    }
+
     // MARK: - #131: one shell per socket
 
     /// Probe before unlink: a second server on a live socket refuses, and the first keeps it.

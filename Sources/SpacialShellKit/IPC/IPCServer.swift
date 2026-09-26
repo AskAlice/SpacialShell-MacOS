@@ -109,7 +109,8 @@ public final class IPCServer: @unchecked Sendable {
     public func stop() {
         queue.sync {
             acceptSource?.cancel(); acceptSource = nil
-            for (fd, r) in readers { r.source.cancel(); close(fd) }
+            // The cancel handler closes each fd (#157): closing here too hit whatever reused the number.
+            for (_, r) in readers { r.source.cancel() }
             readers = [:]
             subscribers = []
             if listenFD >= 0 { close(listenFD); listenFD = -1 }
