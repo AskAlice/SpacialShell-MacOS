@@ -45,6 +45,7 @@ public enum CheatSheet {
         add(.navigate, "focus-workspace-down", "Workspace down", "arrow.down", "S")
         add(.navigate, "focus-window-left", "Window left", "arrow.left", "A")
         add(.navigate, "focus-window-right", "Window right", "arrow.right", "D")
+        add(.navigate, "focus-previous-window", "Previous window", "clock.arrow.circlepath", "`")   // #137
         /// One row for a family of ten digit commands ("Fn+1…0"), prefixed with its first chord's modifiers.
         func digits(_ g: Group, _ family: String, _ title: String, _ symbol: String, _ letter: String) {
             guard let ch = (1...10).flatMap({ byName["\(family)\($0)"] ?? [] }).first else { return }

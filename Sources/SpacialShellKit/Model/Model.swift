@@ -41,6 +41,12 @@ public struct Workspace: Codable, Equatable, Sendable {
     /// #114: the first window of split's sliding view. A hint, not a rule: `slideViews()` keeps it
     /// in step with the anchor, and the engine clamps it so the focused window is always in view.
     public var splitStart: WindowRef?
+    /// #137 (G2, material-shell W15): the windows last focused in this row, most recent first,
+    /// at most `World.focusHistoryLimit`. Kept by `World.noteFocus()`, cleared of windows that
+    /// left the row by `normalize()`; never a placeholder (#128). What focus falls back to when the
+    /// focused window closes, and what `focus-previous-window` toggles through. Not persisted:
+    /// left out of the keys below, like `portions`, and a `WindowRef` would not survive anyway.
+    public var focusHistory: [WindowRef] = []
     enum CodingKeys: String, CodingKey { case id, name, symbol, layout, windows, floating, anchor, pinned, reserved, category }
     public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: LayoutID,
                 windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil,

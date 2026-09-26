@@ -335,8 +335,8 @@ import Foundation
         if case .parked = desired[b] {} else { Issue.record("b should be parked, got \(String(describing: desired[b]))") }
     }
 
-    /// The focused window leaves: focus falls to its neighbour by the close rule — the one before
-    /// it, else the one after — and its row stays active.
+    /// The focused window leaves: focus falls by the close rule — the row's most recent window
+    /// (#137), else the one before it, else the one after — and its row stays active.
     @Test func droppingTheFocusedWindowFocusesItsNeighbourLikeAClose() {
         var w = base()                                    // D1 [a*, b, c]
         let plus = w.screens["D1"]!.workspaces.last!.id
@@ -345,9 +345,9 @@ import Foundation
         #expect(out.screens["D1"]!.workspaces[1].windows == [a] && out.screens["D1"]!.workspaces[1].anchor == a)
         #expect(effects == [.focus(b), .relayout])
         (w, _) = run(w, .focusWindowRef(c))
-        (out, effects) = drop(w, c, to: plus)             // last → the one before
-        #expect(out.focus == Focus(screen: "D1", window: b))
-        #expect(effects == [.focus(b), .relayout])
+        (out, effects) = drop(w, c, to: plus)             // #137: back to `a`, focused last, not neighbour `b`
+        #expect(out.focus == Focus(screen: "D1", window: a))
+        #expect(effects == [.focus(a), .relayout])
         var closed = w; closed.remove(c)                  // the same rule as a close
         #expect(closed.focus == out.focus)
     }

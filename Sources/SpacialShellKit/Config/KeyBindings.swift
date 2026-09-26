@@ -64,6 +64,8 @@ public enum KeyBindings {
         "split-columns-more": .adjustSplitColumns(1), "split-columns-fewer": .adjustSplitColumns(-1),
         // #129, unbound by default: the tab menu is the everyday way in
         "toggle-pin": .togglePin,
+        // #137
+        "focus-previous-window": .focusPreviousWindow,
     ].merging((1...10).map { ("move-window-to-workspace-\($0)", Command.moveWindowToWorkspaceIndex($0)) }) { a, _ in a }
         .merging((1...9).map { ("focus-tab-\($0)", Command.focusTab($0)) }) { a, _ in a }
 
@@ -105,6 +107,7 @@ public enum KeyBindings {
         ("shift-w", "move-window-up"), ("shift-s", "move-window-down"), ("space", "cycle-layout"), ("esc", "toggle-shell-ui"),
         ("tab", "toggle-overview"), ("shift-space", "cycle-layout-reverse"),
         ("z", "toggle-spatial-view"),   // #132: Z for zoom out
+        ("backtick", "focus-previous-window"),   // #137: Fn+` / ⌃⌥`
 
         ("leftSquareBracket", "focus-screen-prev"), ("rightSquareBracket", "focus-screen-next"),
         ("shift-leftSquareBracket", "move-window-to-screen-prev"), ("shift-rightSquareBracket", "move-window-to-screen-next"),

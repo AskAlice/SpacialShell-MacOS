@@ -73,7 +73,7 @@ extension World {
     public mutating func leavePlaceholder(for w: WindowRef, bundleID: String, title: String) -> WindowRef? {
         guard pinnedTabs.contains(w), !w.isPlaceholder, let loc = location(of: w) else { return nil }
         var ws = screens[loc.screen]!.workspaces[loc.index]
-        let next = neighbour(of: w, in: ws)
+        let next = successor(of: w, in: ws)
         let p = mintPlaceholderRef(bundleID: bundleID)
         ws.windows[ws.windows.firstIndex(of: w)!] = p
         if ws.floating.remove(w) != nil { ws.floating.insert(p) }

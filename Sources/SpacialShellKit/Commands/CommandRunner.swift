@@ -24,6 +24,7 @@ public enum CommandRunner {
                            categoryOrder: categoryOrder, why: &why)
         var slid = w
         slid.slideViews()   // #114: not every path normalizes, and every focus move can slide split
+        if w.focus.window != input.focus.window { slid.noteFocus() }   // #137: every focus move is history
         return CommandOutcome(world: slid, effects: e,
                               report: why ?? (e.isEmpty && w == input ? .noop("nothing to do") : .done))
     }
@@ -58,7 +59,7 @@ public enum CommandRunner {
             let source = w.screens[from.screen]!.workspaces[from.index]
             let group = [ref] + source.windows.filter { $0 != ref && w.root(of: $0) == ref }
             var rest = source; rest.windows.removeAll { group.dropFirst().contains($0) }
-            let neighbour = w.neighbour(of: ref, in: rest)
+            let neighbour = w.successor(of: ref, in: rest)   // #137: as on a close
             w.screens[from.screen]!.workspaces[from.index].windows.removeAll { group.contains($0) }
             w.screens[from.screen]!.workspaces[from.index].floating.subtract(group)
             let at = position ?? w.screens[dest.screen]!.workspaces[dest.index].windows.count
@@ -516,6 +517,18 @@ public enum CommandRunner {
             guard layouts[id] != nil, screen.active.layout != id else { return (w, []) }
             w.screens[sid]!.workspaces[screen.activeIndex].layout = id
             effects.append(.relayout)
+
+        case .focusPreviousWindow:
+            // #137: the row's history is most recent first, and the focused window is its head, so
+            // the previous one is the first entry that is not it. Focusing it makes it the head,
+            // which is what makes a second press come back.
+            // History holds tabs (#134: a sheet is recorded as its owner), so "this one" is the
+            // focused window's tab — from a sheet, the previous window is not its own owner.
+            let ws = screen.active, current = w.focus.window.map { w.root(of: $0) }
+            guard let prev = ws.focusHistory.first(where: { $0 != current && ws.windows.contains($0) && !$0.isPlaceholder })
+            else { return noop("no previous window in this workspace") }
+            if w.hidden.contains(prev) { w.hidden.remove(prev); effects.append(.unhide(prev)) }
+            setFocus(prev); effects.append(.relayout)
 
         case .focusTab(let n):
             let row = w.tabs(in: screen.active)

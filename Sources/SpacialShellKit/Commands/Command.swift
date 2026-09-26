@@ -44,6 +44,9 @@ public enum Command: Sendable, Hashable {
     /// #143: Fn+⌥+N — the Nth tab of the focused display's active row, clamped to the first and
     /// last; a minimized one is brought back, as a tab click does (#48, #71).
     case focusTab(Int)
+    /// #137 (G2): Fn+` — the window focused before this one in the focused row's history; pressed
+    /// again, back. A minimized one is brought back, as a tab click does (#48). Never a placeholder.
+    case focusPreviousWindow
 
     // Shell-UI verbs (M2 design §Decisions: distinct base names, payloads Hashable). The keyboard
     // verbs above are relative to the focused screen; a panel click or IPC call names its target

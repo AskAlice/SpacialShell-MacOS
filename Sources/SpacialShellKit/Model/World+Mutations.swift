@@ -194,8 +194,32 @@ extension World {
         return ws.id
     }
 
-    /// Who takes over when `w` leaves `ws` (closed, or dropped elsewhere without following, #95):
-    /// the visible window before it, else the one after, else nobody.
+    /// #137: how many windows a row's `focusHistory` remembers — material-shell's five.
+    public static let focusHistoryLimit = 5
+
+    /// #137: the focused window goes to the front of its row's history. Idempotent; a placeholder
+    /// or an ephemeral visitor (no row) is never recorded. Run by `normalize()` and after every
+    /// command, so every way focus moves — a key, a click, macOS's own report — is seen.
+    /// #134: a focused sheet is recorded as its owner — history is of tabs, which a sheet is not.
+    public mutating func noteFocus() {
+        guard let focused = focus.window, !focused.isPlaceholder, let loc = location(of: focused) else { return }
+        let f = root(of: focused)
+        var h = screens[loc.screen]!.workspaces[loc.index].focusHistory
+        guard h.first != f else { return }
+        h.removeAll { $0 == f }
+        h.insert(f, at: 0)
+        screens[loc.screen]!.workspaces[loc.index].focusHistory = Array(h.prefix(Self.focusHistoryLimit))
+    }
+
+    /// Who takes over when `w` leaves `ws` (closed, or dropped elsewhere without following, #95).
+    /// #137: the most recent window of the row's history that is still there and visible; with no
+    /// history, `neighbour`.
+    func successor(of w: WindowRef, in ws: Workspace) -> WindowRef? {
+        let vis = visible(in: ws)
+        return ws.focusHistory.first { $0 != w && vis.contains($0) } ?? neighbour(of: w, in: ws)
+    }
+
+    /// The visible window before `w`, else the one after, else nobody — `successor`'s fallback.
     func neighbour(of w: WindowRef, in ws: Workspace) -> WindowRef? {
         let vis = visible(in: ws)
         guard let i = vis.firstIndex(of: w) else { return nil }
@@ -210,8 +234,9 @@ extension World {
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]
-            // #134: a closed sheet hands focus back to the window it was on.
-            if focus.window == w { focus.window = owner.flatMap { hidden.contains($0) ? nil : $0 } ?? neighbour(of: w, in: ws) }
+            // #134: a closed sheet hands focus back to the window it was on; anything else to the
+            // row's most recent window (#137), else its neighbour.
+            if focus.window == w { focus.window = owner.flatMap { hidden.contains($0) ? nil : $0 } ?? successor(of: w, in: ws) }
             ws.windows.removeAll { $0 == w }; ws.floating.remove(w)
             if ws.anchor == w { ws.anchor = focus.window.flatMap { ws.windows.contains($0) ? $0 : nil } ?? ws.windows.first }
             screens[loc.screen]!.workspaces[loc.index] = ws
@@ -326,6 +351,8 @@ extension World {
             if let p = s.previous, !kept.contains(where: { $0.id == p }) { s.previous = nil }   // #106
             for i in kept.indices {
                 if let a = kept[i].anchor, !kept[i].windows.contains(a) || a.isPlaceholder { s.workspaces[i].anchor = nil }
+                // #137: history holds only windows still in this row.
+                s.workspaces[i].focusHistory.removeAll { !kept[i].windows.contains($0) || $0.isPlaceholder }
                 if s.workspaces[i].anchor == nil { s.workspaces[i].anchor = tiled(in: s.workspaces[i]).first }
             }
             screens[id] = s
@@ -337,6 +364,7 @@ extension World {
         if focus.window == nil { focus.window = fs.active.anchor.flatMap { vis.contains($0) ? $0 : nil } ?? vis.first }
         // #134: a focused sheet anchors its owner, so the layout's page stays on the owner's tile.
         if let w = focus.window, vis.contains(w) { screens[focus.screen]!.workspaces[fs.activeIndex].anchor = root(of: w) }
+        noteFocus()
     }
 
     /// #114: every row's split view slid just far enough to hold its anchor — past the edge by
