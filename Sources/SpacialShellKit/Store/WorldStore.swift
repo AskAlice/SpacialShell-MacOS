@@ -210,15 +210,17 @@ public actor WorldStore {
         return b.startSpan()
     }
 
-    public func run(_ command: Command) async {
-        guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
+    /// #109: hotkeys ignore the report; `spacialctl run` prints it and exits 1 on a failure.
+    @discardableResult
+    public func run(_ command: Command) async -> CommandReport {
+        guard !locked else { return .failed(.locked) }   // spec §7.7: no writes and no model changes while locked
         var command = command
         // #108, material-shell's M3: while a window is in the hand, Fn+W/S carries it to the row
         // above/below instead of leaving it behind.
         if let d = drag, case .focusWorkspace(let dir) = command, let loc = world.location(of: d.ref) {
             let rows = world.screens[loc.screen]!.workspaces
             let i = loc.index + (dir == .down ? 1 : -1)
-            guard rows.indices.contains(i) else { return }
+            guard rows.indices.contains(i) else { return .noop("no workspace that way") }
             command = .moveWindowRefToWorkspace(d.ref, rows[i].id)
         }
         let issued = now()
@@ -230,7 +232,13 @@ public actor WorldStore {
         span.setAttribute(key: "command", value: String(detail.prefix { $0 != "(" }))
         span.setAttribute(key: "command.detail", value: detail)
         let before = world.focus
-        let (next, effects) = CommandRunner.apply(command, to: world, layouts: layouts)
+        let outcome = CommandRunner.run(command, on: world, layouts: layouts)
+        // M2 ruling: a failed command changes nothing, so there is nothing to reconcile.
+        if case .failed(let e) = outcome.report {
+            Self.log.notice("command \(String(describing: command), privacy: .public) failed: \(e.description, privacy: .public)")
+            return outcome.report
+        }
+        let (next, effects) = (outcome.world, outcome.effects)
         // #98: a whole-app move is an explicit placement for that app (see `movedApps`).
         let movedPid: Int32? = switch command {
         case .moveAppToWorkspace: before.window?.pid
@@ -266,6 +274,7 @@ public actor WorldStore {
         case .rescueWindows, .recoverWindow: await rescueBeyondReach(reason: "command")   // #73: the tray's "off every display"
         default: break
         }
+        return outcome.report
     }
 
     public func apply(_ event: BackendEvent) async {

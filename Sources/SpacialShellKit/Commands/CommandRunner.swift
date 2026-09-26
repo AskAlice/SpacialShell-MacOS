@@ -4,10 +4,27 @@ public enum CommandRunner {
     /// `layouts` gives the layout ids meaning: what `cycleLayout` rings through and how many
     /// windows a layout shows (#9). Defaults to the five built-ins.
     public static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue = .builtins) -> (World, [Effect]) {
+        let o = run(command, on: input, layouts: layouts)
+        return (o.world, o.effects)
+    }
+
+    /// #109: `apply` plus why a command did nothing. A path that sets no reason is `.done` when it
+    /// changed the world or emitted an effect, else a generic no-op.
+    public static func run(_ command: Command, on input: World, layouts: LayoutCatalogue = .builtins) -> CommandOutcome {
+        var why: CommandReport?
+        let (w, e) = apply(command, to: input, layouts: layouts, why: &why)
+        return CommandOutcome(world: w, effects: e,
+                              report: why ?? (e.isEmpty && w == input ? .noop("nothing to do") : .done))
+    }
+
+    static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue, why: inout CommandReport?) -> (World, [Effect]) {
         var w = input
         var effects: [Effect] = []
+        /// #109: the silent `(w, [])` returns, with their reason.
+        func fail(_ e: CommandError) -> (World, [Effect]) { why = .failed(e); return (w, []) }
+        func noop(_ reason: String) -> (World, [Effect]) { why = .noop(reason); return (w, []) }
         let sid = w.focus.screen
-        guard let screen = w.screens[sid] else { return (w, []) }
+        guard let screen = w.screens[sid] else { return fail(.unknownScreen) }
 
         /// Move one window out of the workspace it is in and into `to` (at row position `at`, else
         /// the end), carrying its pin, and follow it. Workspace moves, display moves, a dragged
@@ -117,7 +134,7 @@ public enum CommandRunner {
             // same promise a tab click keeps (#48). Walking only the visible windows meant a tab
             // you could click was one the keyboard stepped straight over.
             let row = screen.active.windows
-            guard !row.isEmpty else { return (w, []) }
+            guard !row.isEmpty else { return noop("no windows in this workspace") }
             let i = w.focus.window.flatMap { row.firstIndex(of: $0) } ?? 0
             let j = dir == .right ? (i + 1) % row.count : (i - 1 + row.count) % row.count
             if w.hidden.contains(row[j]) { w.hidden.remove(row[j]); effects.append(.unhide(row[j])) }
@@ -125,7 +142,9 @@ public enum CommandRunner {
 
         case .focusWorkspace(let dir):
             let target = screen.activeIndex + (dir == .down ? 1 : -1)
-            guard (0..<screen.workspaces.count).contains(target) else { return (w, []) }
+            guard (0..<screen.workspaces.count).contains(target) else {
+                return noop(dir == .up ? "already on the top workspace" : "already on the bottom workspace")
+            }
             leaveFullscreen(on: sid)
             activateAndLand(target, on: sid)
             effects.append(.relayout)
@@ -135,27 +154,31 @@ public enum CommandRunner {
             // Decision (#24, #106): Fn+N on the workspace already active goes back to the previous
             // one, so one chord flips between two. Nothing remembered: a no-op, as before.
             if target == screen.activeIndex {
-                guard let p = screen.previous, let i = screen.workspaces.firstIndex(where: { $0.id == p }) else { return (w, []) }
+                guard let p = screen.previous, let i = screen.workspaces.firstIndex(where: { $0.id == p }) else {
+                    return noop("already on workspace \(n)")
+                }
                 target = i
             }
-            guard (0..<screen.workspaces.count).contains(target), target != screen.activeIndex else { return (w, []) }
+            guard (0..<screen.workspaces.count).contains(target) else { return fail(.unknownWorkspace(String(n))) }
+            guard target != screen.activeIndex else { return noop("already on workspace \(n)") }
             leaveFullscreen(on: sid)
             activateAndLand(target, on: sid)
             effects.append(.relayout)
 
         case .closeFocusedWindow:
-            if let f = w.focus.window { effects.append(.close(f)) }
+            guard let f = w.focus.window else { return fail(.noFocusedWindow) }
+            effects.append(.close(f))
 
         case .moveWindow(let dir):
-            guard let f = w.focus.window, var ws = Optional(screen.active), let i = ws.windows.firstIndex(of: f) else { return (w, []) }
+            guard let f = w.focus.window, var ws = Optional(screen.active), let i = ws.windows.firstIndex(of: f) else { return fail(.noFocusedWindow) }
             let j = dir == .right ? i + 1 : i - 1
             guard (0..<ws.windows.count).contains(j) else {
                 // Decision 2026-09-14 (#33): past the edge of its row the window spills onto the
                 // neighbouring display, landing at the near end of its active row. The outermost
                 // display has no neighbour that way, so there it stays a no-op.
-                guard let k = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
+                guard let k = w.screenOrder.firstIndex(of: sid) else { return fail(.unknownScreen) }
                 let n = dir == .right ? k + 1 : k - 1
-                guard w.screenOrder.indices.contains(n) else { return (w, []) }
+                guard w.screenOrder.indices.contains(n) else { return noop("already at the \(dir == .right ? "right" : "left") edge") }
                 let target = w.screenOrder[n]
                 guard move(f, to: (target, w.screens[target]!.activeIndex), at: dir == .right ? 0 : nil) else { return (w, []) }
                 effects.append(.focus(f)); effects.append(.relayout)
@@ -175,18 +198,20 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .moveWindowToWorkspace(let dir):
-            guard let f = w.focus.window, screen.active.windows.contains(f), let target = keyboardTarget(dir),
-                  move(f, to: (sid, target)) else { return (w, []) }
+            guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
+            guard let target = keyboardTarget(dir), move(f, to: (sid, target)) else { return noop("no workspace that way") }
             effects.append(.focus(f)); effects.append(.relayout)
 
         case .moveWindowToWorkspaceIndex(let n):
             // #105: past the last row is the trailing "+" row, which grows a new one (invariant 4).
-            guard n >= 1, let f = w.focus.window, screen.active.windows.contains(f),
-                  move(f, to: (sid, min(n, screen.workspaces.count) - 1)) else { return (w, []) }
+            guard n >= 1 else { return fail(.unknownWorkspace(String(n))) }
+            guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
+            guard move(f, to: (sid, min(n, screen.workspaces.count) - 1)) else { return noop("already on workspace \(n)") }
             effects.append(.focus(f)); effects.append(.relayout)
 
         case .moveAppToWorkspace(let dir):
-            guard let f = w.focus.window, screen.active.windows.contains(f), let target = keyboardTarget(dir) else { return (w, []) }
+            guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
+            guard let target = keyboardTarget(dir) else { return noop("no workspace that way") }
             let dest = w.screens[sid]!.workspaces[target].id
             guard moveApp(f.pid, to: dest), let loc = w.location(ofWorkspace: dest) else { return (w, []) }
             // Follow the focused window, as Fn+Shift+W/S does.
@@ -198,22 +223,25 @@ public enum CommandRunner {
             effects = [.focus(f), .relayout]
 
         case .moveAppRefToWorkspace(let ref, let ws):
-            guard w.location(of: ref) != nil, moveApp(ref.pid, to: ws) else { return (w, []) }
+            guard w.location(of: ref) != nil else { return fail(.unknownWindow(ref)) }
+            guard w.location(ofWorkspace: ws) != nil else { return fail(.unknownWorkspace(ws.uuidString)) }
+            guard moveApp(ref.pid, to: ws) else { return noop("the app is already there") }
             effects.append(.relayout)
 
         case .moveWindowRefToWorkspace(let ref, let workspace, let follow):
             // Dropping on the rail's "+" needs no special case: the trailing empty workspace is a
             // workspace like any other, and normalize() grows a fresh "+" underneath it the moment
             // it stops being empty (invariant 4) — the same thing that makes clicking "+" work.
-            guard let dest = w.location(ofWorkspace: workspace) else { return (w, []) }
-            guard move(ref, to: dest, follow: follow) else { return (w, []) }
+            guard let dest = w.location(ofWorkspace: workspace) else { return fail(.unknownWorkspace(workspace.uuidString)) }
+            guard w.location(of: ref) != nil else { return fail(.unknownWindow(ref)) }
+            guard move(ref, to: dest, follow: follow) else { return noop("the window is already there") }
             if follow { effects.append(.focus(ref)) }
             effects.append(.relayout)
 
         case .moveWindowRefBefore(let ref, let before):
             // A row operation, not a focus one: dragging a tab into a new position must not take
             // focus away from whatever the user was actually working in.
-            guard let from = w.location(of: ref) else { return (w, []) }
+            guard let from = w.location(of: ref) else { return fail(.unknownWindow(ref)) }
             var row = w.screens[from.screen]!.workspaces[from.index].windows
             guard let i = row.firstIndex(of: ref) else { return (w, []) }
             // Decision 2026-09-24 (#32): `before` in another row (another display's bar, or another
@@ -235,7 +263,7 @@ public enum CommandRunner {
             } else {
                 target = row.count - 1
             }
-            guard target != i else { return (w, []) }
+            guard target != i else { return noop("the tab is already there") }
             row.remove(at: i)
             row.insert(ref, at: target)
             w.screens[from.screen]!.workspaces[from.index].windows = row
@@ -247,10 +275,10 @@ public enum CommandRunner {
             // the trailing "+" leaves that "+" empty mid-stack, so it is reaped and a fresh one is
             // grown at the end — the same result as dropping just before it. An empty unpinned
             // row can only be here if it is active or reserved, and both survive normalize().
-            guard let loc = w.location(ofWorkspace: id) else { return (w, []) }
+            guard let loc = w.location(ofWorkspace: id) else { return fail(.unknownWorkspace(id.uuidString)) }
             var s = w.screens[loc.screen]!
             let target = min(max(to, 0), s.workspaces.count - 1)
-            guard target != loc.index else { return (w, []) }
+            guard target != loc.index else { return noop("the workspace is already there") }
             let activeID = s.active.id
             s.workspaces.insert(s.workspaces.remove(at: loc.index), at: target)
             s.activeIndex = s.workspaces.firstIndex { $0.id == activeID }!
@@ -268,7 +296,7 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .focusWorkspaceID(let id):
-            guard let loc = w.location(ofWorkspace: id) else { return (w, []) }
+            guard let loc = w.location(ofWorkspace: id) else { return fail(.unknownWorkspace(id.uuidString)) }
             // Focus moves to the clicked screen first so `activate` re-derives the focused window
             // from that workspace's anchor, exactly as the keyboard path does.
             if w.focus.screen != loc.screen { w.focus = Focus(screen: loc.screen, window: nil) }
@@ -278,7 +306,7 @@ public enum CommandRunner {
 
         case .focusWindowRef(let r):
             if w.ephemeral.contains(r) { w.focus.window = r; return (w, [.focus(r)]) }
-            guard let loc = w.location(of: r) else { return (w, []) }
+            guard let loc = w.location(of: r) else { return fail(.unknownWindow(r)) }
             // Decision 2026-09-15 (#48): a tab is a promise. Clicking one delivers its window, so a
             // minimized or app-hidden window is brought back instead of the click doing nothing —
             // a visible control that silently no-ops was the bug. `hidden` is cleared here so focus
@@ -292,7 +320,7 @@ public enum CommandRunner {
             effects.append(.focus(r)); effects.append(.relayout)
 
         case .setWorkspaceLayout(let id, let l):
-            guard let loc = w.location(ofWorkspace: id) else { return (w, []) }
+            guard let loc = w.location(ofWorkspace: id) else { return fail(.unknownWorkspace(id.uuidString)) }
             w.screens[loc.screen]!.workspaces[loc.index].layout = l
             effects.append(.relayout)
 
@@ -302,14 +330,16 @@ public enum CommandRunner {
         case .recoverWindow(let r):
             // #73: a placed window is exactly a tab click; a popup is focused *and* unhidden, since
             // nothing else in the model would ever un-minimize it. The rescue is the store's.
-            guard w.ephemeral.contains(r) else { return apply(.focusWindowRef(r), to: w) }
+            guard w.ephemeral.contains(r) else { return apply(.focusWindowRef(r), to: w, layouts: layouts, why: &why) }
             w.focus.window = r
             return (w, [.unhide(r), .focus(r)])
 
         case .dropWindow(let ref, let target):
-            guard ref != target, let from = w.location(of: ref), let to = w.location(of: target),
+            guard let from = w.location(of: ref) else { return fail(.unknownWindow(ref)) }
+            guard let to = w.location(of: target) else { return fail(.unknownWindow(target)) }
+            guard ref != target,
                   !w.screens[from.screen]!.workspaces[from.index].floating.contains(ref),
-                  !w.screens[to.screen]!.workspaces[to.index].floating.contains(target) else { return (w, []) }
+                  !w.screens[to.screen]!.workspaces[to.index].floating.contains(target) else { return noop("only two tiled windows swap") }
             if from == to {
                 var ws = w.screens[from.screen]!.workspaces[from.index]
                 ws.windows.swapAt(ws.windows.firstIndex(of: ref)!, ws.windows.firstIndex(of: target)!)
@@ -333,7 +363,7 @@ public enum CommandRunner {
             break
 
         case .focusScreen(let n):
-            guard w.screenOrder.count > 1, let i = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
+            guard w.screenOrder.count > 1, let i = w.screenOrder.firstIndex(of: sid) else { return noop("only one display") }
             let j = n == .next ? (i + 1) % w.screenOrder.count : (i - 1 + w.screenOrder.count) % w.screenOrder.count
             w.focus = Focus(screen: w.screenOrder[j], window: nil)
             w.normalize()
@@ -341,15 +371,15 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .moveWindowToScreen(let n):
-            guard let f = w.focus.window, screen.active.windows.contains(f), w.screenOrder.count > 1,
-                  let i = w.screenOrder.firstIndex(of: sid) else { return (w, []) }
+            guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
+            guard w.screenOrder.count > 1, let i = w.screenOrder.firstIndex(of: sid) else { return noop("only one display") }
             let j = n == .next ? (i + 1) % w.screenOrder.count : (i - 1 + w.screenOrder.count) % w.screenOrder.count
             let target = w.screenOrder[j]
             guard move(f, to: (target, w.screens[target]!.activeIndex)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
 
         case .toggleFloat:
-            guard let f = w.focus.window, screen.active.windows.contains(f) else { return (w, []) }
+            guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
             w.setFloating(f, !screen.active.floating.contains(f))
             w.normalize()
             effects.append(.relayout)

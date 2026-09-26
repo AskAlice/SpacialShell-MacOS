@@ -9,7 +9,8 @@ let usage = """
 usage: spacialctl [--socket PATH] <subcommand>
   version              daemon version
   state                spatial model as JSON
-  run <command-name>   run a bound command, e.g. `run focus-workspace-2`
+  run <command-name>   run a bound command, e.g. `run focus-workspace-2`; a command that
+                       fails (unknown workspace, no focused window, ...) exits 1
   set-layout <id> [--workspace <uuid>]
                        set a workspace's layout (default: the focused one); unknown ids exit 1
 """
@@ -22,7 +23,9 @@ let request: IPCRequest
 switch args.first {
 case "version": request = IPCRequest(id: 1, cmd: "version")
 case "state": request = IPCRequest(id: 1, cmd: "state")
-case "run" where args.count == 2: request = IPCRequest(id: 1, cmd: "run", args: ["command": .string(args[1])])
+// #109: extra words are passed through, so `run switch 42` is the daemon's clear "unknown command".
+case "run" where args.count >= 2:
+    request = IPCRequest(id: 1, cmd: "run", args: ["command": .string(args.dropFirst().joined(separator: " "))])
 case "set-layout" where args.count == 2: request = IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1])])
 case "set-layout" where args.count == 4 && args[2] == "--workspace":
     request = IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1]), "workspace": .string(args[3])])
@@ -68,7 +71,7 @@ close(fd)
 guard let response = try? IPCCodec.decoder.decode(IPCResponse.self, from: responseLine!) else {
     die("bad response", code: 3)
 }
-guard response.ok else { die(response.error ?? "unknown error", code: 1) }
-if let data = response.data, let out = try? IPCCodec.encoder.encode(data) {
-    print(String(decoding: out, as: UTF8.self))
-}
+let output = response.cliOutput
+if let err = output.stderr { FileHandle.standardError.write(Data((err + "\n").utf8)) }
+if let out = output.stdout { print(out) }
+exit(output.code)

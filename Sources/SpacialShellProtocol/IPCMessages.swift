@@ -54,3 +54,28 @@ public struct IPCEvent: Codable, Sendable, Equatable {
         self.v = v; self.event = event; self.data = data
     }
 }
+
+/// #109: what `spacialctl` prints for a reply and the code it exits with — 0 ok, 1 the daemon
+/// returned an error. A `run` reply (`data.outcome`) prints nothing when the command ran, the
+/// reason on stderr when it was a no-op (still 0: nothing went wrong), and the error when it failed.
+public struct CLIOutput: Equatable, Sendable {
+    public var code: Int32
+    public var stdout: String?
+    public var stderr: String?
+    public init(code: Int32, stdout: String? = nil, stderr: String? = nil) {
+        self.code = code; self.stdout = stdout; self.stderr = stderr
+    }
+}
+
+extension IPCResponse {
+    public var cliOutput: CLIOutput {
+        guard ok else { return CLIOutput(code: 1, stderr: "spacialctl: \(error ?? "unknown error")") }
+        switch data?["outcome"]?.stringValue {
+        case "ok": return CLIOutput(code: 0)
+        case "noop": return CLIOutput(code: 0, stderr: "spacialctl: nothing to do: \(data?["reason"]?.stringValue ?? "no-op")")
+        default:
+            guard let data, let out = try? IPCCodec.encoder.encode(data) else { return CLIOutput(code: 0) }
+            return CLIOutput(code: 0, stdout: String(decoding: out, as: UTF8.self))
+        }
+    }
+}

@@ -182,14 +182,15 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             case "version":
                 return .ok(id: request.id, data: .object(["version": .string(SpacialShellKit.version)]))
             case "run":
-                guard let name = request.args["command"]?.stringValue,
-                      let command = KeyBindings.commandNames[name]
-                else { return .failure(id: request.id, "unknown command") }
+                let name = request.args["command"]?.stringValue ?? ""
+                guard let command = KeyBindings.commandNames[name]
+                else { return .failure(id: request.id, "unknown command \"\(name)\"") }
                 // #88: exactly like a hotkey. App-layer commands go through `route` to their
                 // controllers (the store would drop them); model commands are awaited, so a
-                // `spacialctl state` straight after sees their effect.
-                if command.isAppLayer { route(command) } else { await store.run(command) }
-                return .ok(id: request.id)
+                // `spacialctl state` straight after sees their effect. #109: the reply carries
+                // the store's report — done, a no-op and why, or the error.
+                if command.isAppLayer { route(command); return CommandReport.done.response(id: request.id) }
+                return await store.run(command).response(id: request.id)
             case "state":
                 let state = await store.wireState()
                 return .ok(id: request.id, data: (try? JSONValue(encoding: state)) ?? .null)
@@ -198,8 +199,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 switch await store.wireState().setLayout(request.args["layout"]?.stringValue,
                                                          workspace: request.args["workspace"]?.stringValue) {
                 case .success(let command):
-                    await store.run(command)
-                    return .ok(id: request.id)
+                    return await store.run(command).response(id: request.id)
                 case .failure(let refusal):
                     return .failure(id: request.id, refusal.message)
                 }
