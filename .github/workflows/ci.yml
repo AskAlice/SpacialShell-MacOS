@@ -30,6 +30,11 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      # #156: the restored .build makes this an incremental build, so a test target that imports a
+      # module it doesn't declare would link stale objects after a Kit struct change.
+      - name: Target dependencies
+        run: Scripts/check-target-deps.py
+
       - name: Build
         run: swift build
 

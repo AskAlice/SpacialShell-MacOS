@@ -43,20 +43,24 @@ let package = Package(
             .product(name: "Sparkle", package: "Sparkle"),
         ]),
         .executableTarget(name: "SpacialCtl", dependencies: ["SpacialShellProtocol"]),
+        // #156: every test target lists each package module it imports, even one a dependency
+        // already brings in. SwiftPM rebuilds a target only when a *declared* dependency's module
+        // changes. Otherwise a new stored property in a Kit struct leaves this target's objects on
+        // the old layout, and `swift test` segfaults. Scripts/check-target-deps.py enforces it.
         // Fixtures: pre-#9 config/state/wire payloads and built-in frames, captured before #9 changed
         // a line, decoded by every later build (custom grid layouts design §11).
         .testTarget(name: "SpacialShellKitTests", dependencies: [
-            "SpacialShellKit",
+            "SpacialShellKit", "SpacialShellProtocol",
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             .product(name: "InMemoryExporter", package: "opentelemetry-swift"),
         ], resources: [.copy("Fixtures")]),
         .testTarget(name: "SpacialShellProtocolTests", dependencies: ["SpacialShellProtocol"]),
-        .testTarget(name: "SpacialShellPlatformTests", dependencies: ["SpacialShellPlatform"]),
+        .testTarget(name: "SpacialShellPlatformTests", dependencies: ["SpacialShellPlatform", "SpacialShellKit", "SpacialShellProtocol"]),
         .testTarget(name: "PlatformIntegrationTests", dependencies: ["SpacialShellPlatform", "SpacialShellKit"]),
         .testTarget(
             name: "ShellStoryTests",
-            dependencies: ["SpacialShellUI", "SpacialShellProtocol", .product(name: "SnapshotTesting", package: "swift-snapshot-testing")],
+            dependencies: ["SpacialShellUI", "SpacialShellKit", "SpacialShellProtocol", .product(name: "SnapshotTesting", package: "swift-snapshot-testing")],
             exclude: ["__Snapshots__"]
         ),
     ]

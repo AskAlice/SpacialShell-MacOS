@@ -25,6 +25,10 @@ fi
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
+# #156: an import that isn't a declared dependency leaves stale objects after a Kit struct change.
+echo "pre-commit: target dependencies"
+Scripts/check-target-deps.py
+
 echo "pre-commit: swift build"
 swift build
 

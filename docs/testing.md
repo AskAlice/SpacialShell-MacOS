@@ -32,6 +32,30 @@ Both use `Tests/SpacialShellKitTests/Support/TestRNG.swift`, a deterministic Spl
 seeded per test case, so `swift test --filter randomSnapshotsPreserveInvariants` reproduces a
 specific seed's failure exactly by reading the seed number out of the failure message.
 
+### Declare every module a test imports (#156)
+
+A test target must list **every package module it imports** in `Package.swift`, even one that
+another dependency already brings in. Otherwise incremental `swift test` can segfault after a
+change to a Kit struct:
+
+- SwiftPM re-runs a target's compile only when a *declared* dependency's `.swiftmodule` changes.
+  A module reached transitively (`ShellStoryTests` → `SpacialShellUI` → `SpacialShellKit`) can
+  be imported, but it is not a build input.
+- Adding a stored property to `Config` or `World` rewrites `SpacialShellKit.swiftmodule`. Platform
+  and UI recompile but keep the same interface, and the compiler leaves those `.swiftmodule`
+  files untouched. So a test target that lists only Platform or UI is never rebuilt, and its
+  objects keep the struct's old layout.
+- Value-copy helpers such as "outlined init with copy of Config" are weak symbols, emitted into
+  every object that copies the struct. The linker keeps one of them. If it keeps the stale copy,
+  it breaks *every* caller, recompiled ones included. The crash is signal 11 in `swift_retain`
+  ← `outlined init with copy of Config` ← `Config.init()`, in whichever test first copies the
+  struct (`SettingsTests`, `AXWindowBackendTests`, `KeyboardGrammarTests`, …).
+
+`Scripts/check-target-deps.py` fails when a target imports a sibling target it doesn't declare.
+The pre-commit hook and CI both run it. SwiftPM's own
+`--explicit-target-dependency-import-check` accepts transitive modules, so it doesn't catch this.
+If a local build crashes this way anyway, `swift package clean` recovers.
+
 ## 2. Classifier corpus regression
 
 ```sh

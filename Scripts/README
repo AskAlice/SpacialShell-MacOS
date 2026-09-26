@@ -15,6 +15,9 @@ notarize.sh package-dmg.sh + sign the DMG + notarytool submit + staple + spctl c
             an error. One-time credential setup: docs/release.md.
 sparkle-keys.sh  one-time: Sparkle EdDSA keypair into the login keychain, public key into
             Info.plist, --upload-secret for the private key (#58, docs/release.md).
+check-target-deps.py  fails if a target imports a package module it doesn't list as a
+            dependency, which makes incremental `swift test` segfault after a Kit struct
+            change (#156, docs/testing.md). Run by the pre-commit hook and CI.
 e2e/        end-to-end scenarios against the real shell, on this Mac or in a Tart VM;
             see e2e/README.md (#38).
 
