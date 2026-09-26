@@ -18,9 +18,10 @@ import os
 /// Per move: one `CGEvent.location` and a hit-test over a handful of rects. Per completed dwell:
 /// one `CGWindowListCopyWindowInfo`.
 ///
-/// macOS has no public way to focus a window without raising it, so the focused tile comes to
-/// the front. Tiles never overlap each other, so that is invisible; a tile a floating window
-/// overlaps is never a target (`PointerTargets`), so nothing gets buried.
+/// macOS has no public way to focus a window without raising it, so the focused window comes to
+/// the front. Tiles never overlap each other, so for a tile that is invisible; a floating window
+/// hovered from under a tile comes up over it, which #135's 2026-09-26 decision accepts.
+/// `PointerTargets` hit-tests in the store's stacking order, so the topmost window wins.
 ///
 /// `SPACIAL_LOG_FOCUS_FOLLOWS_MOUSE=1` logs every completed dwell and whether it was accepted.
 @MainActor

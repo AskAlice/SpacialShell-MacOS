@@ -185,8 +185,8 @@ public struct Config: Codable, Equatable, Sendable {
     /// keeps its fingers). See `SwipeBindings`.
     public var gestureLayout: Bool = true
     public static let gestureFingerRange = 3...5
-    /// #135 (G28): resting the pointer on another tiled window focuses it, as a click on its tab
-    /// would. Opt-in (#24): off, focus moves only by click, key, swipe or command.
+    /// #135 (G28): resting the pointer on another tiled or floating window focuses it, as a click
+    /// on its tab would. Opt-in (#24): off, focus moves only by click, key, swipe or command.
     public var focusFollowsMouse: Bool = false
     /// #135: how long the pointer has to rest on a window before it takes focus. Clamped to
     /// `FocusFollowsMouse.delayRangeMs`.

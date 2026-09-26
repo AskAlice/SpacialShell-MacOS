@@ -3,13 +3,16 @@ import Foundation
 @testable import SpacialShellKit
 
 /// #135 (G28): focus follows the mouse, opt-in, after a dwell. Only a resting pointer over another
-/// tiled window focuses it; the rail, the tab bar, floating and ephemeral windows, and anything
-/// they cover never do, and nothing but pointer movement starts the wait.
+/// tiled or floating window focuses it, the topmost one where they overlap; the rail, the tab bar,
+/// ephemeral windows and anything they overlap never do, and nothing but pointer movement starts
+/// the wait.
 @Suite struct FocusFollowsMouseTests {
     let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1), c = WindowRef(id: 3, pid: 2)
     let tileA = CGRect(x: 0, y: 0, width: 100, height: 100)
     let tileB = CGRect(x: 110, y: 0, width: 100, height: 100)
-    var targets: PointerTargets { PointerTargets(tiles: [a: tileA, b: tileB], covers: [], focused: a) }
+    var targets: PointerTargets {
+        PointerTargets(windows: [.init(window: a, frame: tileA), .init(window: b, frame: tileB)], covers: [], focused: a)
+    }
     let inB = CGPoint(x: 150, y: 50)
     /// 150 ms, the default.
     var ffm: FocusFollowsMouse { FocusFollowsMouse() }
@@ -133,6 +136,44 @@ import Foundation
         #expect(t.window(at: CGPoint(x: 120, y: 90)) == b)
     }
 
+    /// 2026-09-26 (#135): floating windows are targets, and the topmost window under the pointer
+    /// wins. A float over a tile takes the overlap; the tile keeps the rest of itself.
+    @Test func theTopmostWindowUnderThePointerWins() {
+        let float = CGRect(x: 140, y: 40, width: 100, height: 40)   // over b's right edge and past it
+        var t = targets
+        t.windows.insert(.init(window: c, frame: float), at: 0)
+        #expect(t.window(at: inB) == c)
+        #expect(t.window(at: CGPoint(x: 230, y: 60)) == c)   // beside b, still on the float
+        #expect(t.window(at: CGPoint(x: 120, y: 90)) == b)   // b, clear of the float
+        // b raised over the float: the overlap is b's, the part sticking out is still the float's.
+        t.windows = [t.windows[2], t.windows[0], t.windows[1]]
+        #expect(t.window(at: inB) == b)
+        #expect(t.window(at: CGPoint(x: 230, y: 60)) == c)
+    }
+
+    /// A window that cannot take focus still hides whatever is stacked under it.
+    @Test func anUnfocusableWindowStillHidesWhatIsUnderIt() {
+        var t = targets
+        t.windows[1].focusable = false
+        t.windows.append(.init(window: c, frame: CGRect(x: 100, y: 0, width: 200, height: 100)))
+        #expect(t.window(at: inB) == nil)                         // b's, and b takes nothing
+        #expect(t.window(at: CGPoint(x: 105, y: 50)) == c)        // the gap shows c
+        #expect(t.window(at: CGPoint(x: 250, y: 50)) == c)
+    }
+
+    /// The store's stacking: focus goes to the front, the rest keep their order, and windows the
+    /// world no longer holds drop out.
+    @Test func restackPutsFocusOnTopAndForgetsTheGone() {
+        var w = World.seeded(screens: [d1.id], config: Config())
+        let sid = w.screenOrder[0]
+        w.screens[sid]!.workspaces[0].windows = [a, b]
+        w.ephemeral = [c]
+        #expect(PointerTargets.restack([], focused: a, world: w) == [a])
+        #expect(PointerTargets.restack([a, c], focused: b, world: w) == [b, a, c])
+        #expect(PointerTargets.restack([b, a, c], focused: a, world: w) == [a, b, c])
+        #expect(PointerTargets.restack([b, WindowRef(id: 9, pid: 9), a], focused: nil, world: w) == [b, a])
+    }
+
     @Test func panelStripsFollowTheRailSide() {
         var config = Config(); config.panelWidth = 48; config.panelHeight = 34
         let vf = CGRect(x: 0, y: 25, width: 1000, height: 675)
@@ -178,9 +219,9 @@ import Foundation
     @Test func theStorePublishesTheActiveRowsTiles() async throws {
         let (store, sink) = await make()
         let t = await store.pointerTargets()
-        #expect(Set(t.tiles.keys) == [a, b])
+        #expect(Set(t.windows.map(\.window)) == [a, b])
         #expect(t.focused == a)
-        #expect(t.window(at: centre(try #require(t.tiles[b]))) == b)
+        #expect(t.window(at: centre(try #require(t.frame(of: b)))) == b)
         #expect(sink.all.last == t)
     }
 
@@ -191,21 +232,45 @@ import Foundation
         #expect(sink.all.last?.focused == b)
     }
 
-    /// A floating window is a cover, and the tile under it is no target at all: raising that tile
-    /// would bury the floating window.
-    @Test func aFloatingWindowCoversAndDisqualifiesTheTileUnderIt() async throws {
+    /// A floating window is a target, stacked by where focus last landed: over a tile until that
+    /// tile is focused (and so raised), and back on top once it is focused itself. The tile under
+    /// it stays a target wherever it shows.
+    @Test func aFloatingWindowIsATargetAndTheTopmostWindowWins() async throws {
         let (store, _) = await make([win(c, CGRect(x: 700, y: 300, width: 200, height: 150), kind: .float)])
         await store.run(.focusWindowRef(a))
-        let t = await store.pointerTargets()
-        #expect(t.tiles[a] != nil && t.tiles[b] == nil)
-        #expect(t.window(at: CGPoint(x: 800, y: 375)) == nil)   // on the floating window
-        #expect(t.window(at: CGPoint(x: 600, y: 100)) == nil)   // on b, clear of it
+        let onFloat = CGPoint(x: 800, y: 375)
+        var t = await store.pointerTargets()
+        #expect(t.frame(of: a) != nil && t.frame(of: b) != nil && t.frame(of: c) != nil)
+        #expect(try #require(t.frame(of: b)).contains(onFloat))
+        #expect(t.window(at: onFloat) == c)                        // never focused, over the tiles
+        #expect(t.window(at: CGPoint(x: 600, y: 100)) == b)        // on b, clear of it
+        await store.run(.focusWindowRef(b))
+        t = await store.pointerTargets()
+        #expect(t.window(at: onFloat) == b)                        // b raised over the float
+        await store.run(.focusWindowRef(c))
+        t = await store.pointerTargets()
+        #expect(t.window(at: onFloat) == c)
+        #expect(t.window(at: CGPoint(x: 600, y: 100)) == b)
     }
 
-    @Test func anEphemeralWindowIsACover() async throws {
-        let (store, _) = await make([win(c, CGRect(x: 100, y: 100, width: 50, height: 50), kind: .ephemeral)])
-        let t = await store.pointerTargets()
-        #expect(t.window(at: CGPoint(x: 125, y: 125)) == nil)
+    /// Ephemeral windows come and go: never a target, and a window one overlaps takes nothing,
+    /// since raising it would bury the visitor. It still hides what is stacked under it.
+    @Test func anEphemeralWindowIsACoverAndDisqualifiesWhatItOverlaps() throws {
+        var noPanels = Config(); noPanels.showPanels = false
+        var w = World.seeded(screens: [d1.id], config: noPanels)
+        let sid = w.screenOrder[0]
+        w.screens[sid]!.workspaces[0].windows = [a, b]
+        w.focus = Focus(screen: sid, window: a)
+        w.ephemeral = [c]
+        let ws = w.screens[sid]!.workspaces[0]
+        let shown = [sid: ShownRow(workspace: ws.id, index: 0, order: [ws.id], row: [a, b], focused: a,
+                                   frames: [a: tileA, b: tileB])]
+        let t = PointerTargets(world: w, shown: shown, observed: [c: CGRect(x: 20, y: 60, width: 40, height: 30)],
+                               displays: [d1], config: noPanels, stacking: [a])
+        #expect(t.window(at: CGPoint(x: 30, y: 70)) == nil)     // on the visitor
+        #expect(t.window(at: CGPoint(x: 80, y: 20)) == nil)     // a, clear of it
+        #expect(t.window(at: inB) == b)                          // b, which it does not touch
+        #expect(t.windows.first { $0.window == a }?.focusable == false)
     }
 
     /// An auto-hiding rail takes no tiling width, so tiles run under its column; that column is
@@ -213,7 +278,7 @@ import Foundation
     @Test func theRailAndTabBarNeverFocus() async throws {
         let (store, _) = await make(panels: true, autohide: true)
         let t = await store.pointerTargets()
-        let fa = try #require(t.tiles[a])
+        let fa = try #require(t.frame(of: a))
         #expect(fa.minX < 48)
         #expect(t.window(at: CGPoint(x: fa.minX + 2, y: fa.midY)) == nil)   // under the rail
         #expect(t.window(at: CGPoint(x: fa.midX, y: 40)) == nil)            // the tab bar
@@ -224,11 +289,11 @@ import Foundation
         let e = WindowRef(id: 4, pid: 2)
         let tileOnD2 = win(e, CGRect(x: 1100, y: 100, width: 300, height: 200))
         let (plain, _) = await make([tileOnD2])
-        #expect(await plain.pointerTargets().tiles[e] != nil)
+        #expect(await plain.pointerTargets().frame(of: e) != nil)
         let (store, _) = await make([tileOnD2, win(c, d2.frame, fullscreen: true)])
         let t = await store.pointerTargets()
-        #expect(t.tiles[e] == nil && t.tiles[c] == nil)
-        #expect(t.tiles[a] != nil)   // D1 is unaffected
+        #expect(t.frame(of: e) == nil && t.frame(of: c) == nil)
+        #expect(t.frame(of: a) != nil)   // D1 is unaffected
     }
 
     // MARK: config

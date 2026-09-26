@@ -148,6 +148,9 @@ public actor WorldStore {
     /// #135: what the pointer can focus, for focus-follows-mouse; sent on publish when it changed.
     private let onPointerTargets: @Sendable (PointerTargets) -> Void
     private var lastTargets: PointerTargets?
+    /// #135: which window is over which, front to back, as far as the model can tell: the order
+    /// focus landed on them (`PointerTargets.restack`). Kept on every publish.
+    private var stacking: [WindowRef] = []
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:], movedApps: Set<String> = [],
@@ -226,7 +229,9 @@ public actor WorldStore {
 
     private func publish() {
         // #135: frames can change with the world unchanged (a resize drag), so this has its own dedupe.
-        let targets = PointerTargets(world: world, shown: lastShown, observed: observed, displays: displays, config: config)
+        stacking = PointerTargets.restack(stacking, focused: world.focus.window, world: world)
+        let targets = PointerTargets(world: world, shown: lastShown, observed: observed, displays: displays, config: config,
+                                     stacking: stacking)
         if targets != lastTargets { lastTargets = targets; onPointerTargets(targets) }
         let snapshot = makeSnapshot(generation: publishGeneration + 1)
         if let last = lastPublished, last.world == world, last.snapshot.isEquivalent(to: snapshot) { return }

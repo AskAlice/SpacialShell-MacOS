@@ -105,7 +105,7 @@ struct SettingsView: View {
             // #135: opt-in; `focus-follows-mouse-delay-ms` is file-only.
             row("Focus follows mouse", overridden: overrides.focusFollowsMouse != nil) {
                 Toggle("", isOn: binding(\.focusFollowsMouse, default: file.focusFollowsMouse)).labelsHidden()
-                    .help("Rest the pointer on another tiled window for \(file.focusFollowsMouseDelayMs) ms to focus it, as a click on its tab would")
+                    .help("Rest the pointer on another window for \(file.focusFollowsMouseDelayMs) ms to focus it, as a click on its tab would")
             } reset: { overrides.focusFollowsMouse = nil }
 
             row("Wrap workspaces", overridden: overrides.workspaceWrap != nil) {
