@@ -52,9 +52,11 @@ public struct TouchFrame: Equatable, Sendable {
 ///   still down inside it continues the swipe. Frames without timestamps keep the old rule.
 ///
 /// The result is the direction to *navigate*: the Fn+W/A/S/D key the swipe stands for. By default
-/// content follows the fingers, as with natural scrolling: swiping left pushes the current window
-/// away to reveal the one on its right (`.right`, Fn+D), and swiping up reveals the workspace below
-/// (`.down`, Fn+S). `invert` flips both axes.
+/// it follows macOS's own swipes. Horizontally content follows the fingers, like switching
+/// full-screen apps: swiping left pushes the current window away to reveal the one on its right
+/// (`.right`, Fn+D). Vertically the swipe points, like Mission Control's swipe up: swiping up goes to
+/// the workspace above (`.up`, Fn+W), matching the rail. (Found live: natural vertical felt
+/// inverted.) `invert` flips both axes.
 public struct SwipeRecognizer: Equatable, Sendable {
     /// About 1.8 cm across a 15 cm trackpad and 1.2 cm up a 10 cm one. Well past the drift of fingers
     /// landing and settling (a few hundredths), and short enough that the step happens during the
@@ -122,7 +124,10 @@ public struct SwipeRecognizer: Equatable, Sendable {
                 return nil
             }
             phase = .done
-            return invert ? fingerMotion : fingerMotion.opposite
+            // Horizontal is natural (content follows the fingers, as macOS's own full-screen swipes
+            // do); vertical points, like Mission Control's swipe up: up is the workspace above.
+            let natural = fingerMotion == .left || fingerMotion == .right ? fingerMotion.opposite : fingerMotion
+            return invert ? natural.opposite : natural
         }
     }
 

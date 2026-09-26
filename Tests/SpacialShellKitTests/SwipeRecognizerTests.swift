@@ -19,22 +19,23 @@ import Foundation
 
     // MARK: directions
 
-    /// Natural: content follows the fingers. Swiping left reveals the window on the right (Fn+D);
-    /// swiping up reveals the workspace below (Fn+S). normalizedPosition's y grows upward.
+    /// Like macOS's own swipes: horizontally content follows the fingers (swiping left reveals the
+    /// window on the right, Fn+D); vertically the swipe points (swiping up goes to the workspace
+    /// above, Fn+W, as on the rail). normalizedPosition's y grows upward.
     @Test func naturalDirectionsFollowTheContent() {
         var r = SwipeRecognizer()
         #expect(swipe(&r, dx: -0.3, dy: 0) == [.right])
         #expect(swipe(&r, dx: 0.3, dy: 0) == [.left])
-        #expect(swipe(&r, dx: 0, dy: 0.3) == [.down])
-        #expect(swipe(&r, dx: 0, dy: -0.3) == [.up])
+        #expect(swipe(&r, dx: 0, dy: 0.3) == [.up])
+        #expect(swipe(&r, dx: 0, dy: -0.3) == [.down])
     }
 
-    @Test func invertPointsTheWayTheKeysDo() {
+    @Test func invertFlipsBothAxes() {
         var r = SwipeRecognizer(invert: true)
         #expect(swipe(&r, dx: -0.3, dy: 0) == [.left])
         #expect(swipe(&r, dx: 0.3, dy: 0) == [.right])
-        #expect(swipe(&r, dx: 0, dy: 0.3) == [.up])
-        #expect(swipe(&r, dx: 0, dy: -0.3) == [.down])
+        #expect(swipe(&r, dx: 0, dy: 0.3) == [.down])
+        #expect(swipe(&r, dx: 0, dy: -0.3) == [.up])
     }
 
     /// Exactly the commands Fn+W/A/S/D run.
@@ -71,7 +72,7 @@ import Foundation
     @Test func aSlightlyCrookedSwipeCounts() {
         var r = SwipeRecognizer()
         #expect(swipe(&r, dx: -0.3, dy: 0.15) == [.right])   // 2×
-        #expect(swipe(&r, dx: 0.1, dy: 0.3) == [.down])      // 3×
+        #expect(swipe(&r, dx: 0.1, dy: 0.3) == [.up])      // 3×
     }
 
     /// A swipe that starts diagonal and straightens out fires once it has.
@@ -107,7 +108,7 @@ import Foundation
         #expect(r.feed(TouchFrame(fingers: 3, x: 0.5, y: 0.85)) == nil)  // one lifts, the rest still moving
         #expect(r.feed(TouchFrame(fingers: 3, x: 0.5, y: 1.0)) == nil)
         #expect(r.feed(.lifted) == nil)
-        #expect(swipe(&r, dx: 0, dy: 0.3) == [.down])                    // the next real swipe works
+        #expect(swipe(&r, dx: 0, dy: 0.3) == [.up])                    // the next real swipe works
     }
 
     /// Dropping below the count forgets where the swipe started: the travel is counted from where
