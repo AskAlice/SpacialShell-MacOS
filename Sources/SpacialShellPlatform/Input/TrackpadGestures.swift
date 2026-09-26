@@ -141,9 +141,10 @@ public final class TrackpadGestures {
 
     /// The fingers on the trackpad now: touches that have not ended or been cancelled, and are not
     /// resting (a thumb parked on a Magic Trackpad's edge is not part of the swipe).
-    public nonisolated static func frame(_ touches: Set<NSTouch>) -> TouchFrame {
+    public nonisolated static func frame(_ touches: Set<NSTouch>, time: TimeInterval? = nil) -> TouchFrame {
         let down = touches.filter { NSTouch.Phase.touching.contains($0.phase) && !$0.isResting }
-        return TouchFrame(positions: down.map { (x: Double($0.normalizedPosition.x), y: Double($0.normalizedPosition.y)) })
+        return TouchFrame(positions: down.map { (x: Double($0.normalizedPosition.x), y: Double($0.normalizedPosition.y)) },
+                          time: time)
     }
 
     // MARK: - macOS's own gestures
@@ -188,7 +189,7 @@ private func trackpadTapCallback(
         MainActor.assumeIsolated { gestures.reenable() }
     default:
         guard let ns = NSEvent(cgEvent: event), ns.type == .gesture else { break }
-        let frame = TrackpadGestures.frame(ns.allTouches())
+        let frame = TrackpadGestures.frame(ns.allTouches(), time: ns.timestamp)
         MainActor.assumeIsolated { gestures.handle(frame) }
     }
     return Unmanaged.passUnretained(event)

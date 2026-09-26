@@ -8,18 +8,22 @@ public struct TouchFrame: Equatable, Sendable {
     public var fingers: Int
     public var x: Double
     public var y: Double
+    /// The event's timestamp in seconds, when known. It lets the recognizer tell a real lift from
+    /// the empty frame macOS interleaves with every moving frame (see `SwipeRecognizer.liftGrace`).
+    public var time: TimeInterval?
 
-    public init(fingers: Int, x: Double, y: Double) {
-        self.fingers = fingers; self.x = x; self.y = y
+    public init(fingers: Int, x: Double, y: Double, time: TimeInterval? = nil) {
+        self.fingers = fingers; self.x = x; self.y = y; self.time = time
     }
 
     /// The centroid of these positions; `fingers` is their count. No positions is `lifted`.
-    public init(positions: [(x: Double, y: Double)]) {
-        guard !positions.isEmpty else { self = .lifted; return }
+    public init(positions: [(x: Double, y: Double)], time: TimeInterval? = nil) {
+        guard !positions.isEmpty else { self = .lifted; self.time = time; return }
         let n = Double(positions.count)
         self.init(fingers: positions.count,
                   x: positions.reduce(0) { $0 + $1.x } / n,
-                  y: positions.reduce(0) { $0 + $1.y } / n)
+                  y: positions.reduce(0) { $0 + $1.y } / n,
+                  time: time)
     }
 
     /// Every finger is off the trackpad.
@@ -41,6 +45,11 @@ public struct TouchFrame: Equatable, Sendable {
 ///   fingers, still moving; that must not count as a three-finger swipe.
 /// - **Fewer fingers reset it.** A count below `fingers` forgets the start, so the next time the
 ///   count matches is a fresh swipe.
+/// - **An empty frame is only a lift if it stays empty.** Once the fingers move, macOS follows every
+///   touch frame with a second, touchless gesture event at the same timestamp. Taken as a lift, it
+///   cut every swipe into one-frame pieces, and horizontal swipes (which need the most travel)
+///   never fired. An empty frame with a timestamp is held for `liftGrace`: a frame with the fingers
+///   still down inside it continues the swipe. Frames without timestamps keep the old rule.
 ///
 /// The result is the direction to *navigate*: the Fn+W/A/S/D key the swipe stands for. By default
 /// content follows the fingers, as with natural scrolling: swiping left pushes the current window
@@ -54,10 +63,16 @@ public struct SwipeRecognizer: Equatable, Sendable {
     /// The dominant axis must beat the other by half again: about 34° either side of the axis.
     public static let defaultDominance = 1.5
 
+    /// How long an empty frame waits to become a lift. The interleaved empties land within a
+    /// millisecond of the next real frame, which arrives every ~4–10 ms while fingers move.
+    public static let liftGrace: TimeInterval = 0.05
+
     public var fingers: Int
     public var invert: Bool
     public var threshold: Double
     public var dominance: Double
+    /// When an empty frame arrived that has not yet been confirmed or disproved as a lift.
+    private var emptySince: TimeInterval?
 
     private enum Phase: Equatable, Sendable {
         /// Waiting for exactly `fingers` fingers.
@@ -77,6 +92,16 @@ public struct SwipeRecognizer: Equatable, Sendable {
 
     /// Feeds one frame; returns a direction the one time a swipe is recognized, and nil otherwise.
     public mutating func feed(_ frame: TouchFrame) -> Direction? {
+        if frame.fingers == 0, let t = frame.time {
+            // Maybe a lift, maybe macOS's interleaved empty event: decide on the next frame.
+            if emptySince == nil { emptySince = t }
+            return nil
+        }
+        if let since = emptySince {
+            emptySince = nil
+            let lifted = frame.time.map { $0 - since > Self.liftGrace } ?? true
+            if lifted { phase = .idle }
+        }
         if frame.fingers < fingers { phase = .idle; return nil }
         if frame.fingers > fingers { phase = .done; return nil }
         switch phase {
@@ -102,7 +127,7 @@ public struct SwipeRecognizer: Equatable, Sendable {
     }
 
     /// Forget the gesture in progress, as if every finger lifted.
-    public mutating func reset() { phase = .idle }
+    public mutating func reset() { phase = .idle; emptySince = nil }
 
     /// The command a navigation direction runs: exactly the one Fn+W/A/S/D runs.
     public static func command(for direction: Direction) -> Command {

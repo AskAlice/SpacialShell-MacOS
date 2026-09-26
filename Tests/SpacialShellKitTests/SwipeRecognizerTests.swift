@@ -231,4 +231,49 @@ import Foundation
         #expect(!out.gestures && out.gestureInvert)
         #expect(Settings.effective(config: file, overrides: SettingsOverrides()).gestures)
     }
+
+    // MARK: macOS's interleaved empty frames (found live, 2026-09-26)
+
+    /// Once the fingers move, macOS follows every touch frame with a touchless gesture event at the
+    /// same timestamp. This is the start of a real right-to-left log capture that never fired:
+    /// three fingers travel x 0.380 → 0.751, each frame paired with an empty one.
+    @Test func interleavedEmptyFramesDoNotSplitASwipe() {
+        var r = SwipeRecognizer()
+        var out: [Direction] = []
+        let xs = [0.380, 0.383, 0.393, 0.405, 0.416, 0.432, 0.450, 0.477, 0.503, 0.531, 0.564, 0.592,
+                  0.623, 0.653, 0.679, 0.700, 0.726, 0.751]
+        for (i, x) in xs.enumerated() {
+            let t = 100 + Double(i) * 0.006
+            if let d = r.feed(TouchFrame(fingers: 3, x: x, y: 0.645, time: t)) { out.append(d) }
+            if let d = r.feed(TouchFrame(fingers: 0, x: 0, y: 0, time: t)) { out.append(d) }
+        }
+        #expect(out == [.left])   // fingers moved right: the content follows, so the window on the left
+    }
+
+    /// A real lift (nothing for longer than the grace) still ends the gesture, so the next swipe
+    /// is a fresh one and fires again.
+    @Test func aRealLiftStillSeparatesSwipes() {
+        var r = SwipeRecognizer()
+        var out: [Direction] = []
+        func stroke(from t0: Double) {
+            for i in 0...10 {
+                let t = t0 + Double(i) * 0.008
+                if let d = r.feed(TouchFrame(fingers: 3, x: 0.3 + 0.04 * Double(i), y: 0.5, time: t)) { out.append(d) }
+                if let d = r.feed(TouchFrame(fingers: 0, x: 0, y: 0, time: t)) { out.append(d) }
+            }
+        }
+        stroke(from: 10)
+        stroke(from: 10.5)   // fingers were off the trackpad for ~400 ms in between
+        #expect(out == [.left, .left])
+    }
+
+    /// Fingers still down after an empty frame's grace ran out start a new gesture from where
+    /// they are, rather than measuring from the old start.
+    @Test func aLongGapRestartsTheSwipe() {
+        var r = SwipeRecognizer()
+        #expect(r.feed(TouchFrame(fingers: 3, x: 0.2, y: 0.5, time: 1)) == nil)
+        #expect(r.feed(TouchFrame(fingers: 0, x: 0, y: 0, time: 1)) == nil)
+        // 200 ms later, far to the right: a new gesture starts here, so no fire yet.
+        #expect(r.feed(TouchFrame(fingers: 3, x: 0.6, y: 0.5, time: 1.2)) == nil)
+    }
 }
