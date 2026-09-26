@@ -1,6 +1,10 @@
 #!/bin/sh
 # #16: a DMG that opens on someone else's Mac. Developer ID + hardened runtime + secure timestamp
-# (package-dmg.sh → bundle.sh), then sign the DMG, notarise it, staple the ticket, and check it.
+# (package-dmg.sh → bundle.sh), then notarise and staple the app (#152), build the DMG around the
+# stapled app, sign the DMG, notarise it, staple its own ticket, and check both.
+#
+# The app gets its own ticket so a copy taken out of the DMG (drag to /Applications,
+# `brew install --cask`) passes Gatekeeper offline on first launch, not only the mounted DMG.
 #
 #   Scripts/notarize.sh [--require-notarization]
 #
@@ -20,33 +24,70 @@ for arg in "$@"; do
         *) echo "usage: $0 [--require-notarization]" >&2; exit 2 ;;
     esac
 done
+set --
 
-Scripts/package-dmg.sh
+Scripts/package-dmg.sh --app-only
 APP=build/SpacialShell.app
-DMG=$(ls -t build/SpacialShell-*.dmg | head -1)
 
 # The identity bundle.sh actually used, as the SHA-1 of the leaf certificate: signing by hash is
 # unambiguous where a common name is not (this Mac has two Developer IDs; see Scripts/sign-identity).
-CERTS=$(mktemp -d)
-trap 'rm -rf "$CERTS"' EXIT
-codesign -d --extract-certificates="$CERTS/c" "$APP" 2>/dev/null || true
+WORK=$(mktemp -d)
+MNT=""
+cleanup() {
+    [ -n "$MNT" ] && hdiutil detach "$MNT" >/dev/null 2>&1 || true
+    rm -rf "$WORK"
+}
+trap cleanup EXIT
+codesign -d --extract-certificates="$WORK/c" "$APP" 2>/dev/null || true
 if ! codesign -dvv "$APP" 2>&1 | grep -q "^Authority=Developer ID Application:"; then
     echo "notarize.sh: $APP is not signed with a Developer ID Application certificate;" >&2
     echo "notarize.sh: Apple only notarises Developer ID. See docs/release.md." >&2
     exit 1
 fi
-SIGN=$(shasum -a 1 "$CERTS/c0" | cut -d" " -f1 | tr a-f A-F)
-
+SIGN=$(shasum -a 1 "$WORK/c0" | cut -d" " -f1 | tr a-f A-F)
 codesign --verify --deep --strict --verbose=2 "$APP"
-codesign --force --sign "$SIGN" --timestamp "$DMG"
-codesign --verify --strict --verbose=2 "$DMG"
-echo "notarize.sh: signed $DMG ($SIGN)"
 
 if [ -n "${NOTARY_PROFILE:-}" ]; then
     set -- --keychain-profile "$NOTARY_PROFILE"
 elif [ -n "${ASC_KEY_PATH:-}" ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ]; then
     set -- --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID"
-else
+fi
+
+# notarise FILE CREDENTIALS... — submits, waits, and on anything but Accepted prints Apple's log
+# (it names every offending binary and why; its developerLogUrl is the one to keep) and fails.
+notarise() {
+    file=$1; shift
+    echo "notarize.sh: submitting $file to Apple's notary service (this waits)"
+    result="$WORK/submit.json"
+    xcrun notarytool submit "$file" "$@" --wait --output-format json > "$result" || true
+    status=$(plutil -extract status raw -o - "$result" 2>/dev/null || echo "no response")
+    id=$(plutil -extract id raw -o - "$result" 2>/dev/null || echo "")
+    if [ "$status" != "Accepted" ]; then
+        echo "notarize.sh: notarisation of $file FAILED: status=$status id=${id:-none}" >&2
+        cat "$result" >&2
+        [ -n "$id" ] && xcrun notarytool log "$id" "$@" >&2 || true
+        exit 1
+    fi
+    echo "notarize.sh: $file accepted (submission $id)"
+}
+
+# 1. The app. notarytool takes a zip, not a bundle; the ticket is keyed on the cdhash, so it
+#    staples onto the bundle the zip was made from.
+if [ $# -gt 0 ]; then
+    ditto -c -k --sequesterRsrc --keepParent "$APP" "$WORK/SpacialShell.zip"
+    notarise "$WORK/SpacialShell.zip" "$@"
+    xcrun stapler staple "$APP"
+    xcrun stapler validate "$APP"
+fi
+
+# 2. The DMG, around the (stapled) app.
+Scripts/package-dmg.sh --dmg-only
+DMG=$(ls -t build/SpacialShell-*.dmg | head -1)
+codesign --force --sign "$SIGN" --timestamp "$DMG"
+codesign --verify --strict --verbose=2 "$DMG"
+echo "notarize.sh: signed $DMG ($SIGN)"
+
+if [ $# -eq 0 ]; then
     echo "notarize.sh: Gatekeeper's view of the unnotarised build:"
     spctl -a -vv -t open --context context:primary-signature "$DMG" 2>&1 || true
     spctl -a -vv -t exec "$APP" 2>&1 || true
@@ -55,25 +96,17 @@ else
     exit "$REQUIRE"
 fi
 
-echo "notarize.sh: submitting to Apple's notary service (this waits)"
-RESULT="$CERTS/submit.json"
-xcrun notarytool submit "$DMG" "$@" --wait --output-format json > "$RESULT" || true
-STATUS=$(plutil -extract status raw -o - "$RESULT" 2>/dev/null || echo "no response")
-ID=$(plutil -extract id raw -o - "$RESULT" 2>/dev/null || echo "")
-if [ "$STATUS" != "Accepted" ]; then
-    echo "notarize.sh: notarisation FAILED: status=$STATUS id=${ID:-none}" >&2
-    cat "$RESULT" >&2
-    # The log names every offending binary and why; its developerLogUrl is the one to keep.
-    [ -n "$ID" ] && xcrun notarytool log "$ID" "$@" >&2 || true
-    exit 1
-fi
-
+notarise "$DMG" "$@"
 xcrun stapler staple "$DMG"
 xcrun stapler validate "$DMG"
 spctl -a -vv -t open --context context:primary-signature "$DMG"
-# The app as Gatekeeper sees it once mounted from the DMG — the ticket covers it by cdhash.
+
+# 3. The app as it ships: mounted from the DMG, it carries its own stapled ticket (#152).
 MNT=$(mktemp -d)
 hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG" >/dev/null
-spctl -a -vv -t exec "$MNT/SpacialShell.app" || { hdiutil detach "$MNT" >/dev/null; exit 1; }
+xcrun stapler validate "$MNT/SpacialShell.app"
+spctl -a -vv -t exec "$MNT/SpacialShell.app"
 hdiutil detach "$MNT" >/dev/null
-echo "notarize.sh: $DMG is signed, notarised and stapled"
+rmdir "$MNT" 2>/dev/null || true
+MNT=""
+echo "notarize.sh: $DMG and the app inside it are signed, notarised and stapled"

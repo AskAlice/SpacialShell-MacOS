@@ -82,10 +82,16 @@ For **local** notarisation store the same key, or an Apple ID with an app-specif
 keychain profile once, and name it with `NOTARY_PROFILE`:
 
 ```sh
-xcrun notarytool store-credentials spacialshell-notary \
+xcrun notarytool store-credentials spacial-notary \
   --key ~/Downloads/AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --issuer <issuer-id>
-NOTARY_PROFILE=spacialshell-notary Scripts/notarize.sh --require-notarization
+NOTARY_PROFILE=spacial-notary Scripts/notarize.sh --require-notarization
 ```
+
+`notarize.sh` makes two submissions (#152): first the app, whose ticket it staples onto
+`build/SpacialShell.app` before `package-dmg.sh --dmg-only` wraps it, then the DMG, which gets its
+own ticket. A copy dragged out of the DMG (or installed by `brew install --cask`) therefore passes
+Gatekeeper offline on first launch; `xcrun stapler validate` on the app inside the mounted DMG is
+the last check the script runs.
 
 `Scripts/notarize.sh` also takes the key directly: `ASC_KEY_PATH`, `ASC_KEY_ID`, `ASC_ISSUER_ID`.
 With no credentials it signs everything, prints Gatekeeper's verdict (`rejected`, "Unnotarized
@@ -127,8 +133,6 @@ window shows no "Check for Updates…" button.
   both 404 for it. Updates work once releases are public — make the repo public, or publish the
   release assets to a public repo (e.g. `AskAlice/SpacialShell-releases`) and point `SUFeedURL`
   and `--download-url-prefix` in `release.yml` there.
-- Only the DMG is notarised and stapled. The app inside is covered by the same ticket (Gatekeeper
-  checks it online on first launch); stapling the app itself would take a second submission.
 - Unverified until a real update runs: that the Accessibility grant survives Sparkle replacing the
   bundle (it should — the designated requirement keys on the team ID), and that the relaunch
   restores parked windows (it goes through `applicationWillTerminate`, like a quit).

@@ -1,7 +1,8 @@
 name: Release
 
 # A `v*` tag (pushed, or created by milestone-release.yml) builds the DMG and publishes a GitHub
-# Release. With the signing secrets it is Developer ID signed, notarised and stapled (#16), and with
+# Release. With the signing secrets it is Developer ID signed, notarised and stapled (#16) — the app
+# gets its own stapled ticket before it goes into the DMG (#152) — and with
 # SPARKLE_ED_PRIVATE_KEY it also carries the appcast auto-update reads (#58). Without them it falls
 # back to the ad-hoc DMG, with a warning. Secrets and the version scheme: docs/release.md.
 #
