@@ -54,6 +54,13 @@ public final class CheatSheetController {
         }
     }
 
+    /// A chord fired while the modifier was down: this press was a command, not "what can I
+    /// press?", so a pending show is dropped (a sheet already up stays). Without it, holding
+    /// Fn+W to open the spatial view (#132) brought the sheet up over it 700 ms in.
+    public func chordFired() {
+        showTask?.cancel(); showTask = nil
+    }
+
     private func present() {
         shown = true
         let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero

@@ -56,6 +56,7 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Split: one column more / fewer (`split-columns-more` / `split-columns-fewer`) | unbound | unbound | — |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` | Super (overview) |
+| Spatial view: every workspace as a mini-desktop (`toggle-spatial-view`); also by holding `Fn+W` / `Fn+S` | `Fn+Z` | `⌃⌥Z` | — |
 | Open the config file | `Fn+,` | `⌃⌥,` | — |
 | Focus the display left / right / above / below | `Fn+⌥A` / `Fn+⌥D` / `Fn+⌥W` / `Fn+⌥S` | unbound ‡ | — |
 | Move window to the display left / right / above / below | `Fn+⇧←` / `Fn+⇧→` / `Fn+⇧↑` / `Fn+⇧↓` | unbound ‡ | — |
@@ -147,6 +148,16 @@ Semantics worth knowing:
   the left neighbour, else the right.
 - Autorepeat of a bound chord is swallowed, not re-fired: holding `Fn+D` moves once and types
   nothing into the front app.
+- **Spatial view** (#132): the focused display's workspaces zoomed out, one mini-desktop per row,
+  top to bottom, with the active row in the middle. Each window is a chip (icon and title) where
+  its row's layout puts it; windows the layout does not show right now (past split's view, a
+  floating or minimized one) wait beside the mini-desktop. Drawn from the model, not captured, so it
+  needs no Screen Recording grant. `Fn+Z` opens it until `Fn+Z` again; while it is open `Fn+W/S`,
+  `Fn+A/D` and the rest work as always and the camera slides to follow. **Holding** `Fn+W` or
+  `Fn+S` (or `Fn+⇧W/S`) past the key-repeat delay opens it the ⌘Tab way instead: keep `Fn` down,
+  tap `W`/`S` to ride between rows, and let go of `Fn` to land. Click a mini-desktop to go to that
+  workspace, a chip to go to that window, or the backdrop to close it. With Reduce Motion the camera
+  cuts instead of sliding.
 
 ## Rebinding
 

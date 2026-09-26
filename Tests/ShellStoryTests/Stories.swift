@@ -157,6 +157,28 @@ enum Stories {
                       isOffSpace: offSpace, title: title, wantsAttention: attention)
     }
 
+    /// #132: the spatial view's fixture world, `active` being the row the camera centres.
+    static func spatial(active: Int) -> SpatialState {
+        func w(_ id: Int, _ pid: Int32) -> SpacialShellProtocol.WindowRef { WindowRef(id: WindowID(id), pid: pid) }
+        let (s1, s2, v, t1, t2, chat, mail, n1, n2, n3) = (w(1, 1), w(2, 1), w(3, 5), w(4, 3), w(5, 3), w(6, 6), w(7, 4),
+                                                         w(8, 2), w(9, 2), w(10, 2))
+        let d: SpacialShellProtocol.DisplayID = "D1"
+        let rows = [
+            Workspace(name: "Web", layout: .split, windows: [s1, s2], anchor: s1, category: .web),
+            Workspace(name: "Code", layout: .half, windows: [v, t1, t2], anchor: t1, category: .coding),
+            Workspace(name: "Chat", layout: .maximize, windows: [chat, mail], floating: [mail], anchor: chat),
+            Workspace(name: "Notes", layout: .grid, windows: [n1, n2, n3], anchor: n1),
+            Workspace(name: "Workspace", layout: .maximize),
+        ]
+        let world = World(screens: [d: Screen(display: d, workspaces: rows, activeIndex: active)], screenOrder: [d],
+                          focus: Focus(screen: d, window: rows[active].anchor), ephemeral: [], ignored: [], hidden: [],
+                          parents: [:], defaultLayout: .maximize)
+        let titles = [s1: "Pull requests · AskAlice/SpacialShell-MacOS", s2: "developer.apple.com — AXUIElement",
+                      v: "SpatialView.swift — spacial-shell", t1: "~/code/spacial-shell — zsh", t2: "~/Downloads — zsh",
+                      chat: "#general", n1: "Shopping list", n2: "Ideas"]
+        return SpatialView.state(for: d, in: world, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
+    }
+
     static let railGeometry = CGSize(width: 48, height: 800)
     static let barGeometry = CGSize(width: 1200, height: 34)
 
@@ -515,6 +537,18 @@ enum Stories {
         add("cheatsheet-empty-workspace-1024", nil,
             CheatSheetView.fitting(CheatSheetController.grouped(CheatSheet.rows(for: Config())),
                                    dimmed: true, in: 1024 - 48).view)
+
+        // #132 (M3 B9): the spatialisation view on a 1440 × 900 display — the model's rows as
+        // mini-desktops, the active one centred. Web (split, two Safari windows), Code (half, the
+        // active row, a Terminal focused), Chat (maximize, Mail floating beside it), Notes (grid),
+        // then the trailing "+". Chips are titled where they have room.
+        add("spatial-view", CGSize(width: 1440, height: 900),
+            SpatialStripView(state: spatial(active: 1), metaFor: meta, send: send, reduceMotion: true),
+            truncates: true)
+        // The first row active: the camera at the top of the stack, nothing above it.
+        add("spatial-view-top", CGSize(width: 1440, height: 900),
+            SpatialStripView(state: spatial(active: 0), metaFor: meta, send: send, reduceMotion: true),
+            truncates: true)
 
         // #108: the tile a dragged window would swap with, at a half-split tile's size.
         add("drop-target", CGSize(width: 480, height: 320), DropTargetView())

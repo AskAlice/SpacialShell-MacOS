@@ -56,6 +56,9 @@ public enum Command: Sendable, Hashable {
     /// and the active rows stay put.
     case toggleFloatRef(WindowRef)
     case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
+    /// #132 (M3 B9): the spatialisation view — the focused display's workspaces as mini-desktops,
+    /// zoomed out. App-layer, like the overview; holding Fn+W/S opens it too (`SpatialView`).
+    case toggleSpatialView
     /// Tab dragged onto a rail row. Absolute where `moveWindowToWorkspace(Vertical)` is relative:
     /// a drag names both the window and the destination, and neither need be the focused one.
     /// `follow` (#95): the store's own moves follow the window, as the keyboard does; a drop passes
@@ -135,7 +138,7 @@ public enum Command: Sendable, Hashable {
     /// their controllers instead of the store (#88).
     public var isAppLayer: Bool {
         switch self {
-        case .toggleOverview, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
+        case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
         case .reloadConfig, .showAbout, .quit: true   // #111
         default: false
         }

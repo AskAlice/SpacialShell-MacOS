@@ -90,7 +90,9 @@ Recorded in the test VM (one 1024×768 display) while a scenario drives the real
 
 A **workspace** is a row; an **application window** is a cell. New windows append to the current
 row, new workspaces append underneath. **Up/down** changes workspace, **left/right** changes
-window. The screen is a viewport over a larger, always-sorted grid.
+window. The screen is a viewport over a larger, always-sorted grid, and the **spatial view** shows
+that grid: `Fn+Z`, or holding `Fn+W` / `Fn+S`, zooms out to every workspace as a mini-desktop,
+drawn from the model, with the camera sliding between rows as you move.
 
 - **Single address.** Every managed window lives in exactly one workspace of exactly one display.
 - **There's always a way down.** Each display's stack ends with one empty workspace; empty rows in

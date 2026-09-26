@@ -62,6 +62,10 @@ public final class HotkeyTap: @unchecked Sendable {
     /// Every keyDown, bound or not, before anything else — the "a human did this" signal for
     /// fullscreen focus protection (#28). Same deadline rule as `onCommand`: must not block.
     private let onKeyDown: (@Sendable () -> Void)?
+    /// #132: an autorepeat of a bound chord — the chord is being held. The repeat is still
+    /// swallowed and never fires the command; this only says it is held (holding Fn+W/S opens the
+    /// spatial view). Arrives ~30×/s while held: must hand off and return, like `onCommand`.
+    private let onRepeat: (@Sendable (Command) -> Void)?
     /// `SPACIAL_LOG_KEYS=1` logs every keyDown's keycode and flags — the instrument for the
     /// empirical checks in `docs/platform-notes.md`.
     private let logKeys: Bool
@@ -134,11 +138,13 @@ public final class HotkeyTap: @unchecked Sendable {
         onCommand: @escaping @Sendable (Command) -> Void,
         onFlags: (@Sendable (CGEventFlags) -> Void)? = nil,
         onKeyDown: (@Sendable () -> Void)? = nil,
+        onRepeat: (@Sendable (Command) -> Void)? = nil,
     ) {
         self.table = table
         self.onCommand = onCommand
         self.onFlags = onFlags
         self.onKeyDown = onKeyDown
+        self.onRepeat = onRepeat
         self.logKeys = ProcessInfo.processInfo.environment["SPACIAL_LOG_KEYS"] == "1"
     }
 
@@ -457,7 +463,7 @@ public final class HotkeyTap: @unchecked Sendable {
 
     /// Called on the tap thread inside macOS's deadline. Everything here is O(µs) and nothing
     /// blocks, awaits or allocates beyond a dictionary lookup.
-    fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         let passThrough = Unmanaged.passUnretained(event)
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
@@ -484,7 +490,10 @@ public final class HotkeyTap: @unchecked Sendable {
             lock.lock(); let command = table[chord]; lock.unlock()
             let decision = Self.decision(isRepeat: isRepeat, bound: command != nil)
             guard decision.swallow else { return passThrough }
-            guard decision.fire, let command else { return nil }
+            guard decision.fire, let command else {
+                if isRepeat, let command { onRepeat?(command) }
+                return nil
+            }
             if IsSecureEventInputEnabled() {
                 Self.log.warning("secure input is active; hotkeys may be unreliable")
             }

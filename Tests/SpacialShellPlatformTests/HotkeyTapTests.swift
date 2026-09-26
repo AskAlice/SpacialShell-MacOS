@@ -50,6 +50,27 @@ import CoreGraphics
         #expect(HotkeyTap.decision(isRepeat: true, bound: false) == (swallow: false, fire: false))
     }
 
+    /// #132: a held chord's repeats reach `onRepeat` (holding Fn+W/S opens the spatial view) and
+    /// still never fire the command; the first press fires and is not a repeat.
+    @Test func aHeldChordReportsItsRepeatsWithoutFiring() throws {
+        final class Box: @unchecked Sendable { var fired: [Command] = []; var repeated: [Command] = [] }
+        let box = Box()
+        let chord = try #require(KeyBindings.parse("fn-w"))
+        let tap = HotkeyTap(table: [chord: .focusWorkspace(.up)],
+                            onCommand: { box.fired.append($0) }, onRepeat: { box.repeated.append($0) })
+        func key(repeating: Bool) throws -> CGEvent {
+            let e = try #require(CGEvent(keyboardEventSource: nil, virtualKey: 13, keyDown: true))
+            e.flags = .maskSecondaryFn
+            e.setIntegerValueField(.keyboardEventAutorepeat, value: repeating ? 1 : 0)
+            return e
+        }
+        #expect(tap.handle(type: .keyDown, event: try key(repeating: false)) == nil)
+        #expect(tap.handle(type: .keyDown, event: try key(repeating: true)) == nil)
+        #expect(tap.handle(type: .keyDown, event: try key(repeating: true)) == nil)
+        #expect(box.fired == [.focusWorkspace(.up)])
+        #expect(box.repeated == [.focusWorkspace(.up), .focusWorkspace(.up)])
+    }
+
     /// The test host is not AX-trusted, so `CGEvent.tapCreate` returns NULL and `start()` must
     /// surface that as `TapError.creationFailed` rather than trapping or hanging on the dedicated
     /// tap thread. On a trusted host (someone granted the test runner) the tap really is created,

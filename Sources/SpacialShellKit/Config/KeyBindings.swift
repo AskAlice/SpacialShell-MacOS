@@ -34,6 +34,7 @@ public enum KeyBindings {
         "move-window-left": .moveWindow(.left), "move-window-right": .moveWindow(.right),
         "move-window-up": .moveWindowToWorkspace(.up), "move-window-down": .moveWindowToWorkspace(.down),
         "cycle-layout": .cycleLayout, "toggle-shell-ui": .toggleShellUI, "toggle-overview": .toggleOverview,
+        "toggle-spatial-view": .toggleSpatialView,   // #132
         "focus-screen-prev": .focusScreen(.prev), "focus-screen-next": .focusScreen(.next),
         "move-window-to-screen-prev": .moveWindowToScreen(.prev), "move-window-to-screen-next": .moveWindowToScreen(.next),
         "rescue-windows": .rescueWindows,
@@ -101,6 +102,8 @@ public enum KeyBindings {
         ("q", "close-window"), ("shift-a", "move-window-left"), ("shift-d", "move-window-right"),
         ("shift-w", "move-window-up"), ("shift-s", "move-window-down"), ("space", "cycle-layout"), ("esc", "toggle-shell-ui"),
         ("tab", "toggle-overview"), ("shift-space", "cycle-layout-reverse"),
+        ("z", "toggle-spatial-view"),   // #132: Z for zoom out
+
         ("leftSquareBracket", "focus-screen-prev"), ("rightSquareBracket", "focus-screen-next"),
         ("shift-leftSquareBracket", "move-window-to-screen-prev"), ("shift-rightSquareBracket", "move-window-to-screen-next"),
         ("g", "toggle-float"), ("comma", "open-settings"),

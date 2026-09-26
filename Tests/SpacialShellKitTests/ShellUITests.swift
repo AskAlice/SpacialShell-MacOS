@@ -169,7 +169,7 @@ import Foundation
     /// what every command source routes to the controllers instead — and exactly the model's no-ops.
     @Test func appLayerCommandsAreTheModelsNoOps() {
         let before = base()
-        let appLayer: [Command] = [.toggleOverview, .openSettings, .editLayout(nil, workspace: nil),
+        let appLayer: [Command] = [.toggleOverview, .toggleSpatialView, .openSettings, .editLayout(nil, workspace: nil),
                                    .setDefaultLayout(.grid), .showLayoutOnBar(.grid, false)]
         for c in appLayer {
             #expect(c.isAppLayer)
@@ -180,7 +180,7 @@ import Foundation
         #expect(KeyBindings.commandNames["toggle-overview"]?.isAppLayer == true)
         // Everything else a socket can name is the store's.
         let named = KeyBindings.commandNames.filter { $0.value.isAppLayer }.keys.sorted()
-        #expect(named == ["open-settings", "toggle-overview"])
+        #expect(named == ["open-settings", "toggle-overview", "toggle-spatial-view"])
     }
 }
 

@@ -387,7 +387,7 @@ struct SettingsView: View {
         ("move-workspace-to-screen-down", "Move workspace to screen below"),
         ("cycle-layout", "Cycle layout"), ("cycle-layout-reverse", "Cycle layout backwards"), ("toggle-float", "Toggle float"),
         ("close-window", "Close window"), ("toggle-shell-ui", "Toggle Zen mode"),
-        ("toggle-overview", "Open overview"), ("open-settings", "Open settings"),
+        ("toggle-overview", "Open overview"), ("toggle-spatial-view", "Spatial view"), ("open-settings", "Open settings"),
     ]
 
     /// A silenced problem key as the user knows it: the `other-window-managers` entry it names.

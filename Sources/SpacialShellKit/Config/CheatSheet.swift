@@ -99,6 +99,7 @@ public enum CheatSheet {
         directions("move-workspace-to-screen-", "Move workspace that way", "rectangle.stack", "⌥⇧←")   // #136
         add(.app, "toggle-shell-ui", "Zen mode", "eye", "Esc")
         add(.app, "toggle-overview", "Overview / launcher", "magnifyingglass", "⇥")
+        add(.app, "toggle-spatial-view", "Spatial view (or hold W/S)", "rectangle.grid.1x2", "Z")   // #132
         add(.app, "open-settings", "Open config file", "gearshape", ",")
         add(.app, "close-window", "Close window", "xmark", "Q")
         return out

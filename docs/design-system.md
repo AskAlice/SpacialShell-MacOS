@@ -70,6 +70,7 @@ Config → views is the entire pipeline.
 | `LayoutEditorView.swift` | The layout editor: presets, grid canvas, name/id, Copy as TOML (model: Kit `GridEditor`) |
 | `LayoutsController.swift` | The editor window and the popover's `settings.json` edits |
 | `OverviewView.swift` | Launcher overlay (search, windows + apps grid) |
+| `SpatialStripView.swift` / `SpatialController.swift` | The spatialisation view (#132): workspaces as mini-desktops, window chips at their layout frames (model: Kit `SpatialView`) |
 | `CheatSheetOverlay.swift` | Fn-hold keybinding sheet (view + controller) |
 | `PanelWindow.swift` | The non-activating `NSPanel` all chrome lives in |
 | `ShellController.swift` / `OverviewController.swift` | AppKit owners: panel lifecycle, geometry, hosting |

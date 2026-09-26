@@ -47,6 +47,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var attention: DockAttention?
     private var shell: ShellController?
     private var overview: OverviewController?
+    private var spatial: SpatialController?
     private var settingsWindow: SettingsWindowController?
     private var updater: SPUStandardUpdaterController?
     private var layouts: LayoutsController?
@@ -143,6 +144,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 self?.shell?.update(world: world, snapshot: snapshot)
                 self?.attention?.update(world: world)
                 self?.overview?.update(world: world, snapshot: snapshot)
+                self?.spatial?.update(world: world, snapshot: snapshot)
                 self?.layouts?.update(world: world)
             }
         }
@@ -159,6 +161,11 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             Task { await store.run(command) }
         }
         self.overview = overview
+        // #132: the spatialisation view. Same door out: clicks are store commands.
+        let spatial = SpatialController(config: config, appMeta: appMeta) { command in
+            Task { await store.run(command) }
+        }
+        self.spatial = spatial
 
         // Same rule: captured directly, never through `self`. `onChange` hops back onto the main
         // actor to persist and re-layer, which is the only thing that needs the runtime at all.
@@ -198,6 +205,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             switch command {
             case .toggleOverview:
                 Task { @MainActor in overview.toggle() }
+            case .toggleSpatialView:
+                Task { @MainActor in spatial.toggle() }
             case .openSettings:
                 Task { @MainActor in settings.toggle() }
             case .editLayout, .setDefaultLayout, .showLayoutOnBar:
@@ -287,11 +296,22 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 span.setAttribute(key: "command", value: String(String(describing: command).prefix { $0 != "(" }))
                 route(command)
                 span.end()
+                Task { @MainActor in cheatSheet.chordFired() }
             },
-            onFlags: { flags in Task { @MainActor in cheatSheet.flagsChanged(flags) } },
+            onFlags: { flags in
+                Task { @MainActor in
+                    cheatSheet.flagsChanged(flags)
+                    spatial.flagsChanged(flags)   // #132: a held-open spatial view lands on release
+                }
+            },
             onKeyDown: {
                 backend.noteHumanInput()
                 Task { @MainActor in pointerFocus.cancel() }   // #135: the keyboard has the floor
+            },
+            // #132: holding Fn+W/S (their autorepeat) opens the spatial view.
+            onRepeat: { command in
+                guard SpatialView.opensOnHold(command) else { return }
+                Task { @MainActor in spatial.holdStarted() }
             },
         )
         self.tap = tap
@@ -475,6 +495,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         pointerFocus?.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
         shell?.update(config: config)
         attention?.update(config: config)
+        spatial?.update(config: config)
         cheatSheet?.update(config: config)
         layouts?.update(config: config, overrides: overrides)
         guard let store else { return }
