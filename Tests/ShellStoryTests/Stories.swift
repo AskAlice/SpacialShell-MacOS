@@ -470,13 +470,14 @@ enum Stories {
         // #108: the tile a dragged window would swap with, at a half-split tile's size.
         add("drop-target", CGSize(width: 480, height: 320), DropTargetView())
 
-        // The settings window's General pane, with #138's silenced warnings and the way back.
+        // The settings window's General pane, with #138's silenced warnings and the way back, and
+        // #139's persistence switch and reset.
         var silenced = SettingsOverrides()
         silenced.silence("other-wm:com.knollsoft.Rectangle")
         silenced.silence("other-wm:yabai")
         add("settings-general", nil, SettingsView(
             file: Config(), overrides: .constant(silenced), configPath: "~/.config/spacial-shell/config.toml",
-            openConfigFile: {}, checkForUpdates: nil, standalone: .general))
+            openConfigFile: {}, checkForUpdates: nil, resetState: {}, standalone: .general))
 
         return out
     }

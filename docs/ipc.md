@@ -107,3 +107,11 @@ or when the shell quits.
 socket is local and readable only by your user, so nothing leaves the machine through it. Treat a
 captured stream like a screenshot of your tab bar. Telemetry is separate: spans record only the
 request verb (`ipc.cmd = "subscribe"`), never a title or any event payload.
+
+## Resetting saved state (`reset-state`, #139)
+
+`{"id":1,"cmd":"reset-state"}` deletes `state.json` and stops the shell writing it until it next
+launches, which then starts fresh. The windows stay where they are for the rest of the session.
+The reply's `data.message` says what happened; `spacialctl reset-state` prints it. It is the same
+action as the settings window's **Reset saved state…** button; see
+[config: resetting saved state](config.md#resetting-saved-state).

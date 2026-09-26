@@ -17,13 +17,16 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let onChange: (SettingsOverrides) -> Void
     private let openConfigFile: () -> Void
     private let checkForUpdates: (() -> Void)?
+    private let resetState: (() -> Void)?
     private let configPath: String
 
     public init(file: Config, overrides: SettingsOverrides,
                 configPath: String,
                 openConfigFile: @escaping () -> Void,
                 checkForUpdates: (() -> Void)? = nil,
+                resetState: (() -> Void)? = nil,
                 onChange: @escaping (SettingsOverrides) -> Void) {
+        self.resetState = resetState
         self.file = file
         self.overrides = overrides
         self.configPath = configPath
@@ -80,7 +83,8 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
                                }),
             configPath: configPath,
             openConfigFile: openConfigFile,
-            checkForUpdates: checkForUpdates)
+            checkForUpdates: checkForUpdates,
+            resetState: resetState)
         if let host = window.contentView as? NSHostingView<SettingsView> {
             host.rootView = view
         } else {

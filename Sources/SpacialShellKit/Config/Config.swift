@@ -143,6 +143,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// #138 (G34): bundle ids or process names of window managers that fight SpacialShell over the
     /// same windows; one running raises a warning. Replaces the default list; `[]` turns it off.
     public var otherWindowManagers: [String] = OtherWindowManagers.defaults
+    /// #139 (G31): read `state.json` at launch and keep it written. Off: neither, and the file is
+    /// left as it is. See `StatePersistence`.
+    public var persistState: Bool = true
     /// Switching is motion (#64, ruled in #65): windows slide as screenshot proxies when the Screen
     /// Recording grant is present, and are placed instantly without it or with this off.
     public var animations: Bool = true
@@ -227,7 +230,7 @@ public struct Config: Codable, Equatable, Sendable {
         case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert"
         case focusFollowsMouse = "focus-follows-mouse", focusFollowsMouseDelayMs = "focus-follows-mouse-delay-ms"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
-        case otherWindowManagers = "other-window-managers"
+        case otherWindowManagers = "other-window-managers", persistState = "persist-state"
         case layouts = "layout", layoutBar = "layout-bar"
         case telemetry
     }
@@ -250,6 +253,7 @@ public struct Config: Codable, Equatable, Sendable {
         categoryOrder = try c.decodeIfPresent([AppCategory].self, forKey: .categoryOrder) ?? Config.defaultCategoryOrder
         maxWorkspaces = max(1, try c.decodeIfPresent(Int.self, forKey: .maxWorkspaces) ?? 12)
         otherWindowManagers = try c.decodeIfPresent([String].self, forKey: .otherWindowManagers) ?? OtherWindowManagers.defaults
+        persistState = try c.decodeIfPresent(Bool.self, forKey: .persistState) ?? true
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
         railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide) ?? false
@@ -343,6 +347,7 @@ public struct Config: Codable, Equatable, Sendable {
         crowd-threshold = \(crowdThreshold)
         category-order = [\(categoryOrder.map { q($0.rawValue) }.joined(separator: ", "))]
         max-workspaces = \(maxWorkspaces)
+        persist-state = \(persistState)
         other-window-managers = [\(otherWindowManagers.map { q($0) }.joined(separator: ", "))]
         animations = \(animations)
         empty-cheatsheet = \(emptyCheatsheet)

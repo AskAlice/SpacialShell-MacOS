@@ -26,6 +26,8 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var gestureInvert: Bool?
     /// #135. `focus-follows-mouse-delay-ms` stays the file's, like `gesture-fingers`.
     public var focusFollowsMouse: Bool?
+    /// #139.
+    public var persistState: Bool?
     /// command -> chord. Merged over the file's own overrides per command rather than replacing
     /// the map wholesale, so rebinding one command in the settings window cannot silently discard
     /// a rebind the file made to a different one.
@@ -75,6 +77,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         gestures = try c.decodeIfPresent(Bool.self, forKey: .gestures)
         gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert)
         focusFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .focusFollowsMouse)
+        persistState = try c.decodeIfPresent(Bool.self, forKey: .persistState)
         keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides)
         categoryOrder = try c.decodeIfPresent([AppCategory].self, forKey: .categoryOrder)
         maxWorkspaces = try c.decodeIfPresent(Int.self, forKey: .maxWorkspaces)
@@ -139,6 +142,7 @@ public enum Settings {
         if let v = overrides.gestures { c.gestures = v }
         if let v = overrides.gestureInvert { c.gestureInvert = v }
         if let v = overrides.focusFollowsMouse { c.focusFollowsMouse = v }
+        if let v = overrides.persistState { c.persistState = v }
         if let v = overrides.categoryOrder { c.categoryOrder = v }
         if let v = overrides.maxWorkspaces { c.maxWorkspaces = max(1, v) }
         if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }

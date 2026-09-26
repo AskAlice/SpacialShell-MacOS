@@ -15,6 +15,8 @@ public enum SpacialCtlCommandLine {
                            switch to a workspace by id, on whichever display holds it; an unknown
                            id exits 1
       quit                 quit the shell the way the rail menu does: every window is put back
+      reset-state          delete the saved state (state.json); the windows stay where they are,
+                           nothing more is saved, and the next launch starts fresh
       call <cmd> [<json-object>]
                            send any socket verb with its args, e.g.
                            call move-window '{"window":{"id":42,"pid":501},"workspace":"<uuid>"}'
@@ -28,6 +30,7 @@ public enum SpacialCtlCommandLine {
         case "state": return IPCRequest(id: 1, cmd: "state")
         case "subscribe": return IPCRequest(id: 1, cmd: "subscribe")
         case "quit": return IPCRequest(id: 1, cmd: "quit")
+        case "reset-state": return IPCRequest(id: 1, cmd: "reset-state")   // #139
         // #109: extra words are passed through, so `run switch 42` is the daemon's clear "unknown command".
         case "run" where args.count >= 2:
             return IPCRequest(id: 1, cmd: "run", args: ["command": .string(args.dropFirst().joined(separator: " "))])

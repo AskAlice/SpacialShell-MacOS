@@ -34,6 +34,10 @@ struct SettingsView: View {
     /// #58: Sparkle's check, from the app target. `nil` when there is no updater (a loose dev build,
     /// or no signing key yet), and the row is not shown.
     let checkForUpdates: (() -> Void)?
+    /// #139: deletes state.json and stops saving until the next launch (`AppRuntime.resetState`).
+    /// `nil` hides the button.
+    var resetState: (() -> Void)? = nil
+    @State private var confirmingReset = false
 
     @State private var pane: Pane = .general
     /// The command currently listening for a chord, if any. One at a time: two recorders would
@@ -131,6 +135,27 @@ struct SettingsView: View {
                             .help("Warn again about everything you chose Don't warn again for")
                     }
                 } reset: {}
+            }
+
+            Divider()
+            // #139: what is remembered across launches, and the way to forget it.
+            VStack(alignment: .leading, spacing: 10) {
+                row("Save workspaces", overridden: overrides.persistState != nil) {
+                    Toggle("", isOn: binding(\.persistState, default: file.persistState)).labelsHidden()
+                        .help("Keep workspaces, their layouts and sizes, and where each app's windows go, across launches (state.json)")
+                } reset: { overrides.persistState = nil }
+                if let resetState {
+                    HStack(spacing: 12) {
+                        Color.clear.frame(width: 120, height: 1)
+                        Button("Reset saved state\u{2026}") { confirmingReset = true }
+                            .confirmationDialog("Reset saved state?", isPresented: $confirmingReset) {
+                                Button("Reset", role: .destructive, action: resetState)
+                            } message: {
+                                Text("SpacialShell forgets its saved workspaces and where each app's windows go. The windows stay where they are; nothing more is saved, and the next launch starts fresh.")
+                            }
+                        Spacer(minLength: 0)
+                    }
+                }
             }
 
             Divider()

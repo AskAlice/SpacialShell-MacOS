@@ -43,15 +43,19 @@ public struct IPCDispatch: Sendable {
     public var run: @Sendable (Command) async -> CommandReport
     /// The app-layer route (#88): overview, settings, the layout surfaces, quit.
     public var route: @Sendable (Command) -> Void
+    /// #139: the settings window's "Reset saved state…", by another door; returns what happened.
+    public var resetState: @Sendable () async -> String
 
     public init(version: String, wireState: @escaping @Sendable () async -> WireState,
                 run: @escaping @Sendable (Command) async -> CommandReport,
-                route: @escaping @Sendable (Command) -> Void) {
+                route: @escaping @Sendable (Command) -> Void,
+                resetState: @escaping @Sendable () async -> String = { "not running" }) {
         self.version = version; self.wireState = wireState; self.run = run; self.route = route
+        self.resetState = resetState
     }
 
     /// The verbs `handle` answers, plus `subscribe`. Order is the wire's: older verbs first.
-    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit"] + idVerbs.keys.sorted()
+    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state"] + idVerbs.keys.sorted()
 
     public func handle(_ request: IPCRequest) async -> IPCReply {
         let id = request.id
@@ -75,6 +79,8 @@ public struct IPCDispatch: Sendable {
             case .success(let command): return IPCReply(await run(command).response(id: id))
             case .failure(let refusal): return IPCReply(.failure(id: id, refusal.message))
             }
+        case "reset-state":
+            return IPCReply(.ok(id: id, data: .object(["message": .string(await resetState())])))
         case "quit":
             // Through the termination gate, like the rail's Quit (spec §7.4), but only once the
             // reply is written: the gate's first step stops this server.

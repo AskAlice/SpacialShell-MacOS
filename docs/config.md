@@ -40,6 +40,7 @@ gesture-invert = false            # true: swipe the way the keys point instead o
 crowd-threshold = 8               # an app arriving at launch with more windows gets its own workspace
 category-order = ["web", "terminal", "coding", "media", "utilities"]   # [] turns routing off
 max-workspaces = 12               # routing never grows a display past this many rows
+persist-state = true              # remember workspaces across launches (state.json)
 # warn while one of these runs (bundle id or process name); [] turns the warning off
 other-window-managers = ["bobko.aerospace", "yabai", "skhd", "com.amethyst.Amethyst", "com.knollsoft.Rectangle", "com.crowdcafe.windowmagnet"]
 
@@ -94,6 +95,7 @@ title-regex = "^Picture in Picture$"
 | `crowd-threshold` | integer | `8` | An app arriving **at launch** with *more* windows than this, and no remembered placement, gets a workspace of its own on the display most of its windows are on, instead of piling into the active workspace. See [Where windows land at launch](#where-windows-land-at-launch). |
 | `category-order` | list of categories | `["web", "terminal", "coding", "media", "utilities"]` | Where an app's windows go: one row per listed category on each display, shared by every app of that category and kept at the top of the stack in this order. For these apps this beats the remembered workspace. Apps of any other category, or of none, get a row each below them. `[]` turns this off. Category names are the `app-categories` values. Also in the settings window's Workspaces pane. See [Where windows land](#where-windows-land-at-launch). |
 | `max-workspaces` | integer | `12` | Category routing never grows a display past this many rows (the empty row at the bottom does not count). Past it, a new app joins the last row. Also in the settings window's Workspaces pane (1–30). |
+| `persist-state` | boolean | `true` | Remember workspaces across launches: `state.json` (see [State](#state)) is read at launch and kept written. `false` neither reads nor writes it — every launch starts from `[[workspace]]` seeds and category routing, and an existing file is left as it is, so turning this back on picks up where it was. Putting parked windows back when SpacialShell quits happens either way. Also a toggle (*Save workspaces*) in the settings window's General pane. To start fresh once instead, see [Resetting saved state](#resetting-saved-state). |
 | `other-window-managers` | list of strings | AeroSpace, yabai, skhd, Amethyst, Rectangle, Magnet (below) | Window managers that fight SpacialShell over the same windows or keys. While one runs, SpacialShell lists a warning under the rail cog and, once per launch, opens an alert with **Don't warn again**. An entry matches a bundle id exactly (`com.knollsoft.Rectangle`) or a process name ignoring case (`yabai`, for daemons with no app bundle). Checked at launch and whenever an app launches or quits. Setting the key **replaces** the default list; `[]` turns the warning off. Default: `["bobko.aerospace", "yabai", "skhd", "com.amethyst.Amethyst", "com.knollsoft.Rectangle", "com.crowdcafe.windowmagnet"]`. What you silence is kept in `settings.json`, not this file; the settings window's General pane lists it and has **Warn again**. |
 
 Layout names: `maximize` (one window fills the screen), `split` (a sliding view of N consecutive
@@ -397,6 +399,26 @@ Separately from config, `~/Library/Application Support/SpacialShell/state.json` 
 workspace shells (name, symbol, layout, id, and any sizes you gave its layouts by resizing, #113)
 per screen, written debounced on every model change.
 It is machine-owned — not meant for hand editing — and is not covered by this reference.
+`persist-state = false` turns it off (see the table above).
+
+### Resetting saved state
+
+To make SpacialShell forget its saved workspaces, their layouts and sizes, and where each app's
+windows go, and start fresh:
+
+1. **Quit SpacialShell** (the rail's app menu › Quit). Quitting
+   puts every parked window back and writes `state.json` one last time, which is why it comes first.
+2. **Delete `state.json`**: `rm ~/Library/Application\ Support/SpacialShell/state.json` (a sandboxed
+   build keeps it under `~/Library/Containers/sh.emu.SpacialShell/Data/Library/Application Support/SpacialShell/`,
+   see [Where the file lives](#where-the-file-lives)).
+3. **Relaunch SpacialShell.** It starts from your `[[workspace]]` seeds and category routing.
+
+Or, with SpacialShell running, **`spacialctl reset-state`** or the settings window's **Reset saved
+state…** button (General pane) does steps 1–2 for you without quitting: it deletes `state.json`
+and stops writing it for the rest of the session. The windows stay where they are; the next launch
+starts fresh. Until then the rail cog lists a warning saying nothing is being saved.
+
+Neither touches `config.toml` or `settings.json` (what the settings window has set).
 
 
 ## Why `app-categories` exists

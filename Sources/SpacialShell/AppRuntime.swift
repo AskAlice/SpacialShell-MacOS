@@ -54,6 +54,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private let alerts = ProblemAlertController()
     private var ipc: IPCServer?
     private var saveTask: Task<Void, Never>?
+    /// #139: whether state.json is read and written — `persist-state`, and a reset this session.
+    private var persistence = StatePersistence(enabled: true)
     private var reloadTask: Task<Void, Never>?
     private var configWatch: DispatchSourceFileSystemObject?
     private var signalSources: [any DispatchSourceSignal] = []
@@ -107,7 +109,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         self.backend = backend
 
         log.info("stage 4/8: building the world")
-        let restored = (try? PersistedState.load(from: Paths.stateFile)) ?? nil
+        // #139: `persist-state = false` starts from the config alone and leaves the file untouched.
+        persistence.enabled = config.persistState
+        termination.persists(persistence.writes)
+        let restored = persistence.reads ? (try? PersistedState.load(from: Paths.stateFile)) ?? nil : nil
         let topology = DisplayTopology.current()
         let seeded = World.seeded(screens: topology.map(\.id), config: config)
         let initial = restored?.restore(into: seeded, main: topology.first(where: \.isMain)?.id, order: config.categoryOrder) ?? seeded
@@ -166,6 +171,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 NSWorkspace.shared.open(url)
             },
             checkForUpdates: updater.map { updater in { updater.checkForUpdates(nil) } },
+            resetState: { [weak self] in self?.resetState() },
             onChange: { [weak self] new in
                 Task { @MainActor in self?.applyOverrides(new) }
             })
@@ -233,7 +239,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             version: SpacialShellKit.version,
             wireState: { await store.wireState() },
             run: { await store.run($0) },
-            route: route)
+            route: route,
+            resetState: { await MainActor.run { [weak self] in self?.resetState() } ?? "not running" })
         let ipc = IPCServer(reply: { await dispatch.handle($0) })
         do {
             try ipc.start()
@@ -444,6 +451,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private func push(previous: Config) {
         // #138: before the guard — a "Don't warn again" changes the silenced set, not the config.
         otherWindowManagers?.update(list: config.otherWindowManagers, silenced: silencedWarnings)
+        // #139: switched off live, pending and future writes stop; switched on, they resume.
+        if persistence.enabled != config.persistState {
+            persistence.enabled = config.persistState
+            if !persistence.writes { saveTask?.cancel() }
+            termination.persists(persistence.writes)
+        }
         guard config != previous else { return }
         log.info("config changed; re-binding keys and re-laying out")
         if config.axTimeoutMs != previous.axTimeoutMs || config.refreshIntervalMs != previous.refreshIntervalMs {
@@ -465,19 +478,44 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     // MARK: - State
 
     private func scheduleSave(_ world: World) {
+        guard persistence.writes else { return }   // #139
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: Self.saveDebounce)
             guard !Task.isCancelled else { return }
             let placements = await self?.store?.currentPlacements() ?? [:]
             let movedApps = await self?.store?.currentMovedApps() ?? []
-            guard !Task.isCancelled else { return }
+            // #139: checked again here, on the main actor like `resetState`, so a reset or a switch
+            // to off during the awaits above cannot be followed by one last write.
+            guard !Task.isCancelled, self?.persistence.writes == true else { return }
             do {
                 try PersistedState(world: world, placements: placements, movedApps: movedApps).save(to: Paths.stateFile)
             } catch {
                 self?.log.error("state save failed: \(String(describing: error), privacy: .public)")
             }
         }
+    }
+
+    /// #139: `spacialctl reset-state` and the settings window's button. Deletes state.json and
+    /// stops writing it until the next launch, which then starts fresh; the windows stay where they
+    /// are. Listed as a warning until then, since "nothing is saved" is the surprising part.
+    /// Returns what happened, for `spacialctl`.
+    @discardableResult
+    private func resetState() -> String {
+        persistence.reset()
+        saveTask?.cancel()
+        termination.persists(false)
+        do {
+            try FileManager.default.removeItem(at: Paths.stateFile)
+        } catch CocoaError.fileNoSuchFile {
+            // Nothing saved yet, or already reset: the outcome the user asked for either way.
+        } catch {
+            log.error("state reset: could not delete state.json: \(String(describing: error), privacy: .public)")
+            return "could not delete \(Paths.stateFile.path): \(error.localizedDescription)"
+        }
+        log.notice("state reset: state.json deleted; nothing is saved until the next launch")
+        ProblemCenter.shared.report(.stateReset)
+        return "Saved state deleted. The windows stay where they are and nothing more is saved; the next launch starts fresh."
     }
 
     // MARK: - Termination
@@ -533,6 +571,9 @@ final class TerminationGate: @unchecked Sendable {
     private var ipc: IPCServer?
     private var tracing: TracerProviderSdk?
     private var didTerminate = false
+    /// #139: whether the exit path writes state.json. Off with `persist-state = false` and after a
+    /// reset; the restore of parked windows runs either way.
+    private var writesState = true
     /// The most recent world `WorldStore.onChange` published. The fallback when the export times
     /// out — see `fallbackExport`.
     private var lastWorld: World?
@@ -547,6 +588,10 @@ final class TerminationGate: @unchecked Sendable {
 
     func arm(ipc: IPCServer) {
         lock.lock(); self.ipc = ipc; lock.unlock()
+    }
+
+    func persists(_ writes: Bool) {
+        lock.lock(); writesState = writes; lock.unlock()
     }
 
     func arm(tracing: TracerProviderSdk?) {
@@ -597,19 +642,9 @@ final class TerminationGate: @unchecked Sendable {
             // The 500 ms save debounce is about to be abandoned by `exit(0)`, so the last few
             // commands would be lost. This write is synchronous and happens before the restore:
             // the restore moves every window off its workspace, so a save after it would persist
-            // a layout that no longer matches anything.
-            do {
-                var state = PersistedState(world: e.world, placements: e.placements, movedApps: e.movedApps)
-                // The fallback export (store timed out) carries no placement memory; the debounced
-                // save left a good one on disk moments ago, so keep that rather than forget where
-                // every app lived.
-                if state.placements.isEmpty, let saved = (try? PersistedState.load(from: Paths.stateFile)) ?? nil {
-                    state.placements = saved.placements; state.movedApps = saved.movedApps
-                }
-                try state.save(to: Paths.stateFile)
-            } catch {
-                Self.log.error("final state save failed: \(String(describing: error), privacy: .public)")
-            }
+            // a layout that no longer matches anything. #139: skipped when persistence is off or
+            // was reset; the restore below still runs.
+            if lock.withLock({ writesState }) { saveFinalState(e) }
             Self.log.info("restoring windows before exit")
             backend.restoreAllForTermination(
                 world: e.world, displays: e.displays, observed: e.observed, stranded: e.stranded,
@@ -625,6 +660,21 @@ final class TerminationGate: @unchecked Sendable {
         }
         run(Self.teardownBudget, onMainThread: onMainThread) { await store.stop() }
         Self.log.info("terminated cleanly")
+    }
+
+    private func saveFinalState(_ e: TerminationExport) {
+        do {
+            var state = PersistedState(world: e.world, placements: e.placements, movedApps: e.movedApps)
+            // The fallback export (store timed out) carries no placement memory; the debounced
+            // save left a good one on disk moments ago, so keep that rather than forget where
+            // every app lived.
+            if state.placements.isEmpty, let saved = (try? PersistedState.load(from: Paths.stateFile)) ?? nil {
+                state.placements = saved.placements; state.movedApps = saved.movedApps
+            }
+            try state.save(to: Paths.stateFile)
+        } catch {
+            Self.log.error("final state save failed: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// A timed-out export must not mean "leave every window in its parking corner" — that is the
