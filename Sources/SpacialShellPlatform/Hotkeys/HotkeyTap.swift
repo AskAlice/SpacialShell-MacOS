@@ -292,15 +292,19 @@ public final class HotkeyTap: @unchecked Sendable {
             | (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.tapDisabledByTimeout.rawValue)
             | (1 << CGEventType.tapDisabledByUserInput.rawValue)
-        guard
-            let port = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: mask,
-                callback: hotkeyTapCallback,
-                userInfo: Unmanaged.passUnretained(self).toOpaque())
-        else { return false }
+        // #37: tap at the HID level, ahead of the window server. On macOS 26, Globe+S is Type to
+        // Siri's hotkey and the window server fires it (`SiriNCActionHotkeyPress`) before a
+        // session-level tap ever sees the key — with Siri's own shortcuts disabled, and the tap
+        // healthy, Fn+S still opened Siri. A HID tap swallows the chord before that. It needs the
+        // same Accessibility trust; if macOS refuses it anyway, fall back to the session level.
+        func make(_ location: CGEventTapLocation) -> CFMachPort? {
+            CGEvent.tapCreate(tap: location, place: .headInsertEventTap, options: .defaultTap,
+                              eventsOfInterest: mask, callback: hotkeyTapCallback,
+                              userInfo: Unmanaged.passUnretained(self).toOpaque())
+        }
+        let hid = make(.cghidEventTap)
+        guard let port = hid ?? make(.cgSessionEventTap) else { return false }
+        Self.log.notice("hotkey tap at the \(hid != nil ? "HID" : "session (HID refused)", privacy: .public) level")
         let source = CFMachPortCreateRunLoopSource(nil, port, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: port, enable: true)
