@@ -132,6 +132,11 @@ public struct Config: Codable, Equatable, Sendable {
     public var railSide: RailSide = .left
     public var tabSizing: TabSizing = .fit
     public var tabStyle: TabStyle = .full
+    /// #115 (G14): what a rail tile draws — its apps, its category's glyph, or both.
+    public var railIconStyle: RailIconStyle = .app
+    /// #115: a colour per category, tinting that category's glyph on the rail. Hex only, like
+    /// `panel-color`; a category left out keeps the stock secondary glyph.
+    public var categoryColors: [AppCategory: String] = [:]
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
     /// #13: an app arriving at launch with *more* windows than this, and no remembered placement,
@@ -231,6 +236,7 @@ public struct Config: Codable, Equatable, Sendable {
              launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
+        case railIconStyle = "rail-icon-style", categoryColors = "category-colors"
         case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
              workspaceWrap = "workspace-wrap"
         case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert"
@@ -254,6 +260,17 @@ public struct Config: Codable, Equatable, Sendable {
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
         tabStyle = try c.decodeIfPresent(TabStyle.self, forKey: .tabStyle) ?? .full
+        railIconStyle = try c.decodeIfPresent(RailIconStyle.self, forKey: .railIconStyle) ?? .app
+        // A key that is not a category is left for `unknownKeys` to name; a bad colour rejects the
+        // file, as a bad `panel-color` does.
+        for (key, raw) in try c.decodeIfPresent([String: String].self, forKey: .categoryColors) ?? [:] {
+            guard let category = AppCategory(rawValue: key) else { continue }
+            guard let hex = HexColor.normalize(raw), hex != "system" else {
+                throw DecodingError.dataCorruptedError(forKey: .categoryColors, in: c,
+                                                       debugDescription: "category-colors.\(key) must be #RRGGBB")
+            }
+            categoryColors[category] = hex
+        }
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
         crowdThreshold = try c.decodeIfPresent(Int.self, forKey: .crowdThreshold) ?? 8
@@ -316,6 +333,7 @@ public struct Config: Codable, Equatable, Sendable {
             "workspace": names(WorkspaceSeed.CodingKeys.self), "layout": names(LayoutDef.CodingKeys.self),
             "ephemeral": rule, "float": rule, "ignore": rule, "tile": rule,
             "telemetry": names(TelemetryConfig.CodingKeys.self),
+            "category-colors": Set(AppCategory.allCases.map(\.rawValue)),
         ]
         let top = names(CodingKeys.self)
         var out: [String] = []
@@ -351,6 +369,7 @@ public struct Config: Codable, Equatable, Sendable {
         rail-side = \(q(railSide.rawValue))
         tab-sizing = \(q(tabSizing.rawValue))
         tab-style = \(q(tabStyle.rawValue))
+        rail-icon-style = \(q(railIconStyle.rawValue))
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
         crowd-threshold = \(crowdThreshold)
@@ -382,6 +401,10 @@ public struct Config: Codable, Equatable, Sendable {
         }
         for l in layouts { if let t = l.toml { o += "\n" + t } }
         rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore); rules("tile", tile)
+        if !categoryColors.isEmpty {
+            o += "\n[category-colors]\n"
+            for c in AppCategory.allCases { if let hex = categoryColors[c] { o += "\(c.rawValue) = \(q(hex))\n" } }
+        }
         if !keybindings.isEmpty {
             o += "\n[keybindings]\n"
             for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }

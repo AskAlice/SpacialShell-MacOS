@@ -111,10 +111,11 @@ enum Stories {
     /// `pids` are the apps actually in the row — the rail draws one icon each and derives the
     /// category label from them, so a story without pids is a workspace of unknown apps.
     static func railItem(_ i: Int, name: String, symbol: String, count: Int, pids: [Int32] = [],
-                         active: Bool = false, pinned: Bool = false, trailing: Bool = false) -> WorkspaceRailItem {
+                         active: Bool = false, pinned: Bool = false, trailing: Bool = false,
+                         category: AppCategory? = nil) -> WorkspaceRailItem {
         WorkspaceRailItem(id: UUID(), index: i, name: name, symbol: symbol, windowCount: count,
                           windows: pids.map { WindowRef(id: WindowID($0) * 10, pid: $0) },
-                          isActive: active, isPinned: pinned, isTrailingEmpty: trailing)
+                          isActive: active, isPinned: pinned, isTrailingEmpty: trailing, category: category)
     }
     static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.LayoutID = .split,
                      layouts: LayoutCatalogue = .builtins) -> ScreenShellState {
@@ -186,6 +187,27 @@ enum Stories {
                                   pids: [5, 3, 1, 6, 4, 2], active: true),
                          railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
             launcherURL: "raycast://", metaFor: meta, send: send))
+        // #115 (G14): the other two `rail-icon-style`s over one rail — a coding row the user set
+        // (VS Code, Terminal ×2), web (derived from Safari), a pinned chat row still empty, a row
+        // of apps nobody can place (falls back to its icons), and a seed's chosen glyph.
+        let styled = [railItem(0, name: "Code", symbol: "square.grid.2x2", count: 3, pids: [5, 3, 3], category: .coding),
+                      railItem(1, name: "Web", symbol: "square.grid.2x2", count: 2, pids: [1, 1], active: true),
+                      railItem(2, name: "Chat", symbol: "square.grid.2x2", count: 0, pinned: true, category: .communication),
+                      railItem(3, name: "Workspace 4", symbol: "square.grid.2x2", count: 2, pids: [7, 8]),
+                      railItem(4, name: "Notes", symbol: "star", count: 2, pids: [2, 4]),
+                      railItem(5, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]
+        let unplaced: (Int32) -> AppMeta = { pid in
+            let m = meta(pid)
+            return pid >= 7 ? AppMeta(name: m.name, icon: m.icon, bundleID: nil, category: nil) : m
+        }
+        for style in [RailIconStyle.category, .hybrid] {
+            add("rail-icons-\(style.rawValue)", railGeometry, ScreenPanelView(
+                state: rail(styled), launcherURL: "raycast://", metaFor: unplaced, send: send, iconStyle: style))
+        }
+        // …and `category-colors` tinting the glyphs (not the active tile's: the accent says "here").
+        add("rail-icons-colours", railGeometry, ScreenPanelView(
+            state: rail(styled), launcherURL: "raycast://", metaFor: unplaced, send: send, iconStyle: .hybrid,
+            categoryColors: [.coding: "#BF5AF2", .web: "#0A84FF", .communication: "#30D158", .productivity: "#FF9F0A"]))
         // #75: "Chat" mid-drag over "Code" — the insertion line in the gap above where it lands.
         let reorder = [railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
                        railItem(1, name: "Web", symbol: "globe", count: 2, pids: [1, 1], active: true),

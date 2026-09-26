@@ -27,6 +27,7 @@ panel-width = 48
 panel-height = 34
 rail-side = "left"                # or "right"
 tab-sizing = "fit"                # or "equal"
+rail-icon-style = "app"           # or "category", "hybrid" — what a rail tile draws
 launcher-url = "raycast://"
 show-panels = true
 empty-cheatsheet = true           # dimmed cheat sheet behind an empty workspace
@@ -81,6 +82,7 @@ title-regex = "^Picture in Picture$"
 | `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
 | `tab-sizing` | `"fit"` \| `"equal"` | `"fit"` | How the tab bar spends its width. `fit`: each tab is as wide as its content and they pack left, so a single tab sits at the left edge. `equal`: every tab takes 1/n of the bar and centres its content. |
 | `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
+| `rail-icon-style` | `"app"` \| `"category"` \| `"hybrid"` | `"app"` | What a rail tile draws (#115). `app`: up to four of the workspace's apps as a 2×2 icon grid. `category`: the workspace's category symbol — its own category (the tile menu's **Set category**, or the one routing gave it), else the one its apps add up to. `hybrid`: that symbol with the workspace's top two apps (most windows first) beneath it. In `category` and `hybrid`, a symbol chosen for the workspace (**Set symbol**, or a `[[workspace]]` seed's `symbol`) beats the category's, and a workspace with neither a category nor a chosen symbol shows its app icons. Also in the settings window's Appearance pane (*Rail icons*). See [`[category-colors]`](#category-colors--rail-symbol-colours). |
 | `app-categories` | table of bundle-id → category | `{}` | Overrides the rail's category label per app. Values: `web`, `coding`, `terminal`, `communication`, `media`, `design`, `productivity`, `utilities`. See below — this exists because macOS cannot answer the question. |
 | `keybinding-overrides` | table of command \u2192 chord | `{}` | Rebinds a command, *replacing* its default chord. This is what the settings window writes. Distinct from `keybindings` below, which is chord \u2192 command and only ever *adds* a chord \u2014 useful in a hand-edited file, useless for rebinding, since the old chord keeps working. |
 | `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
@@ -327,6 +329,25 @@ chord with `fn` and an arrow means the key it really is: `"fn-shift-left"` is `"
 `right` is `end`, `up` is `pageUp` and `down` is `pageDown`. That is how the default `Fn+⇧+arrows`
 (move window to the display that way) are bound. Without `fn`, the arrow keys are the arrows, and
 ship pre-bound to `⌃⌥` in both presets.
+
+## `[category-colors]` — rail symbol colours
+
+Optional (#115). A colour per category tints that category's symbol wherever a rail tile draws it
+(`rail-icon-style = "category"` or `"hybrid"`, or an empty workspace's own symbol):
+
+```toml
+[category-colors]
+web = "#0A84FF"
+coding = "#BF5AF2"
+communication = "#30D158"
+```
+
+Keys are the category names (`web`, `coding`, `terminal`, `communication`, `media`, `design`,
+`productivity`, `utilities`); values are `#RRGGBB` or `#RRGGBBAA`. A category left out keeps the
+stock secondary glyph. The active workspace's tile ignores its colour: its symbol stays white on the
+accent fill, because the accent is what says "you are here". A key that is not a category warns
+like any unknown key; a value that is not a hex colour rejects the file, as a bad `panel-color`
+does. File only: the settings window does not edit these.
 
 ## `[telemetry]` — OpenTelemetry traces (#148)
 

@@ -82,6 +82,13 @@ import SpacialShellKit
         #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
     }
 
+    /// #115: and every glyph a category draws on the rail.
+    @Test func everyCategorySymbolExists() {
+        let missing = AppCategory.allCases.map(\.symbol)
+            .filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil }
+        #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
+    }
+
     @Test func cheatSheetWrapsToFitItsArea() {
         let groups = CheatSheetController.grouped(CheatSheet.rows(for: Config()))
         #expect(CheatSheetView.fitting(groups, in: 4000).view.rows == 1)

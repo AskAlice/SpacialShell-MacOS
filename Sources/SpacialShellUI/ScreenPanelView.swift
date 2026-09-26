@@ -8,7 +8,8 @@ import SpacialShellProtocol
 /// drawn as "+" — activating it *is* creating one, that's invariant 4 doing the work.
 ///
 /// A tile shows up to four of the apps actually in that workspace, as a 2x2 icon grid, plus its
-/// window count. Names, category and window previews live in the hover popover rather than on the
+/// window count — or, per `rail-icon-style` (#115), its category's glyph, alone or over its top
+/// apps (`RailTile.face`). Names and window previews live in the hover popover rather than on the
 /// tile: the rail is furniture and stays narrow, and the detail is one hover away.
 struct ScreenPanelView: View {
     let state: ScreenShellState
@@ -32,6 +33,9 @@ struct ScreenPanelView: View {
     var onHoverProblems: (Bool, CGRect) -> Void = { _, _ in }
     /// #112: `category-order`, which the workspace menu's "Set category" lists first.
     var categories: [AppCategory] = Config.defaultCategoryOrder
+    /// #115: `rail-icon-style` and `category-colors`.
+    var iconStyle: RailIconStyle = .app
+    var categoryColors: [AppCategory: String] = [:]
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
     /// re-enters through `Command` like every other interaction. Settable for the stories.
@@ -200,14 +204,26 @@ struct ScreenPanelView: View {
 
     @ViewBuilder
     private func row(_ item: WorkspaceRailItem) -> some View {
-        let apps = distinctApps(item)
         ZStack {
-            if item.isTrailingEmpty {
+            switch RailTile.face(for: item, style: iconStyle, categoryOf: { metaFor($0).category }) {
+            case .plus:
                 Image(systemName: "plus").font(.system(size: 15, weight: .medium))
-            } else if apps.isEmpty {
-                Image(systemName: item.symbol).font(.system(size: 15, weight: .medium))
-            } else {
-                icons(apps)
+            case .symbol(let name, let category):
+                Image(systemName: name).font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(tint(category, active: item.isActive))
+            case .apps(let pids):
+                icons(pids.map(metaFor))
+            case .hybrid(let name, let category, let pids):
+                // The glyph names the work, the icons below it name the apps doing it.
+                VStack(spacing: 2) {
+                    Image(systemName: name).font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(tint(category, active: item.isActive))
+                        .frame(height: 13)
+                    HStack(spacing: 1) {
+                        ForEach(pids, id: \.self) { appIcon(metaFor($0), side: 11) }
+                    }
+                }
+                .offset(x: pids.count > 1 ? -2 : 0, y: -1)
             }
             if !item.isTrailingEmpty && item.windowCount > 0 {
                 Text("\(item.windowCount)")
@@ -260,32 +276,37 @@ struct ScreenPanelView: View {
     }
 
     /// One icon fills the tile; two to four share it as a 2x2 grid. Enough to recognise a
-    /// workspace by shape and colour without reading anything.
+    /// workspace by shape and colour without reading anything. The apps come from `RailTile`:
+    /// one per app, in the order the row first mentions it, like the tab bar.
     @ViewBuilder
     private func icons(_ apps: [AppMeta]) -> some View {
-        let shown = Array(apps.prefix(Self.maxIcons))
+        let shown = Array(apps.prefix(RailTile.maxApps))
         let side: CGFloat = shown.count == 1 ? 22 : 11
         let columns = shown.count == 1 ? 1 : 2
         LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: 1), count: columns), spacing: 1) {
-            ForEach(Array(shown.enumerated()), id: \.offset) { _, meta in
-                if let icon = meta.icon {
-                    Image(nsImage: icon).resizable().frame(width: side, height: side)
-                } else {
-                    Image(systemName: "app.dashed").font(.system(size: side * 0.7))
-                        .frame(width: side, height: side)
-                }
-            }
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, meta in appIcon(meta, side: side) }
         }
         .frame(width: shown.count == 1 ? 22 : 23)
     }
 
-    /// One entry per app, in the order the row first mentions it — two Safari windows are one
-    /// Safari icon, and the icons read left→right in the same order the tab bar does.
-    private func distinctApps(_ item: WorkspaceRailItem) -> [AppMeta] {
-        var seen: Set<Int32> = []
-        return item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid) : nil }
+    @ViewBuilder
+    private func appIcon(_ meta: AppMeta, side: CGFloat) -> some View {
+        if let icon = meta.icon {
+            Image(nsImage: icon).resizable().frame(width: side, height: side)
+        } else {
+            Image(systemName: "app.dashed").font(.system(size: side * 0.7))
+                .frame(width: side, height: side)
+        }
     }
 
+    /// #115: a category's `category-colors` entry tints its glyph. Not on the active tile, whose
+    /// glyph is white on the accent fill: the accent says "you are here", and a tint would fight it.
+    private func tint(_ category: AppCategory?, active: Bool) -> AnyShapeStyle {
+        guard !active, let hex = category.flatMap({ categoryColors[$0] }), let (r, g, b, a) = HexColor.rgba(hex) else {
+            return AnyShapeStyle(active ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
+        }
+        return AnyShapeStyle(Color(.sRGB, red: r, green: g, blue: b, opacity: a))
+    }
 }
 
 /// A tile drags to reorder its display's stack (#75); "+" does not — it is the way down, not a

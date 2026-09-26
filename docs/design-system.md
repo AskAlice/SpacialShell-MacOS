@@ -136,7 +136,8 @@ deliberately). Binding assignments from the spec:
 | Layouts | `rectangle` · `rectangle.split.2x1` · `rectangle.split.3x1` · `sidebar.left` (half) · `square.grid.2x2` (grid); a drawn layout without a `symbol` draws its zones (`LayoutGlyph`) |
 | All layouts menu · layout popover | `ellipsis` · `gearshape` (the rail's `gearshape` is settings) |
 | Missing layout badge | `exclamationmark.triangle.fill`, multicolor |
-| Workspace tile | the workspace's `symbol` (config seed / `WorkspaceRailItem.symbol`); first app's icon when symbol is the default and the workspace has windows |
+| Workspace tile | per `rail-icon-style` (#115, `RailTile.face`): `app` — up to four app icons, the workspace's `symbol` when it has none; `category` — the chosen `symbol`, else its category's (`AppCategory.symbol`); `hybrid` — that glyph over the top two app icons. Optional `category-colors` tint the glyph on inactive tiles |
+| Category glyphs | `globe` web · `chevron.left.forwardslash.chevron.right` coding · `terminal` · `bubble.left.and.bubble.right` communication · `play.rectangle` media · `paintbrush` design · `doc.text` productivity · `wrench.and.screwdriver` utilities |
 | Floating pin | `pin.fill` · close `xmark` |
 | Native-fullscreen tab | `arrow.up.left.and.arrow.down.right` |
 | On-another-Space tab | `macwindow.on.rectangle` (not drawn on hidden tabs, which read as dimmed, nor on fullscreen ones, whose marker already says "own Space") |

@@ -183,7 +183,7 @@ struct SettingsView: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, switch motion, and whether the rail hides.")
+            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, what the rail's tiles show, switch motion, and whether the rail hides.")
             row("Panel colour", overridden: overrides.panelColor != nil) {
                 HStack(spacing: 8) {
                     ColorPicker("", selection: colorBinding).labelsHidden()
@@ -191,6 +191,15 @@ struct SettingsView: View {
                         .disabled((overrides.panelColor ?? file.panelColor) == "system")
                 }
             } reset: { overrides.panelColor = nil }
+
+            // #115: what a rail tile draws. Colours per category are config.toml's `category-colors`.
+            row("Rail icons", overridden: overrides.railIconStyle != nil) {
+                Picker("", selection: binding(\.railIconStyle, default: file.railIconStyle)) {
+                    Text("Apps").tag(RailIconStyle.app); Text("Category").tag(RailIconStyle.category)
+                    Text("Hybrid").tag(RailIconStyle.hybrid)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 210)
+                    .help("Apps: the workspace's app icons. Category: its category's symbol. Hybrid: the symbol over its top apps.")
+            } reset: { overrides.railIconStyle = nil }
 
             Divider()
             row("Switch animation", overridden: overrides.animations != nil) {

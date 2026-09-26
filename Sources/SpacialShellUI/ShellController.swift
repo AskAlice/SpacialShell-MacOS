@@ -148,7 +148,9 @@ public final class ShellController: NSObject {
                                                       self?.problemsHoverChanged(inside: inside, tile: tile,
                                                                                  display: id, screen: nsScreen)
                                                   },
-                                                  categories: config.categoryOrder)
+                                                  categories: config.categoryOrder,
+                                                  iconStyle: config.railIconStyle,
+                                                  categoryColors: config.categoryColors)
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
                                                    style: config.tabStyle, chrome: PanelChrome(config: config), send: forward,
                                                    openLayouts: { [weak self] in
