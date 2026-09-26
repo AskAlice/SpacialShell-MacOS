@@ -26,6 +26,8 @@ public actor WorldStore {
     private var displays: [DisplayInfo] = []
     private var observed: [WindowRef: CGRect] = [:]
     private var prePark: [WindowRef: CGRect] = [:]
+    /// #125: windows that came back smaller than the tile we asked for; the reconciler centres them.
+    private var refused: [WindowRef: Refusal] = [:]
     /// Spec §7.4 + §11. A window retired to `ignored` after three failed writes *while parked* is
     /// unreachable by the reconciler for good, so nothing would ever unpark it — the one way a
     /// window can be permanently stranded in a corner. Its last known real frame is kept here
@@ -358,7 +360,11 @@ public actor WorldStore {
             if locked { return }
             if let command = drop(d.ref, at: p) { await run(command); return }
         case .windowMoved(let r, let f), .windowResized(let r, let f):
-            if intents.matches(r, frame: f) { observed[r] = f; return }
+            // #125: the echo of our own write, smaller than asked — a window that cannot grow to
+            // its tile. Learned, not fought: the snap-back below re-places it centred in the tile.
+            if let asked = intents.frame(for: r), let refusal = Refusal(asked: asked, got: f) {
+                refused[r] = refusal; intents.forget(r)
+            } else if intents.matches(r, frame: f) { observed[r] = f; return }
             let was = observed[r]
             observed[r] = f
             if locked { return }
@@ -501,6 +507,7 @@ public actor WorldStore {
                 vanished += 1
                 Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
                 world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; intents.forget(gone)
+                refused[gone] = nil
                 retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
@@ -960,7 +967,7 @@ public actor WorldStore {
         logUnresolvedLayouts()
         let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
-                                         insets: insets, suspended: drag.map { [$0.ref] } ?? [])
+                                         insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: refused)
         tiles = DropTarget.tiles(world: world, desired: desired)
         borders = findBorders(desired)
         // The grabbed border's highlight follows it to where this pass puts it.
@@ -1089,7 +1096,7 @@ public actor WorldStore {
                                           workspaceWrap: config.workspaceWrap).0
             let desired = Reconciler.desired(world: next, displays: displays, config: layoutConfig,
                                              observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
-                                             insets: insets)
+                                             insets: insets, refused: refused)
             return transitions(next, to: shownRows(next, desired: desired, insets: insets), insets: insets)
         }
     }
@@ -1141,7 +1148,7 @@ public actor WorldStore {
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked,
-                                         zeroSliver: [], insets: insets)
+                                         zeroSliver: [], insets: insets, refused: refused)
         for (ref, frame) in observed.sorted(by: { $0.key.id < $1.key.id }) {
             guard Reconciler.isBeyondReach(frame, displays: displays) else { continue }
             // #55: never write to a window on another Space. ponytail: only placed windows carry the
@@ -1180,7 +1187,7 @@ public actor WorldStore {
             retired[r] = Retired(frame: lastSeen[r] ?? observed[r] ?? .zero, fullscreen: world.fullscreen.contains(r))
             Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.bundleIDs[r] ?? "-", privacy: .public) after 3 failed writes")
             world.remove(r); world.ignored.insert(r)
-            observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r)
+            observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r); refused[r] = nil
             if lastRaised == r { lastRaised = nil }
             publishWriteProblems()
         }

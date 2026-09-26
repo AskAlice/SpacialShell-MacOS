@@ -28,4 +28,6 @@ public struct IntentSet: Sendable {
         return hit
     }
     public mutating func forget(_ ref: WindowRef) { intents[ref] = nil }
+    /// #125: the frame we last asked this window for and have not heard back, if any.
+    public func frame(for ref: WindowRef) -> CGRect? { if case .frame(let f)? = intents[ref] { f } else { nil } }
 }

@@ -115,6 +115,10 @@ side below it, and `grid` has at least as many rows as columns, and `ratio` make
 landscape. Resized sizes are kept separately for each orientation. Drawn `[[layout]]` zones are
 drawn as they are, on any display.
 
+A window that cannot grow to fill its tile (it has a maximum size, or refuses the resize) sits
+centred in the tile instead of in its top-left corner, on each axis where it falls short. The
+next time its tile changes, it is offered the whole tile again.
+
 ## `[[workspace]]` — pinned workspace seeds
 
 Each `[[workspace]]` table seeds one **pinned, named** workspace on every screen at launch — the

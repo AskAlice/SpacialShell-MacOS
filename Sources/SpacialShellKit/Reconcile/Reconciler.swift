@@ -14,6 +14,32 @@ public struct LayoutConfig: Sendable, Equatable {
 }
 
 public enum Placement: Sendable, Equatable { case frame(CGRect), parked(CGPoint), untouched }
+
+/// #125 (M4 G12): a window that came back smaller than the frame we asked for — a maximum size,
+/// or an app that refuses resizes. It holds only for the frame it was learned on: a new tile is
+/// asked for in full, so a window that merely snaps to its own increments (a terminal's cell grid)
+/// is never kept small, and a window that can now grow does.
+public struct Refusal: Sendable, Equatable {
+    public var asked: CGRect
+    public var size: CGSize
+    public init(asked: CGRect, size: CGSize) { self.asked = asked; self.size = size }
+    /// The echo of our own `setFrame(asked)`: a refusal when it is smaller than asked on either
+    /// axis. Bigger is a minimum size, which the tile keeps as before (#54 bounds the tile).
+    public init?(asked: CGRect, got: CGRect, tolerance: CGFloat = 1) {
+        guard got.width < asked.width - tolerance || got.height < asked.height - tolerance else { return nil }
+        self.init(asked: asked, size: got.size)
+    }
+
+    /// `tile`, with the window centred in it on each axis where it is smaller; nil when this
+    /// refusal was learned on another tile.
+    func fitted(in tile: CGRect) -> CGRect? {
+        guard Reconciler.approx(asked, tile) else { return nil }
+        var f = tile
+        if size.width < tile.width { f.origin.x = tile.midX - size.width / 2; f.size.width = size.width }
+        if size.height < tile.height { f.origin.y = tile.midY - size.height / 2; f.size.height = size.height }
+        return f
+    }
+}
 public enum Write: Sendable, Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint) }
 
 public enum Reconciler {
@@ -31,7 +57,7 @@ public enum Reconciler {
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
                                parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
                                insets: [DisplayID: ShellInsets] = [:],
-                               suspended: Set<WindowRef> = []) -> [WindowRef: Placement] {
+                               suspended: Set<WindowRef> = [], refused: [WindowRef: Refusal] = [:]) -> [WindowRef: Placement] {
         var out: [WindowRef: Placement] = [:]
         let byId = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
         for (sid, screen) in world.screens {
@@ -70,7 +96,7 @@ public enum Reconciler {
                         continue
                     }
                     let ti = tiled.firstIndex(of: w)!
-                    out[w] = frames[ti].map { .frame($0) } ?? park(w)
+                    out[w] = frames[ti].map { .frame(refused[w]?.fitted(in: $0) ?? $0) } ?? park(w)
                 }
             }
         }
