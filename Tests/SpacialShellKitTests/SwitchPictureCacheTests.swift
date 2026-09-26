@@ -78,7 +78,9 @@ import Foundation
         }
         let started = ContinuousClock.now
         #expect(await slow.value(within: .milliseconds(50)) == nil)
-        #expect(ContinuousClock.now - started < .seconds(5), "it stopped waiting at the budget")
+        // A hang detector, not a latency check: waiting for `slow` would never end, since the gate
+        // only opens below. 5 s flaked on a loaded CI runner where the whole suite stalled ~5 s.
+        #expect(ContinuousClock.now - started < .seconds(30), "it stopped waiting at the budget")
         open.yield(); open.finish()
         #expect(await slow.value == 7, "the late value still arrives, for the cache")
     }
