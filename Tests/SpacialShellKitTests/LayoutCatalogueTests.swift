@@ -35,11 +35,16 @@ import SpacialShellProtocol
         let r = CGRect(x: Double.random(in: -2000...2000, using: &rng), y: Double.random(in: 0...500, using: &rng),
                        width: Double.random(in: 800...3000, using: &rng), height: Double.random(in: 600...1600, using: &rng))
         let g = CGFloat(Double.random(in: 0...24, using: &rng))
-        #expect(same(LayoutEngine.frames(columnZones(3), count: 3, focused: 0, in: r, gap: g),
+        // #122: a portrait rect turns column and half to the long axis, so the zones that match are
+        // the transposed ones. A 2×2 grid is row-major either way.
+        let turn = LayoutEngine.isPortrait(r)
+        func t(_ z: [(Double, Double, Double, Double)]) -> [(Double, Double, Double, Double)] { turn ? z.map { ($0.1, $0.0, $0.3, $0.2) } : z }
+        let col3 = (0..<3).map { (Double($0) / 3, 0.0, 1.0 / 3, 1.0) }
+        #expect(same(LayoutEngine.frames(zones(t(col3)), count: 3, focused: 0, in: r, gap: g),
                      LayoutEngine.frames(.column, count: 3, focused: 0, in: r, gap: g)), "column 3 \(r) g=\(g)")
         #expect(same(LayoutEngine.frames(zones(grid2x2), count: 4, focused: 0, in: r, gap: g),
                      LayoutEngine.frames(.grid, count: 4, focused: 0, in: r, gap: g)), "grid 4 \(r) g=\(g)")
-        #expect(same(LayoutEngine.frames(zones(half4), count: 4, focused: 0, in: r, gap: g),
+        #expect(same(LayoutEngine.frames(zones(t(half4)), count: 4, focused: 0, in: r, gap: g),
                      LayoutEngine.frames(.half, count: 4, focused: 0, in: r, gap: g)), "half 4 \(r) g=\(g)")
     }
 

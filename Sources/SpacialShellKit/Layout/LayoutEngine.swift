@@ -48,7 +48,7 @@ public enum LayoutEngine {
         let f = min(max(focused, 0), count - 1)
         var out = [CGRect?](repeating: nil, count: count)
         guard let (start, k) = span(layout, count: count, focused: f, in: rect, gap: gap, split: split) else { out[f] = rect; return out }
-        out.replaceSubrange(start..<start + k, with: unfloored(layout, count: k, focused: f - start, in: rect, gap: gap))
+        out.replaceSubrange(start..<start + k, with: unfloored(layout, count: k, focused: f - start, in: rect, gap: gap, portrait: isPortrait(rect)))
         return out
     }
 
@@ -60,7 +60,7 @@ public enum LayoutEngine {
         let isSplit = layout == .split
         for k in stride(from: isSplit ? min(split.columns, count) : count, to: 1, by: -1) {
             let start = isSplit ? SplitView.slide(split.start, focused: f, k: k, count: count) : min(f / k * k, count - k)
-            if unfloored(layout, count: k, focused: f - start, in: rect, gap: gap).allSatisfy({ $0.map(fits) ?? true }) { return (start, k) }
+            if unfloored(layout, count: k, focused: f - start, in: rect, gap: gap, portrait: isPortrait(rect)).allSatisfy({ $0.map(fits) ?? true }) { return (start, k) }
         }
         return nil
     }
@@ -108,18 +108,28 @@ public enum LayoutEngine {
 
     static func fits(_ r: CGRect) -> Bool { r.width >= minSize.width && r.height >= minSize.height }
 
-    static func unfloored(_ layout: BuiltinLayout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
+    /// #122 (M4 G6): taller than wide. A square is landscape.
+    public static func isPortrait(_ r: CGRect) -> Bool { r.height > r.width }
+
+    /// `portrait` (#122) turns the built-ins to the long axis: split and column stack as rows,
+    /// half takes the top half and lays the rest side by side below it, and grid has at least as
+    /// many rows as columns. Grid still fills row-major with its last row widened. It is a flag,
+    /// not read off `rect`, because the resize model (#113) asks for the shape in a unit square.
+    static func unfloored(_ layout: BuiltinLayout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat,
+                          portrait: Bool) -> [CGRect?] {
+        let along = portrait ? rows : columns, across = portrait ? columns : rows
         switch layout {
         case .maximize:
             var out = [CGRect?](repeating: nil, count: count); out[f] = rect; return out
-        case .split, .column:   // split's view (#114) is `span`'s: what it shows is laid out as columns
-            return columns(count, in: rect, gap: gap)
+        case .split, .column:   // split's view (#114) is `span`'s: what it shows is laid out along the long axis
+            return along(count, rect, gap)
         case .half:
             if count == 1 { return [rect] }
-            let cols = columns(2, in: rect, gap: gap)
-            return [cols[0] as CGRect?] + rows(count - 1, in: cols[1], gap: gap).map { $0 as CGRect? }
+            let halves = along(2, rect, gap)
+            return [halves[0] as CGRect?] + across(count - 1, halves[1], gap).map { $0 as CGRect? }
         case .grid:
-            let cols = Int(Double(count).squareRoot().rounded(.up))
+            let long = Int(Double(count).squareRoot().rounded(.up))
+            let cols = portrait ? Int((Double(count) / Double(long)).rounded(.up)) : long
             let nRows = Int((Double(count) / Double(cols)).rounded(.up))
             let rowRects = rows(nRows, in: rect, gap: gap)
             var out: [CGRect?] = []

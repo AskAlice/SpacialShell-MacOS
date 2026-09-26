@@ -105,6 +105,12 @@ windows as columns — 2 by default, 2–6 per workspace from the layout popover
 `split-columns-more`/`-fewer`; focus moving past either edge slides it by one), `column` (all windows as equal columns), `half` (one window fills the left half, the
 rest stack in the right half), `grid` (a roughly-square grid, row-major, last row widened to fill).
 
+On a display taller than wide (portrait), the built-ins turn to the long axis: `split` and `column`
+stack their windows as rows, `half` gives the top half to one window and lays the rest side by
+side below it, and `grid` has at least as many rows as columns. A square display counts as
+landscape. Resized sizes are kept separately for each orientation. Drawn `[[layout]]` zones are
+drawn as they are, on any display.
+
 ## `[[workspace]]` — pinned workspace seeds
 
 Each `[[workspace]]` table seeds one **pinned, named** workspace on every screen at launch — the

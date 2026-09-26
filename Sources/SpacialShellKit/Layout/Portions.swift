@@ -210,11 +210,13 @@ extension LayoutEngine {
         switch def.body {
         case .builtin(let b):
             guard let (start, k) = span(b, count: count, focused: f, in: rect, gap: gap, split: split) else { return nil }
-            for (i, r) in unfloored(b, count: k, focused: f - start, in: unit, gap: 0).enumerated() {
+            let portrait = isPortrait(rect)
+            for (i, r) in unfloored(b, count: k, focused: f - start, in: unit, gap: 0, portrait: portrait).enumerated() {
                 zones[start + i] = r.map { LayoutZone(x: $0.minX, y: $0.minY, w: $0.width, h: $0.height) }
             }
             let shown = zones.compactMap { $0 }
-            return Resize.Page(key: "\(def.id.rawValue)#\(shown.count)", zones: zones, all: shown)
+            // #122: a portrait page is a different shape, so it keeps its own sizes.
+            return Resize.Page(key: "\(def.id.rawValue)#\(shown.count)" + (portrait ? "@portrait" : ""), zones: zones, all: shown)
         case .zones(let all):
             let usable = all.filter { fits(self.rect(for: $0, in: rect, gap: gap)) }
             guard !usable.isEmpty else { return nil }
