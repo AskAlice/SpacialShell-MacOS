@@ -4,6 +4,7 @@
 one address, you move by direction, and the shell remembers where you put things.
 
 ![The shell at a glance: rail, tab bar and tiled windows](media/live-overview.webp)
+
 *Live capture: the rail on the left, the tab bar on top, tiled windows below. `Fn+Space` cycles
 layouts, `Fn+A`/`Fn+D` move along the row, `Fn+W`/`Fn+S` move between rows.*
 
@@ -64,6 +65,7 @@ successor [Veshell](https://github.com/free-explorers/veshell) is its own Waylan
   instead of asking you to name it.
 
 ![Workspaces as rows, windows as cells](media/spatialisation.webp)
+
 *Render, not a live capture.*
 
 ## Placement memory
@@ -78,6 +80,7 @@ successor [Veshell](https://github.com/free-explorers/veshell) is its own Waylan
   command, and parked windows are recovered after a crash.
 
 ![The rail with real apps, each in the row its category sends it to](media/live-rail-apps.webp)
+
 *Live capture.*
 
 ## The tiling engine
@@ -86,6 +89,7 @@ Windows are always tiled and never overlap. `Fn+Space` cycles **maximize**, **sp
 N-column sliding view, N per workspace), **column**, **half** and **grid**.
 
 ![Cycling the layouts](media/tiling-showcase.webp)
+
 *Render, not a live capture.*
 
 - **Layouts are data:** draw your own in the layout editor, or write `[[layout]]` blocks in
@@ -108,6 +112,7 @@ from System Settings. Two panels, one job — showing you *where you are*:
   right-click for Close / Float / Move to workspace, middle-click to close.
 
 ![A tab dragged along the bar, then onto a workspace in the rail](media/live-tab-drag.webp)
+
 *Live capture.*
 
 Hold `Fn` for a cheat sheet of *your* bindings, `Fn+Tab` for the overview, `Fn+Esc` for Zen mode.
