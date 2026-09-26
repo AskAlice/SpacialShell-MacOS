@@ -83,8 +83,9 @@ title-regex = "^Picture in Picture$"
 | `category-order` | list of categories | `["web", "terminal", "coding", "media", "utilities"]` | Where an app's windows go: one row per listed category on each display, shared by every app of that category and kept at the top of the stack in this order. For these apps this beats the remembered workspace. Apps of any other category, or of none, get a row each below them. `[]` turns this off. Category names are the `app-categories` values. Also in the settings window's Workspaces pane. See [Where windows land](#where-windows-land-at-launch). |
 | `max-workspaces` | integer | `12` | Category routing never grows a display past this many rows (the empty row at the bottom does not count). Past it, a new app joins the last row. Also in the settings window's Workspaces pane (1–30). |
 
-Layout names: `maximize` (one window fills the screen), `split` (focused window + one neighbour,
-two columns), `column` (all windows as equal columns), `half` (one window fills the left half, the
+Layout names: `maximize` (one window fills the screen), `split` (a sliding view of N consecutive
+windows as columns — 2 by default, 2–6 per workspace from the layout popover's −/+ or
+`split-columns-more`/`-fewer`; focus moving past either edge slides it by one), `column` (all windows as equal columns), `half` (one window fills the left half, the
 rest stack in the right half), `grid` (a roughly-square grid, row-major, last row widened to fill).
 
 ## `[[workspace]]` — pinned workspace seeds
@@ -270,6 +271,7 @@ Generated from `KeyBindings.commandNames`:
 | `shrink-width` / `grow-width` | Move the focused tile's side edge 5 % (stopping on 25/50/75 %) to make it narrower / wider; its neighbour gives or takes the space |
 | `shrink-height` / `grow-height` | The same for its top or bottom edge, where the layout has rows (half, grid, drawn layouts) |
 | `balance` | Put every layout of the focused workspace back to its designed sizes |
+| `split-columns-more` / `split-columns-fewer` | Show one column more / fewer in the focused workspace's *split* (2–6, default 2; remembered per workspace and across relaunch). Unbound by default; does nothing when the layout is not split |
 
 ### Key names
 

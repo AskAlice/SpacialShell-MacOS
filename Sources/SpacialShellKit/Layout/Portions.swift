@@ -201,14 +201,15 @@ extension Portions {
 extension LayoutEngine {
     /// #113: the page `frames(def…)` shows, in unit zones — nil when nothing on it can resize
     /// (no windows, or the #54 floor left only the focused window on the whole rect).
-    public static func page(_ def: LayoutDef, count: Int, focused: Int, in rect: CGRect, gap: CGFloat) -> Resize.Page? {
+    public static func page(_ def: LayoutDef, count: Int, focused: Int, in rect: CGRect, gap: CGFloat,
+                            split: SplitView = SplitView()) -> Resize.Page? {
         guard count > 0 else { return nil }
         let f = min(max(focused, 0), count - 1)
         let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
         var zones = [LayoutZone?](repeating: nil, count: count)
         switch def.body {
         case .builtin(let b):
-            guard let (start, k) = span(b, count: count, focused: f, in: rect, gap: gap) else { return nil }
+            guard let (start, k) = span(b, count: count, focused: f, in: rect, gap: gap, split: split) else { return nil }
             for (i, r) in unfloored(b, count: k, focused: f - start, in: unit, gap: 0).enumerated() {
                 zones[start + i] = r.map { LayoutZone(x: $0.minX, y: $0.minY, w: $0.width, h: $0.height) }
             }
@@ -227,9 +228,9 @@ extension LayoutEngine {
     /// under the #54 floor is blended back towards natural until it fits, so the floor always
     /// holds and a resize never changes how many windows the page shows.
     public static func frames(_ def: LayoutDef, count: Int, focused: Int, in rect: CGRect, gap: CGFloat,
-                              portions: [String: Portions]) -> [CGRect?] {
-        let base = frames(def, count: count, focused: focused, in: rect, gap: gap)
-        guard !portions.isEmpty, let page = page(def, count: count, focused: focused, in: rect, gap: gap),
+                              portions: [String: Portions], split: SplitView = SplitView()) -> [CGRect?] {
+        let base = frames(def, count: count, focused: focused, in: rect, gap: gap, split: split)
+        guard !portions.isEmpty, let page = page(def, count: count, focused: focused, in: rect, gap: gap, split: split),
               let p = portions[page.key], !p.isNatural(page) else { return base }
         func build(_ t: Double) -> [CGRect?] {
             page.zones.map { $0.map { self.rect(for: page.remap($0, p, t: t), in: rect, gap: gap) } }
@@ -253,7 +254,8 @@ extension World {
         let ws = s.active, row = tiled(in: ws)
         guard let i = row.firstIndex(of: f) else { return nil }
         let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
-        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: gap)
+        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: gap,
+                                           split: ws.split(in: row))
         else { return nil }
         return (ws.id, page, i)
     }

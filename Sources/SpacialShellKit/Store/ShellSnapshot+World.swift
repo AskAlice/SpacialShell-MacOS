@@ -34,7 +34,8 @@ extension ShellSnapshot {
                 // A unit-free rect big enough that no zone floor engages: "would the layout show
                 // it", not "is it on screen now" — right mid-hot-plug too.
                 let frames = LayoutEngine.frames(layouts.resolve(ws.layout).def, count: tiled.count, focused: focused,
-                                                 in: CGRect(x: 0, y: 0, width: 100_000, height: 100_000), gap: 0)
+                                                 in: CGRect(x: 0, y: 0, width: 100_000, height: 100_000), gap: 0,
+                                                 split: ws.split(in: tiled))
                 return ws.windows.map { w in
                     let floating = ws.floating.contains(w)
                     let visible = world.hidden.contains(w) ? false

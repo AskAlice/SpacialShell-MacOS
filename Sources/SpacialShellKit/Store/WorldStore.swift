@@ -807,7 +807,8 @@ public actor WorldStore {
         guard let g = grab?.ref, let loc = world.location(ofWorkspace: g.workspace), let rect = tilingRect(loc.screen) else { return false }
         let ws = world.screens[loc.screen]!.workspaces[loc.index], row = world.tiled(in: ws)
         let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
-        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap),
+        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap,
+                                           split: ws.split(in: row)),
               page.key == g.key else { return false }
         let axis = g.border.axis
         let u = Resize.unit(axis == .width ? p.x : p.y, axis: axis, in: rect, gap: config.gap)
@@ -845,7 +846,8 @@ public actor WorldStore {
             guard let screen = world.screens[sid], let rect = tilingRect(sid) else { continue }
             let ws = screen.active, row = world.tiled(in: ws)
             let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
-            guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap)
+            guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap,
+                                               split: ws.split(in: row))
             else { continue }
             let frames: [CGRect?] = row.map { if case .frame(let f)? = desired[$0] { f } else { nil } }
             out += Resize.borders(page, frames: frames).map { BorderRef(display: sid, workspace: ws.id, key: page.key, border: $0) }

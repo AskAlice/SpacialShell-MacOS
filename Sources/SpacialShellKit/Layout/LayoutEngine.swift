@@ -1,6 +1,24 @@
 import Foundation
 import CoreGraphics
 
+/// #114 (M4 G5): split is an N-column sliding view. It shows `columns` consecutive tiled windows
+/// from `start`, a hint the engine clamps (`slide`) so the focused window is always in view; the
+/// model keeps the hint in step with focus (`World.slideViews`), so focus moving past either edge
+/// slides the view by one and moving inside it moves nothing.
+public struct SplitView: Equatable, Sendable {
+    public static let defaultColumns = 2
+    public static let columnRange = 2...6
+    public var columns: Int
+    public var start: Int
+    public init(columns: Int = defaultColumns, start: Int = 0) { self.columns = columns; self.start = start }
+
+    /// The first index of a `k`-wide view of `count` windows that holds `focused`, as close to
+    /// `start` as that allows.
+    public static func slide(_ start: Int, focused f: Int, k: Int, count: Int) -> Int {
+        min(max(min(max(start, f - k + 1), f), 0), count - k)
+    }
+}
+
 public enum LayoutEngine {
     /// The smallest frame a tiled window is ever handed (#54). Below this a window is "on screen"
     /// in the model and useless in fact — the I6 failure mode — so a crowded row parks its
@@ -21,11 +39,15 @@ public enum LayoutEngine {
     ///
     /// A rect below `minSize` itself cannot meet the floor at all; the focused window then gets
     /// the whole rect anyway, because a focused window on screen beats a floor.
-    public static func frames(_ layout: BuiltinLayout, count: Int, focused: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
+    ///
+    /// Split (#114) is the exception to pages: its view is `split.columns` wide at most and slides
+    /// from `split.start` rather than flipping, and the floor narrows it the same way.
+    public static func frames(_ layout: BuiltinLayout, count: Int, focused: Int, in rect: CGRect, gap: CGFloat,
+                              split: SplitView = SplitView()) -> [CGRect?] {
         guard count > 0 else { return [] }
         let f = min(max(focused, 0), count - 1)
         var out = [CGRect?](repeating: nil, count: count)
-        guard let (start, k) = span(layout, count: count, focused: f, in: rect, gap: gap) else { out[f] = rect; return out }
+        guard let (start, k) = span(layout, count: count, focused: f, in: rect, gap: gap, split: split) else { out[f] = rect; return out }
         out.replaceSubrange(start..<start + k, with: unfloored(layout, count: k, focused: f - start, in: rect, gap: gap))
         return out
     }
@@ -33,9 +55,11 @@ public enum LayoutEngine {
     /// The #54 page `frames` lays out: its first index and size, nil when not even two fit.
     /// ponytail: linear search down from `count`, re-running the layout each step — O(n²) in
     /// tiny n (windows in one row). Closed-form capacity per layout if rows ever get huge.
-    static func span(_ layout: BuiltinLayout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat) -> (start: Int, k: Int)? {
-        for k in stride(from: count, to: 1, by: -1) {
-            let start = min(f / k * k, count - k)
+    static func span(_ layout: BuiltinLayout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat,
+                     split: SplitView = SplitView()) -> (start: Int, k: Int)? {
+        let isSplit = layout == .split
+        for k in stride(from: isSplit ? min(split.columns, count) : count, to: 1, by: -1) {
+            let start = isSplit ? SplitView.slide(split.start, focused: f, k: k, count: count) : min(f / k * k, count - k)
             if unfloored(layout, count: k, focused: f - start, in: rect, gap: gap).allSatisfy({ $0.map(fits) ?? true }) { return (start, k) }
         }
         return nil
@@ -47,10 +71,11 @@ public enum LayoutEngine {
     /// zones 0…k-1 in array order, the rest park and keep their tabs, and trailing zones stay empty
     /// when there are fewer windows than zones. No zone is the focus zone: focus picks the page,
     /// so moving focus inside a page moves nothing.
-    public static func frames(_ def: LayoutDef, count: Int, focused: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
+    public static func frames(_ def: LayoutDef, count: Int, focused: Int, in rect: CGRect, gap: CGFloat,
+                              split: SplitView = SplitView()) -> [CGRect?] {
         switch def.body {
         case .builtin(let b):
-            return frames(b, count: count, focused: focused, in: rect, gap: gap)
+            return frames(b, count: count, focused: focused, in: rect, gap: gap, split: split)
         case .zones(let zones):
             guard count > 0 else { return [] }
             let usable = zones.map { self.rect(for: $0, in: rect, gap: gap) }.filter(fits)
@@ -87,12 +112,7 @@ public enum LayoutEngine {
         switch layout {
         case .maximize:
             var out = [CGRect?](repeating: nil, count: count); out[f] = rect; return out
-        case .split:
-            if count == 1 { return [rect] }
-            let (a, b) = f == count - 1 ? (f - 1, f) : (f, f + 1)
-            let cols = columns(2, in: rect, gap: gap)
-            var out = [CGRect?](repeating: nil, count: count); out[a] = cols[0]; out[b] = cols[1]; return out
-        case .column:
+        case .split, .column:   // split's view (#114) is `span`'s: what it shows is laid out as columns
             return columns(count, in: rect, gap: gap)
         case .half:
             if count == 1 { return [rect] }

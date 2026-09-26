@@ -8,6 +8,8 @@ public struct PersistedState: Codable, Equatable, Sendable {
         /// #113: the row's resized layouts. Optional, so older state files decode and a row with
         /// none writes nothing.
         public var portions: [String: Portions]?
+        /// #114: split's column count; nil (not written) at the default, so older files decode.
+        public var splitColumns: Int?
     }
     public struct ScreenState: Codable, Equatable, Sendable {
         public var workspaces: [WorkspaceState]; public var activeIndex: Int
@@ -35,7 +37,8 @@ public struct PersistedState: Codable, Equatable, Sendable {
     public init(world: World, placements: [String: UUID] = [:], movedApps: Set<String> = []) {
         screens = world.screens.mapValues { s in
             ScreenState(workspaces: s.workspaces.map { WorkspaceState(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: $0.pinned, category: $0.category,
-                                                          portions: $0.portions.isEmpty ? nil : $0.portions) },
+                                                          portions: $0.portions.isEmpty ? nil : $0.portions,
+                                                          splitColumns: $0.splitColumns == SplitView.defaultColumns ? nil : $0.splitColumns) },
                         activeIndex: s.activeIndex)
         }
         zen = world.zen
@@ -96,7 +99,7 @@ public struct PersistedState: Codable, Equatable, Sendable {
             ss.workspaces.filter { $0.pinned || wanted.contains($0.id) }.map {
                 Workspace(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout,
                           pinned: $0.pinned, reserved: wanted.contains($0.id), category: $0.category,
-                          portions: $0.portions ?? [:])
+                          portions: $0.portions ?? [:], splitColumns: $0.splitColumns ?? SplitView.defaultColumns)
             }
         }
         for (id, ss) in screens {

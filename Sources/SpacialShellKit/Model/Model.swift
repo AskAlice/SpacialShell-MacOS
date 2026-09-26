@@ -35,15 +35,26 @@ public struct Workspace: Codable, Equatable, Sendable {
     /// Persisted by `PersistedState`, not here: the keys below leave it out so a `Workspace` written
     /// before #113 still decodes.
     public var portions: [String: Portions] = [:]
+    /// #114: how many columns `split` shows here (`SplitView.columns`, default 2). Persisted by
+    /// `PersistedState`, left out of the keys below like `portions`.
+    public var splitColumns: Int = SplitView.defaultColumns
+    /// #114: the first window of split's sliding view. A hint, not a rule: `slideViews()` keeps it
+    /// in step with the anchor, and the engine clamps it so the focused window is always in view.
+    public var splitStart: WindowRef?
     enum CodingKeys: String, CodingKey { case id, name, symbol, layout, windows, floating, anchor, pinned, reserved, category }
     public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: LayoutID,
                 windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil,
                 pinned: Bool = false, reserved: Bool = false, category: AppCategory? = nil,
-                portions: [String: Portions] = [:]) {
+                portions: [String: Portions] = [:], splitColumns: Int = SplitView.defaultColumns) {
         self.id = id; self.name = name; self.symbol = symbol; self.layout = layout
         self.windows = windows; self.floating = floating; self.anchor = anchor
         self.pinned = pinned; self.reserved = reserved; self.category = category
-        self.portions = portions
+        self.portions = portions; self.splitColumns = splitColumns
+    }
+
+    /// #114: split's view of `row` (this workspace's tiled windows), for the engine.
+    public func split(in row: [WindowRef]) -> SplitView {
+        SplitView(columns: splitColumns, start: splitStart.flatMap { row.firstIndex(of: $0) } ?? 0)
     }
     public var isEmpty: Bool { windows.isEmpty }
 }

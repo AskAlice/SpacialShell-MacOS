@@ -97,6 +97,13 @@ public enum Command: Sendable, Hashable {
     /// drag commits, move by move.
     case setPortions(UUID, key: String, Portions?)
 
+    // #114 (M4 G5): split's column count, per workspace.
+    /// `split-columns-more` / `split-columns-fewer`: the focused row's split shows one column more
+    /// (+1) or fewer (−1), within `SplitView.columnRange`. A no-op on a row that is not split.
+    case adjustSplitColumns(Int)
+    /// The layout popover's −/+: a workspace's split column count, set outright (clamped).
+    case setSplitColumns(UUID, Int)
+
     // #10: the layout popover and editor. App-layer, like `.openSettings`: `AppRuntime` routes them
     // to the layouts controller, they edit `settings.json`, and the model ignores them.
     /// New… (nil) or Edit… from the popover. `workspace` is the one a newly saved layout is applied to.

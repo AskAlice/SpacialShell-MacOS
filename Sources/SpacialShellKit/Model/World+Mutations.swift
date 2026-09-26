@@ -281,6 +281,7 @@ extension World {
 
     /// Restores invariants 4 and 5 after any mutation. Idempotent.
     public mutating func normalize() {
+        defer { slideViews() }
         for id in screens.keys {
             var s = screens[id]!
             let activeId = s.workspaces.indices.contains(s.activeIndex) ? s.workspaces[s.activeIndex].id : nil
@@ -308,5 +309,20 @@ extension World {
         if let w = focus.window, !(vis.contains(w) || ephemeral.contains(w)) { focus.window = nil }
         if focus.window == nil { focus.window = fs.active.anchor.flatMap { vis.contains($0) ? $0 : nil } ?? vis.first }
         if let w = focus.window, vis.contains(w) { screens[focus.screen]!.workspaces[fs.activeIndex].anchor = w }
+    }
+
+    /// #114: every row's split view slid just far enough to hold its anchor — past the edge by
+    /// one, never a page. Run after every change that can move an anchor (`normalize()`, and
+    /// `CommandRunner` after each command), so the view remembers where it was between them.
+    public mutating func slideViews() {
+        for id in screens.keys {
+            for i in screens[id]!.workspaces.indices {
+                let ws = screens[id]!.workspaces[i], row = tiled(in: ws)
+                guard !row.isEmpty else { screens[id]!.workspaces[i].splitStart = nil; continue }
+                let f = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
+                let v = ws.split(in: row)
+                screens[id]!.workspaces[i].splitStart = row[SplitView.slide(v.start, focused: f, k: min(v.columns, row.count), count: row.count)]
+            }
+        }
     }
 }

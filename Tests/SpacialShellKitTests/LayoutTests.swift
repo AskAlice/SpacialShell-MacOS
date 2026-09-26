@@ -21,8 +21,8 @@ import Foundation
         let f = LayoutEngine.frames(.maximize, count: 3, focused: 1, in: r, gap: 8)
         #expect(f[0] == nil && f[2] == nil && eq(f[1], r))
     }
-    @Test func splitShowsFocusedAndRightNeighbour() {
-        let f = LayoutEngine.frames(.split, count: 4, focused: 1, in: r, gap: 0)
+    @Test func splitShowsItsViewFromTheStartHint() {   // #114: the view slides; see SplitColumnsTests
+        let f = LayoutEngine.frames(.split, count: 4, focused: 1, in: r, gap: 0, split: SplitView(start: 1))
         #expect(f[0] == nil && f[3] == nil)
         #expect(eq(f[1], CGRect(x: 0, y: 0, width: 500, height: 600)))
         #expect(eq(f[2], CGRect(x: 500, y: 0, width: 500, height: 600)))

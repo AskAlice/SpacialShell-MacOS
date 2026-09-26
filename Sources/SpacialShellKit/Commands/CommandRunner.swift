@@ -22,7 +22,9 @@ public enum CommandRunner {
         var why: CommandReport?
         let (w, e) = apply(command, to: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
                            categoryOrder: categoryOrder, why: &why)
-        return CommandOutcome(world: w, effects: e,
+        var slid = w
+        slid.slideViews()   // #114: not every path normalizes, and every focus move can slide split
+        return CommandOutcome(world: slid, effects: e,
                               report: why ?? (e.isEmpty && w == input ? .noop("nothing to do") : .done))
     }
 
@@ -387,6 +389,20 @@ public enum CommandRunner {
             guard let loc = w.location(ofWorkspace: id),
                   w.screens[loc.screen]!.workspaces[loc.index].portions[key] != p else { return (w, []) }
             w.screens[loc.screen]!.workspaces[loc.index].portions[key] = p
+            effects.append(.relayout)
+
+        case .adjustSplitColumns(let d):
+            guard layouts.resolve(screen.active.layout).def.id == .split else { return noop("the layout is not split") }
+            return apply(.setSplitColumns(screen.active.id, screen.active.splitColumns + d), to: w, layouts: layouts,
+                         displays: displays, workspaceWrap: workspaceWrap, categoryOrder: categoryOrder, why: &why)
+
+        case .setSplitColumns(let id, let n):
+            guard let loc = w.location(ofWorkspace: id) else { return fail(.unknownWorkspace(id.uuidString)) }
+            let r = SplitView.columnRange, clamped = min(max(n, r.lowerBound), r.upperBound)
+            guard w.screens[loc.screen]!.workspaces[loc.index].splitColumns != clamped else {
+                return noop("split already shows \(clamped) columns")
+            }
+            w.screens[loc.screen]!.workspaces[loc.index].splitColumns = clamped
             effects.append(.relayout)
 
         case .rescueWindows:

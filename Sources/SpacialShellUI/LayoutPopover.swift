@@ -15,6 +15,7 @@ struct LayoutPopoverView: View {
 
     static let width: CGFloat = 300
     private var workspace: UUID? { state.rail.first(where: \.isActive)?.id }
+    private var splitColumns: Int { state.rail.first(where: \.isActive)?.splitColumns ?? SplitView.defaultColumns }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -71,6 +72,7 @@ struct LayoutPopoverView: View {
                     .foregroundStyle(Color.accentColor)
             }
             Spacer(minLength: 8)
+            if choice.id == .split { columnStepper }
             Toggle("Show on bar", isOn: Binding(get: { choice.onBar },
                                                 set: { send(.showLayoutOnBar(choice.id, $0)) }))
                 .toggleStyle(.switch).controlSize(.mini).labelsHidden()
@@ -83,6 +85,30 @@ struct LayoutPopoverView: View {
             .fill(current ? AnyShapeStyle(Color.accentColor.opacity(0.18)) : AnyShapeStyle(Color.primary.opacity(0.001))))
         .contentShape(Rectangle())
         .onTapGesture { if let workspace { send(.setWorkspaceLayout(workspace, choice.id)) } }
+    }
+}
+
+extension LayoutPopoverView {
+    /// #114: split's column count for this workspace, −/+ within `SplitView.columnRange`.
+    fileprivate var columnStepper: some View {
+        let range = SplitView.columnRange
+        func step(_ symbol: String, _ d: Int, _ help: String) -> some View {
+            Button { if let workspace { send(.setSplitColumns(workspace, splitColumns + d)) } } label: {
+                Image(systemName: symbol).font(.system(size: 9, weight: .semibold)).frame(width: 16, height: 16).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!range.contains(splitColumns + d))
+            .foregroundStyle(range.contains(splitColumns + d) ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+            .help(help)
+        }
+        return HStack(spacing: 2) {
+            step("minus", -1, "Fewer columns")
+            Text("\(splitColumns)").font(.system(size: 11).monospacedDigit()).frame(minWidth: 10)
+            step("plus", 1, "More columns")
+        }
+        .padding(.horizontal, 2)
+        .background(Capsule().fill(.quaternary))
+        .help("Columns split shows")
     }
 }
 

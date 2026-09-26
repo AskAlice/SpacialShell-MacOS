@@ -105,7 +105,8 @@ import SpacialShellProtocol
         let rects = [CGRect(x: 8, y: 42, width: 1864, height: 1021), CGRect(x: 0, y: 0, width: 500, height: 300)]
         var checked = 0
         for l in BuiltinLayout.allCases { for (ri, rect) in rects.enumerated() { for n in 1...9 { for f in 0..<n {
-            let now = LayoutEngine.frames(builtin(l), count: n, focused: f, in: rect, gap: 8)
+            // #114: split's view starting at the focused window is the pre-#9 split exactly.
+            let now = LayoutEngine.frames(builtin(l), count: n, focused: f, in: rect, gap: 8, split: SplitView(start: f))
                 .map { $0.map { [Double($0.minX), Double($0.minY), Double($0.width), Double($0.height)] } }
             #expect(now == golden["\(l.rawValue) r\(ri) n\(n) f\(f)"], "\(l) r\(ri) n\(n) f\(f)")
             checked += 1

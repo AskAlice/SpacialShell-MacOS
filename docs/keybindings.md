@@ -53,6 +53,7 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Cycle layout round the layout bar (default: maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
 | Cycle layout backwards | `Fn+⇧Space` | `⌃⌥⇧Space` | — |
 | Set a specific layout (`set-layout-grid`, `set-layout-<saved id>`) | unbound | unbound | — |
+| Split: one column more / fewer (`split-columns-more` / `split-columns-fewer`) | unbound | unbound | — |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` | Super (overview) |
 | Open the config file | `Fn+,` | `⌃⌥,` | — |
@@ -71,7 +72,8 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 wraps at the ends; minimized / hidden windows are skipped and ephemeral "visitor" windows (System
 Settings, Calculator by default) are in no row at all. Under the *maximize* layout this behaves
 exactly like switching tabs — the newly focused window fills the screen and the previous one is
-parked. Under *split* the focused window and its right neighbour are shown.
+parked. Under *split* (#114) a view of N consecutive windows is shown (2 by default); moving
+focus inside it moves nothing, and moving past either edge slides it along by one window.
 
 ‡ The grammar is Fn = navigate, +⇧ = move, +⌃ = resize, +⌥ = monitor, and on the move chord +⌥
 means "the whole app". The `ctrl-alt` prefix already holds ⌥, so there the chord would be `⌃⌥⇧W/S`
@@ -132,6 +134,11 @@ Semantics worth knowing:
   per number of tiles shown (three columns and four keep their own), and survive relaunch;
   `Fn+⌃=` (`balance`) puts every layout of the workspace back as designed. Maximize has no edge
   to move, so the keys do nothing there; nor does a tile whose edge on that axis is the screen's.
+- **Split columns** (#114): *split* shows N windows side by side, N per workspace from 2 to 6
+  (default 2). Change it with the − / + on the Split row of the tab bar's layout popover (the cog),
+  or bind `split-columns-more` / `split-columns-fewer`. N is remembered per workspace and survives
+  relaunch; resized sizes apply within the N shown, and each N keeps its own. A screen too narrow
+  for N columns of 120 pt shows as many as fit.
 - **Mouse resize** (#113): hover the gap between two tiles and it lights up; drag it and both
   tiles follow live, snapping to 25/50/75 % when you pass within 2 % of them. Grabbing a tile's own
   edge next to a neighbour does the same. Every edge in line with it moves too: dragging the line

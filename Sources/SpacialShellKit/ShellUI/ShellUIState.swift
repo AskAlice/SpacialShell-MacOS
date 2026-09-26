@@ -24,14 +24,16 @@ public struct WorkspaceRailItem: Identifiable, Equatable, Sendable {
     public let category: AppCategory?
     /// This row's layout as stored, for the workspace menu's "Set layout" check.
     public let layout: LayoutID
+    /// #114: how many columns this row's split shows — the layout popover's −/+.
+    public let splitColumns: Int
     public init(id: UUID, index: Int, name: String, symbol: String, windowCount: Int,
                 windows: [WindowRef] = [], isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool,
-                category: AppCategory? = nil, layout: LayoutID = .maximize) {
+                category: AppCategory? = nil, layout: LayoutID = .maximize, splitColumns: Int = SplitView.defaultColumns) {
         self.id = id; self.index = index; self.name = name; self.symbol = symbol
         self.windowCount = windowCount; self.windows = windows
         self.isActive = isActive; self.isPinned = isPinned
         self.isTrailingEmpty = isTrailingEmpty
-        self.category = category; self.layout = layout
+        self.category = category; self.layout = layout; self.splitColumns = splitColumns
     }
 }
 
@@ -186,7 +188,7 @@ public enum ShellUI {
                 isActive: i == screen.activeIndex,
                 isPinned: ws.pinned,
                 isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned,
-                category: ws.category, layout: ws.layout)
+                category: ws.category, layout: ws.layout, splitColumns: ws.splitColumns)
         }
         let active = screen.active
         let tabs = active.windows.map { w in

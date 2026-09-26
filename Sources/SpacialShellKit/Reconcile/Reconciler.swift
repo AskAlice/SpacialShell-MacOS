@@ -42,7 +42,7 @@ public enum Reconciler {
                 let active = i == screen.activeIndex
                 let tiled = world.tiled(in: ws)
                 let focusedIndex = ws.anchor.flatMap { tiled.firstIndex(of: $0) } ?? 0
-                let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap, portions: ws.portions) : []
+                let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap, portions: ws.portions, split: ws.split(in: tiled)) : []
                 for w in ws.windows {
                     if suspended.contains(w) { out[w] = .untouched; continue }
                     // macOS owns a fullscreen window's frame and Space: never frame it, never park it.
