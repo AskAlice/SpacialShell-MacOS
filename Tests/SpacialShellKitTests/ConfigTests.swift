@@ -83,6 +83,13 @@ import Foundation
         #expect(try Config.parse(toml: c.render()).tabStyle == .icon)
         #expect(throws: (any Error).self) { try Config.parse(toml: #"tab-style = "tiny""#) }
     }
+
+    /// `tab-sizing` survives a render: it was parsed but never written back, so re-rendering the
+    /// config silently reset it to `fit` (#144).
+    @Test func tabSizingRoundTrips() throws {
+        let c = try Config.parse(toml: #"tab-sizing = "equal""#)
+        #expect(try Config.parse(toml: c.render()).tabSizing == .equal)
+    }
     @Test func unknownRailSideRejects() {
         #expect(throws: (any Error).self) { try Config.parse(toml: #"rail-side = "middle""#) }
     }

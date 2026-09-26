@@ -267,6 +267,7 @@ public struct Config: Codable, Equatable, Sendable {
         panel-width = \(panelWidth)
         panel-height = \(panelHeight)
         rail-side = \(q(railSide.rawValue))
+        tab-sizing = \(q(tabSizing.rawValue))
         tab-style = \(q(tabStyle.rawValue))
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
