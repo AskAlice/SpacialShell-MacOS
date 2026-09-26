@@ -399,6 +399,9 @@ enum Stories {
             CheatSheetView.fitting(CheatSheetController.grouped(CheatSheet.rows(for: Config())),
                                    dimmed: true, in: 1024 - 48).view)
 
+        // #108: the tile a dragged window would swap with, at a half-split tile's size.
+        add("drop-target", CGSize(width: 480, height: 320), DropTargetView())
+
         return out
     }
 }

@@ -178,14 +178,18 @@ public final class AXWindowBackend: WindowBackend {
         // window raises nothing), so every mouse-up refreshes; and new windows are not adopted
         // while the button is down, because a tab being dragged out is briefly its own window
         // (AeroSpace #1001).
+        // #108: both also report where, so the store can tell a title-bar drag and its drop. The
+        // up is yielded before the refresh it schedules, so the drop lands before the sweep does.
         if let down = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown], handler: { [weak self] _ in
             self?.mouseDown = true
             self?.noteHumanInput()
+            self?.continuation.yield(.pointerDown(Self.pointer()))
         }) {
             eventMonitors.append(down)
         }
         if let up = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp], handler: { [weak self] _ in
             self?.mouseDown = false
+            self?.continuation.yield(.pointerUp(Self.pointer()))
             self?.scheduleRefresh()
         }) {
             eventMonitors.append(up)
@@ -276,6 +280,12 @@ public final class AXWindowBackend: WindowBackend {
         }
     }
     private var activationChain: Task<Void, Never>?
+
+    /// The mouse, top-left global like every frame the store sees.
+    private static func pointer() -> CGPoint {
+        let p = NSEvent.mouseLocation
+        return CGPoint(x: p.x, y: (NSScreen.screens.first?.frame.height ?? 0) - p.y)
+    }
 
     // MARK: - Refresh sessions (spec §7.6)
 

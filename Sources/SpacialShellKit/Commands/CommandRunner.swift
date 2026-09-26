@@ -250,6 +250,22 @@ public enum CommandRunner {
             w.focus.window = r
             return (w, [.unhide(r), .focus(r)])
 
+        case .dropWindow(let ref, let target):
+            guard ref != target, let from = w.location(of: ref), let to = w.location(of: target),
+                  !w.screens[from.screen]!.workspaces[from.index].floating.contains(ref),
+                  !w.screens[to.screen]!.workspaces[to.index].floating.contains(target) else { return (w, []) }
+            if from == to {
+                var ws = w.screens[from.screen]!.workspaces[from.index]
+                ws.windows.swapAt(ws.windows.firstIndex(of: ref)!, ws.windows.firstIndex(of: target)!)
+                ws.anchor = ref
+                w.screens[from.screen]!.workspaces[from.index] = ws
+                w.focus = Focus(screen: from.screen, window: ref)
+            } else {
+                let j = w.screens[to.screen]!.workspaces[to.index].windows.firstIndex(of: target)!
+                guard move(ref, to: to, at: j) else { return (w, []) }
+            }
+            effects.append(.focus(ref)); effects.append(.relayout)
+
         case .rescueWindows:
             // Geometry only: the store sweeps `observed` against the displays. Relayout so the
             // sweep runs inside the ordinary reconcile.

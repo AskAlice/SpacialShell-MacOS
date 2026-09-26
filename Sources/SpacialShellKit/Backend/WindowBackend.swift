@@ -75,6 +75,10 @@ public enum BackendEvent: Sendable, Equatable {
     /// arrival, and because it travels the same stream as `appActivated` and `focusChanged`, it is
     /// always seen before the focus change it caused.
     case humanInput
+    /// #108: the left button went down / came up at this point (top-left global, like every
+    /// frame here). What turns a run of `windowMoved` into a drag the store can drop somewhere.
+    case pointerDown(CGPoint)
+    case pointerUp(CGPoint)
     case screenLocked
     case screenUnlocked
 }

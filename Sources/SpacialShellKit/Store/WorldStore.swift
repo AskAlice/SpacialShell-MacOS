@@ -104,12 +104,25 @@ public actor WorldStore {
     private let tracerProvider: (any TracerProvider)?
     private var tracer: any Tracer { Telemetry.tracer(tracerProvider) }
 
+    /// #108: where the left button is held down, from its `pointerDown` to its `pointerUp`.
+    private var pointerDown: CGPoint?
+    /// #108: the tiled window being dragged by its title bar, where on it the hand holds it, and
+    /// the tile it would land on. The reconciler leaves it where the hand has it until the drop.
+    private struct Drag { let ref: WindowRef; let grab: CGVector; var target: WindowRef? }
+    private var drag: Drag?
+    /// Every tile a drop can land on, as the last reconcile framed it (`DropTarget.tiles`).
+    private var tiles: [WindowRef: CGRect] = [:]
+    /// #108: the drop target's frame (top-left global) for the indicator panel; nil hides it.
+    private let onDropTarget: @Sendable (CGRect?) -> Void
+
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:],
                 now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
                 animator: (any SwitchAnimator)? = nil,
                 tracerProvider: (any TracerProvider)? = nil,
+                onDropTarget: @escaping @Sendable (CGRect?) -> Void = { _ in },
                 onChange: @escaping @Sendable (World) -> Void) {
+        self.onDropTarget = onDropTarget
         self.now = now
         self.tracerProvider = tracerProvider
         self.animator = animator
@@ -165,6 +178,15 @@ public actor WorldStore {
 
     public func run(_ command: Command) async {
         guard !locked else { return }   // spec §7.7: no writes and no model changes while locked
+        var command = command
+        // #108, material-shell's M3: while a window is in the hand, Fn+W/S carries it to the row
+        // above/below instead of leaving it behind.
+        if let d = drag, case .focusWorkspace(let dir) = command, let loc = world.location(of: d.ref) {
+            let rows = world.screens[loc.screen]!.workspaces
+            let i = loc.index + (dir == .down ? 1 : -1)
+            guard rows.indices.contains(i) else { return }
+            command = .moveWindowRefToWorkspace(d.ref, rows[i].id)
+        }
         let issued = now()
         // #83: the root of a command's trace. The case name is the low-cardinality key; the detail
         // carries only ids and enum values — `Command` has no string payloads.
@@ -211,12 +233,25 @@ public actor WorldStore {
         switch event {
         case .snapshot(let s):
             if locked { return }
+            // The backend sweeps only with the button up, so a drag still open here lost its
+            // mouse-up (released over the shell's own panels, which the global monitor never
+            // sees). It lands nowhere: the reconcile below snaps the window home.
+            pointerDown = nil; endDrag()
             eventSpan = tracedSnapshot(s)
+        case .pointerDown(let p):
+            pointerDown = p; lastHumanInput = now(); return
+        case .pointerUp(let p):
+            pointerDown = nil
+            guard let d = drag else { return }
+            endDrag()
+            if locked { return }
+            if let command = drop(d.ref, at: p) { await run(command); return }
         case .windowMoved(let r, let f), .windowResized(let r, let f):
             if intents.matches(r, frame: f) { observed[r] = f; return }
             let was = observed[r]
             observed[r] = f
             if locked { return }
+            if case .windowMoved = event, trackDrag(r, to: f, was: was) { return }
             if case .windowMoved = event, rehomeDragged(r, to: f, was: was) { break }
             if let ws = world.workspace(containing: r), !ws.floating.contains(r) { /* tiled: snap back */ } else { return }
         case .focusChanged(let r):
@@ -242,7 +277,7 @@ public actor WorldStore {
             // already mid-flight would keep writing frames at a locked screen, and its writes land
             // against whatever the lock screen reports. Bumping the generation is the same signal
             // a newer reconcile sends, and every await in `reconcile()` checks it.
-            locked = true; generation += 1; return
+            locked = true; generation += 1; pointerDown = nil; endDrag(); return
         case .screenUnlocked:
             locked = false
             eventSpan = tracedSnapshot(await backend.currentSnapshot())
@@ -599,6 +634,50 @@ public actor WorldStore {
         return true
     }
 
+    /// #108: a tiled window moving under a held button is in the user's hand. From its first such
+    /// move to the mouse-up it is suspended — the reconciler leaves it where the hand has it — and
+    /// each move re-aims the drop indicator. The pointer is where the button went down, carried
+    /// along with the window (a title-bar drag moves the two together), so no stream of mouse
+    /// positions is needed. It is a drag only if that pointer was on the window, the size did not
+    /// change (a resize from the left edge also moves it), and the window was a tile on screen.
+    /// Floating windows are not tracked: they keep #57's rehome and are otherwise left alone.
+    private func trackDrag(_ r: WindowRef, to f: CGRect, was: CGRect?) -> Bool {
+        if drag == nil {
+            guard let down = pointerDown, let was, was.contains(down), tiles[r] != nil,
+                  abs(was.width - f.width) < 1, abs(was.height - f.height) < 1 else { return false }
+            drag = Drag(ref: r, grab: CGVector(dx: down.x - was.minX, dy: down.y - was.minY))
+            Self.log.notice("drag \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public)")
+        }
+        guard let d = drag, d.ref == r else { return false }
+        aim(DropTarget.tile(at: CGPoint(x: f.minX + d.grab.dx, y: f.minY + d.grab.dy), dragging: r, in: tiles))
+        return true
+    }
+
+    /// Points the drop indicator at `target` (nil hides it), telling the panel only on a change.
+    private func aim(_ target: WindowRef?) {
+        guard drag != nil, drag?.target != target else { return }
+        drag?.target = target
+        onDropTarget(target.flatMap { tiles[$0] })
+    }
+
+    private func endDrag() {
+        guard drag != nil else { return }
+        aim(nil)
+        drag = nil
+    }
+
+    /// #108: what releasing `r` at `p` does. Over another tile, `dropWindow` (a swap in its own
+    /// row; that tile's slot in another). Over no tile on another display, #57's rehome into that
+    /// display's active row, at the drop instead of mid-drag. Anywhere else, nothing: the
+    /// reconcile that follows snaps it back to its tile.
+    private func drop(_ r: WindowRef, at p: CGPoint) -> Command? {
+        if let t = DropTarget.tile(at: p, dragging: r, in: tiles) { return .dropWindow(r, onto: t) }
+        guard let loc = world.location(of: r),
+              let dest = displays.first(where: { $0.frame.contains(p) })?.id, dest != loc.screen,
+              let target = world.screens[dest]?.active.id else { return nil }
+        return .moveWindowRefToWorkspace(r, target)
+    }
+
     /// Puts a retired window back in the model (spec §11 "until it changes"). The app's remembered
     /// workspace still applies, exactly as at first adoption.
     private func revive(_ r: WindowRef, frame: CGRect, reason: StaticString) {
@@ -693,7 +772,9 @@ public actor WorldStore {
         logUnresolvedLayouts()
         let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
-                                         insets: insets)
+                                         insets: insets, suspended: drag.map { [$0.ref] } ?? [])
+        tiles = DropTarget.tiles(world: world, desired: desired)
+        if let t = drag?.target, tiles[t] == nil { aim(nil) }   // its row went away under the hand (Fn+W/S)
         // #64: a switch is motion. The overlay goes up *before* the first write, so the real windows
         // jump to their final frames underneath it; `play` then slides the proxies after them.
         let shownNow = shownRows(world, desired: desired, insets: insets)

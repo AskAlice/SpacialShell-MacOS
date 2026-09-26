@@ -52,6 +52,10 @@ public enum Command: Sendable, Hashable {
     /// things — an `unhide`, and `WorldStore`'s off-display rescue — and never re-files anything:
     /// workspace, row, floating state and `ephemeral` membership are all left as they were.
     case recoverWindow(WindowRef)
+    /// #108: a tiled window dragged by its title bar and released over another tile. Same row: the
+    /// two swap places. Another row (another display's tile): the window takes that tile's slot,
+    /// and — being in the user's hand, as in #57 — focus follows it.
+    case dropWindow(WindowRef, onto: WindowRef)
 
     // #10: the layout popover and editor. App-layer, like `.openSettings`: `AppRuntime` routes them
     // to the layouts controller, they edit `settings.json`, and the model ignores them.

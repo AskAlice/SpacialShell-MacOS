@@ -91,11 +91,14 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
         log.info("stage 5/8: constructing the store")
         let gate = termination
+        let dropIndicator = DropIndicator()
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
             placements: restored?.placements ?? [:],
             // #64: switches slide as screenshot proxies (#65); instant without the grant.
             animator: SwitchOverlay(),
+            // #108: the tile a dragged window would swap with.
+            onDropTarget: { frame in Task { @MainActor in dropIndicator.show(frame) } },
         ) { [weak self] world in
             gate.note(world: world)
             Task { @MainActor in
