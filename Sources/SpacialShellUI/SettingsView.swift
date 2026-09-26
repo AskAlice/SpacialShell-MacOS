@@ -152,6 +152,13 @@ struct SettingsView: View {
                     Text("Fit").tag(TabSizing.fit); Text("Equal").tag(TabSizing.equal)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
             } reset: { overrides.tabSizing = nil }
+
+            // #116: how much a tab shows. The whole title stays in each tab's tooltip.
+            row("Tab style", overridden: overrides.tabStyle != nil) {
+                Picker("", selection: binding(\.tabStyle, default: file.tabStyle)) {
+                    Text("Full").tag(TabStyle.full); Text("Name").tag(TabStyle.name); Text("Icon").tag(TabStyle.icon)
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
+            } reset: { overrides.tabStyle = nil }
         }
     }
 

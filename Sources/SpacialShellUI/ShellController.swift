@@ -148,7 +148,7 @@ public final class ShellController: NSObject {
                                                                                  display: id, screen: nsScreen)
                                                   })
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
-                                                   chrome: PanelChrome(config: config), send: forward,
+                                                   style: config.tabStyle, chrome: PanelChrome(config: config), send: forward,
                                                    openLayouts: { [weak self] in
                                                        guard let self, let bar = self.panels[id]?.bar else { return }
                                                        self.layoutPopover.toggle(state, bar: bar)

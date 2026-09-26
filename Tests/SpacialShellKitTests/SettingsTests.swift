@@ -79,9 +79,10 @@ import Foundation
 
     @Test func overridesRoundTripThroughJSON() throws {
         var gui = SettingsOverrides()
-        gui.panelWidth = 64; gui.tabSizing = .equal; gui.panelColor = "#112233"
+        gui.panelWidth = 64; gui.tabSizing = .equal; gui.panelColor = "#112233"; gui.tabStyle = .name
         let data = try JSONEncoder().encode(gui)
         #expect(try JSONDecoder().decode(SettingsOverrides.self, from: data) == gui)
+        #expect(Settings.effective(config: Config(), overrides: gui).tabStyle == .name)   // #116
     }
 
     /// An absent key is how "the file decides" is written down. If unset knobs were encoded as

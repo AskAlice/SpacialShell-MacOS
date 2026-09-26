@@ -11,6 +11,8 @@ struct WorkspacePanelView: View {
     let state: ScreenShellState
     let metaFor: (Int32) -> AppMeta
     let sizing: TabSizing
+    /// #116: icon and title, title only, or icon only. The title is in the tooltip either way.
+    var style: TabStyle = .full
     var chrome: PanelChrome = PanelChrome(color: "system", opacity: 1)
     let send: (Command) -> Void
     /// #10: the cog, and the ⋯ menu's "Edit layouts…" — the layout popover, which the controller
@@ -33,9 +35,11 @@ struct WorkspacePanelView: View {
     static let minTabWidth: CGFloat = 88
     /// The focused tab also carries its close button (8 pt glyph + 5 spacing), and a semibold
     /// name; without this it would be the one tab you can't read — "Ter…".
-    private static func minWidth(_ tab: WindowTabItem) -> CGFloat {
-        tab.isFocused ? minTabWidth + 16 : minTabWidth
+    /// An icon-only tab (#116) has no text to keep readable: its floor is the icon and padding.
+    private func minWidth(_ tab: WindowTabItem) -> CGFloat {
+        (style == .icon ? Self.minIconTabWidth : Self.minTabWidth) + (tab.isFocused ? 16 : 0)
     }
+    static let minIconTabWidth: CGFloat = 34
     /// The design system's tab-width ceiling: a long title truncates, it does not take the bar.
     static let maxTabWidth: CGFloat = 220
     private static let tabSpacing: CGFloat = 3
@@ -82,7 +86,7 @@ struct WorkspacePanelView: View {
     /// the viewport's width, so tabs squeeze toward `minTabWidth`; once every tab is at the floor it
     /// is given the floor total instead and scrolls, keeping the focused tab in view.
     private var tabRow: some View {
-        let floor = state.tabs.reduce(Self.endGap) { $0 + Self.minWidth($1) + Self.tabSpacing }
+        let floor = state.tabs.reduce(Self.endGap) { $0 + minWidth($1) + Self.tabSpacing }
         let focused = state.tabs.first(where: \.isFocused)?.ref
         return GeometryReader { geo in
             ScrollViewReader { proxy in
@@ -103,6 +107,10 @@ struct WorkspacePanelView: View {
                 }
             }
         }
+        // #121: a vertical scroll (a wheel notch, or one trackpad gesture) steps the focused tab,
+        // and the `onChange` above brings it into view. A sideways scroll is not a step: it passes
+        // through to the ScrollView, which pans an overflowing row as before (#14).
+        .onScrollStep { if let command = state.tabScroll($0) { send(command) } }
     }
 
     /// The gap after the last tab is itself a drop target: dropping there appends, which is the
@@ -127,17 +135,21 @@ struct WorkspacePanelView: View {
     private func tabView(_ tab: WindowTabItem) -> some View {
         let meta = metaFor(tab.ref.pid)
         let titled = !tab.title.isEmpty
+        // #116: `name` drops the icon; `icon` drops the text, unless there is no icon to show.
+        let icon = style == .name ? nil : meta.icon
         return HStack(spacing: 5) {
             if sizing == .equal { Spacer(minLength: 0) }
-            if let icon = meta.icon {
+            if let icon {
                 Image(nsImage: icon).resizable().frame(width: 16, height: 16)
             }
-            // Middle truncation for titles: both ends carry the meaning ("Report — Pages",
-            // "~/code/spacial-shell — zsh"). An app name keeps the tail truncation it always had.
-            Text(titled ? tab.title : meta.name)
-                .font(.system(size: 11.5, weight: tab.isFocused ? .semibold : .regular))
-                .lineLimit(1)
-                .truncationMode(titled ? .middle : .tail)
+            if style != .icon || icon == nil {
+                // Middle truncation for titles: both ends carry the meaning ("Report — Pages",
+                // "~/code/spacial-shell — zsh"). An app name keeps the tail truncation it always had.
+                Text(titled ? tab.title : meta.name)
+                    .font(.system(size: 11.5, weight: tab.isFocused ? .semibold : .regular))
+                    .lineLimit(1)
+                    .truncationMode(titled ? .middle : .tail)
+            }
             if tab.isFloating {
                 Image(systemName: "pin.fill").font(.system(size: 8)).opacity(0.6)
             }
@@ -176,9 +188,11 @@ struct WorkspacePanelView: View {
         .opacity(tab.isHidden ? 0.45 : 1)
         // `fit` leaves the tab at its content width, so one tab sits against the left edge
         // instead of stretching across the bar. `equal` lets every tab claim 1/n and centre.
-        .frame(minWidth: Self.minWidth(tab), maxWidth: sizing == .equal ? .infinity : nil)
+        .frame(minWidth: minWidth(tab), maxWidth: sizing == .equal ? .infinity : nil)
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
+        // #116: the whole title, however the tab truncates or hides it. The system tooltip keeps
+        // its own delay; the rail's hover card (#6) is a separate surface and waits for nothing.
         .help(titled ? "\(meta.name) — \(tab.title)" : meta.name)
         // Drag the tab to send its window somewhere: onto a rail row to move it to that
         // workspace, or onto another tab to land just before it — a reorder in its own row, a
@@ -240,6 +254,8 @@ struct WorkspacePanelView: View {
                 .help(shown ? state.layoutWarning ?? "\(choice.def.name) layout" : "\(choice.def.name) layout")
             }
         }
+        // #121: scrolling over the layout icons cycles them, wrapping like Fn+Space.
+        .onScrollStep { if let command = state.layoutScroll($0) { send(command) } }
     }
 }
 

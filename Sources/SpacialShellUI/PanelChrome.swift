@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import SpacialShellKit
 
@@ -7,6 +8,65 @@ extension View {
     /// the focus ring anyway. Out of the key-view loop, and no focus effect if one is drawn regardless.
     func panelButton() -> some View {
         buttonStyle(.plain).focusable(false).focusEffectDisabled()
+    }
+
+    /// #121: vertical scrolling over this view, as discrete steps (-1 back, +1 forward; see
+    /// `ScrollStepper`). Sideways scrolling passes through, so a scroll view inside keeps it.
+    /// `action` is re-read on every render, so each step sees the state the last one produced.
+    func onScrollStep(_ action: @escaping (Int) -> Void) -> some View {
+        modifier(ScrollSteps(action: action))
+    }
+}
+
+/// SwiftUI on macOS 14 has no scroll-wheel callback for an arbitrary view, so this watches the
+/// app's own scroll events (a local monitor, installed only while the pointer is over the view)
+/// and takes those aimed at the window the pointer entered.
+private struct ScrollSteps: ViewModifier {
+    let action: (Int) -> Void
+    @State private var catcher = ScrollCatcher()
+
+    func body(content: Content) -> some View {
+        catcher.action = action
+        return content
+            .contentShape(Rectangle())
+            .onHover { catcher.hovering($0) }
+            .onDisappear { catcher.hovering(false) }
+    }
+}
+
+@MainActor
+private final class ScrollCatcher {
+    var action: (Int) -> Void = { _ in }
+    private var stepper = ScrollStepper()
+    private var monitor: Any?
+    private weak var window: NSWindow?
+
+    func hovering(_ inside: Bool) {
+        if let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+        guard inside else { return }
+        // The window under the pointer now. A hover can stick past a screen edge; checking the
+        // event's window keeps a stuck one from taking scrolls meant for, say, the settings window.
+        let number = NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0)
+        window = NSApp.window(withWindowNumber: number)
+        stepper = ScrollStepper()
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            let (dx, dy) = (Double(event.scrollingDeltaX), Double(event.scrollingDeltaY))
+            let phase: ScrollStepper.Phase =
+                !event.momentumPhase.isEmpty ? .momentum
+                : event.phase.contains(.began) ? .began
+                : event.phase.contains(.changed) ? .changed
+                : event.phase.isEmpty ? .none
+                : .ended          // .ended, .cancelled, .mayBegin, .stationary: nothing to add
+            let number = event.windowNumber
+            let swallow = MainActor.assumeIsolated { self?.handle(dx: dx, dy: dy, phase: phase, window: number) ?? false }
+            return swallow ? nil : event
+        }
+    }
+
+    private func handle(dx: Double, dy: Double, phase: ScrollStepper.Phase, window number: Int) -> Bool {
+        guard let window, window.windowNumber == number, let step = stepper.feed(dx: dx, dy: dy, phase: phase) else { return false }
+        if step != 0 { action(step) }
+        return true
     }
 }
 

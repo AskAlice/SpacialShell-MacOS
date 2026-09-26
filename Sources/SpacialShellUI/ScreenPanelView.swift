@@ -164,6 +164,8 @@ struct ScreenPanelView: View {
         .padding(.top, 8)
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // #121: scrolling the rail walks the stack, one workspace per notch or gesture.
+        .onScrollStep { if let command = state.railScroll($0) { send(command) } }
         .background(chrome)
         .overlay(alignment: .trailing) { Rectangle().fill(.separator).frame(width: 1).opacity(0.6) }
     }

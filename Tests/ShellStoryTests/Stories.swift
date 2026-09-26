@@ -318,6 +318,14 @@ enum Stories {
                          tab(3, window: 1, title: "~/Downloads — zsh"),
                          tab(1, title: "Pull requests · AskAlice/SpacialShell-MacOS"), tab(2)]),
             metaFor: meta, sizing: .fit, send: send))
+        // #116: the same row as `bar-titles` in the other two tab styles.
+        for style in [TabStyle.name, .icon] {
+            add("bar-style-\(style.rawValue)", barGeometry, WorkspacePanelView(
+                state: tabs([tab(3, focused: true, title: "~/code/spacial-shell — zsh"),
+                             tab(3, window: 1, title: "~/Downloads — zsh"),
+                             tab(1, title: "Pull requests · AskAlice/SpacialShell-MacOS"), tab(2)]),
+                metaFor: meta, sizing: .fit, style: style, send: send))
+        }
         // A title longer than the 220 pt tab ceiling truncates in the middle, keeping both ends.
         add("bar-long-title", barGeometry, WorkspacePanelView(
             state: tabs([tab(4, focused: true,

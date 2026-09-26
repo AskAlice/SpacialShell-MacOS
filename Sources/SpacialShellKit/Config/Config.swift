@@ -39,6 +39,10 @@ public enum RailSide: String, Codable, Sendable { case left, right }
 /// - `equal`: every tab takes 1/n of the bar and centres its content, the way Safari does.
 public enum TabSizing: String, Codable, Sendable { case fit, equal }
 
+/// What a tab shows (#116). `full` is the app icon and the window title; `name` drops the icon;
+/// `icon` drops the title, for crowded rows. The title is always in the tab's tooltip.
+public enum TabStyle: String, Codable, Sendable, CaseIterable { case full, name, icon }
+
 public enum HexColor {
     public static func normalize(_ s: String) -> String? {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -121,6 +125,7 @@ public struct Config: Codable, Equatable, Sendable {
     public var panelHeight: Double = 34
     public var railSide: RailSide = .left
     public var tabSizing: TabSizing = .fit
+    public var tabStyle: TabStyle = .full
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
     /// #13: an app arriving at launch with *more* windows than this, and no remembered placement,
@@ -191,7 +196,7 @@ public struct Config: Codable, Equatable, Sendable {
         case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, tile, keybindings,
-             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing",
+             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing", tabStyle = "tab-style",
              launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
@@ -212,6 +217,7 @@ public struct Config: Codable, Equatable, Sendable {
         panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
+        tabStyle = try c.decodeIfPresent(TabStyle.self, forKey: .tabStyle) ?? .full
         launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
         showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
         crowdThreshold = try c.decodeIfPresent(Int.self, forKey: .crowdThreshold) ?? 8
@@ -261,6 +267,7 @@ public struct Config: Codable, Equatable, Sendable {
         panel-width = \(panelWidth)
         panel-height = \(panelHeight)
         rail-side = \(q(railSide.rawValue))
+        tab-style = \(q(tabStyle.rawValue))
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
         crowd-threshold = \(crowdThreshold)

@@ -75,6 +75,14 @@ import Foundation
         """)
         #expect(c.gap == 4)
     }
+    /// #116: `tab-style`, default `full`; rendered back out; a typo rejects like `rail-side`.
+    @Test func tabStyleParsesAndRoundTrips() throws {
+        #expect(try Config.parse(toml: "").tabStyle == .full)
+        let c = try Config.parse(toml: #"tab-style = "icon""#)
+        #expect(c.tabStyle == .icon)
+        #expect(try Config.parse(toml: c.render()).tabStyle == .icon)
+        #expect(throws: (any Error).self) { try Config.parse(toml: #"tab-style = "tiny""#) }
+    }
     @Test func unknownRailSideRejects() {
         #expect(throws: (any Error).self) { try Config.parse(toml: #"rail-side = "middle""#) }
     }

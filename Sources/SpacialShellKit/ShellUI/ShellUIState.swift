@@ -124,6 +124,34 @@ public struct ScreenShellState: Equatable, Sendable {
         rail.first(where: \.isActive).map { .moveAppRefToWorkspace(ref, $0.id) }
     }
 
+    // #121: a scroll step over a panel (`step` is -1 back / +1 forward, from `ScrollStepper`)
+    // names its target by id, from this display's own state, so scrolling a display that is not
+    // focused switches *that* display — `.focusWorkspace(.down)` would act on the focused one.
+    // Each mirrors its key: the rail stops at the ends like Fn+W/S, the tabs and the layouts wrap
+    // like Fn+A/D and Fn+Space. Nil when there is nowhere to go.
+
+    /// Scrolling the rail: the workspace above or below the active one, "+" included.
+    public func railScroll(_ step: Int) -> Command? {
+        guard let i = rail.firstIndex(where: \.isActive), rail.indices.contains(i + step), step != 0 else { return nil }
+        return .focusWorkspaceID(rail[i + step].id)
+    }
+
+    /// Scrolling the tab bar: the tab beside the focused one, hidden tabs included (#71). With no
+    /// focused tab on this bar, forward starts at the first tab and back at the last.
+    public func tabScroll(_ step: Int) -> Command? {
+        guard !tabs.isEmpty, step != 0 else { return nil }
+        let n = tabs.count
+        let j = tabs.firstIndex(where: \.isFocused).map { (($0 + step) % n + n) % n } ?? (step > 0 ? 0 : n - 1)
+        return tabs[j].isFocused ? nil : .focusWindowRef(tabs[j].ref)
+    }
+
+    /// Scrolling the layout switcher: the next layout on it, from the one drawn.
+    public func layoutScroll(_ step: Int) -> Command? {
+        let set = switcher.map(\.id)
+        guard let ws = rail.first(where: \.isActive), let i = set.firstIndex(of: shownLayout), set.count > 1, step != 0 else { return nil }
+        return .setWorkspaceLayout(ws.id, set[((i + step) % set.count + set.count) % set.count])
+    }
+
     /// A rail tile dropped on another tile of this rail (#75) lands just before it, like a tab in
     /// the bar; dropping on "+" puts it last. Nil for a no-op, or for a workspace from another
     /// display's rail: reordering stays within one display.

@@ -199,4 +199,8 @@ New UI **must**:
 - Half-layout glyph is `rectangle.lefthalf.filled`; spec assigns `sidebar.left`.
 - Tab overflow scrolls instead of a "+N" badge: tabs squeeze to the 88 pt floor (focused tab
   +16 for its close button), then the row scrolls with the focused tab kept in view (#14).
+  Scrolling the panels (#121) steps on the **vertical** axis only: one step per wheel notch or
+  trackpad gesture, momentum swallowed. The rail steps workspaces, the tab row steps the focused
+  tab (which the row then scrolls into view), and the layout icons cycle. A **sideways** gesture
+  (trackpad, Shift-wheel) passes through untouched, so it still pans an overflowing tab row.
   Layout-switcher hover names are unbuilt.
