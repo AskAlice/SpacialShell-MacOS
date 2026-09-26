@@ -15,7 +15,8 @@ input move 700 520
 # Not Calendar: it asks for notification permission in a banner that stays in every frame.
 sh open -a Safari; sleep 2; open -a Terminal; sleep 2; open -a Notes; true
 wait 8
-# Notes opens on a first-run welcome window the first time (an earlier scenario may have been it).
+# The golden image marks Notes' first-run welcome as shown (#154); this click is only the fallback
+# for an image provisioned before that.
 input axclick pid:Notes Continue ?
 wait 1
 open 1 as a

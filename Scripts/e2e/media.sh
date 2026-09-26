@@ -6,7 +6,8 @@
 #
 # CROP is ffmpeg's w:h:x:y in the recording's pixels (1024 wide), for a close-up ("" for none).
 # START and LENGTH (seconds) keep only that stretch of the recording, so a loop stays under 10 s
-# without the dead time around the action. WEBP_Q (default 60) is the webp quality.
+# without the dead time around the action. WEBP_Q (default 60) is the webp quality, GIF_COLORS
+# (default 128) the gif palette.
 # FRAMES_DIR is what record.swift wrote: fNNNNN.png plus times.txt. ScreenCaptureKit only sends a
 # frame when the screen changed, so each frame is held until the next one's time: the loop plays
 # at the speed it was recorded. Needs ffmpeg; the webp needs img2webp (libwebp), because
@@ -36,7 +37,7 @@ SCALE="fps=$FPS,${CROP:+crop=$CROP,}scale=$W:-1:flags=lanczos"
 # it (seconds, after a still stretch): cap the output at the listed length.
 TOTAL="$(awk '/^duration/ {s += $2} END {print s}' "$LIST")"
 ffmpeg -y -loglevel error -f concat -safe 0 -i "$LIST" \
-    -vf "$SCALE,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
+    -vf "$SCALE,split[a][b];[a]palettegen=max_colors=${GIF_COLORS:-128}:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
     -t "$TOTAL" -loop 0 "$OUT.gif"
 if command -v img2webp >/dev/null; then
     ffmpeg -y -loglevel error -f concat -safe 0 -i "$LIST" -vf "$SCALE" -t "$TOTAL" "$FRAMES/w%05d.png"

@@ -34,6 +34,23 @@ defaults write com.apple.TextEdit RichText -bool false
 osascript -e 'tell application "System Events" to tell every desktop to set picture to "/System/Library/Desktop Pictures/Solid Colors/Stone.png"' || true
 defaults write com.apple.dock autohide -bool true && killall Dock || true
 
+# Notes' first-run "Welcome to Notes" sheet (#154), which sat in the media recordings. Notes shows
+# it until its container's prefs say it was shown for this macOS version: hasShownWelcomeScreen
+# alone is not enough, lastShownStartupVersion-1 (the [major, minor, patch] it was last shown for)
+# gates it. Measured on 26.6.2: pressing Continue writes exactly these two, and a clean prefs
+# domain with just them opens straight to the notes list. Sandboxed, so the container's plist,
+# through cfprefsd (`defaults` with a path); the container comes with the base image.
+NOTES_PREFS="$HOME/Library/Containers/com.apple.Notes/Data/Library/Preferences/com.apple.Notes"
+if [ -d "$(dirname "$NOTES_PREFS")" ]; then
+    IFS=. read -r v_major v_minor v_patch <<<"$(sw_vers -productVersion)"
+    defaults write "$NOTES_PREFS" hasShownWelcomeScreen -bool true
+    defaults write "$NOTES_PREFS" lastShownStartupVersion-1 -array \
+        -int "$v_major" -int "${v_minor:-0}" -int "${v_patch:-0}"
+    say "Notes welcome marked as shown for $(sw_vers -productVersion)"
+else
+    say "no Notes container yet; its welcome sheet will show on first launch" >&2
+fi
+
 # The runner's grants: Accessibility and Screen Recording for tart-guest-agent, the responsible
 # process of every `tart exec` command (its per-user LaunchAgent, `--run-agent`). Cirrus's image
 # already has both; written again so the image does not depend on that. System and user DBs, as

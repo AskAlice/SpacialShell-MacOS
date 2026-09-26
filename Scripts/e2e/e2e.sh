@@ -120,29 +120,7 @@ tart_alive() { kill -0 "$TART_PID" 2>/dev/null; }
 bounded() { local secs="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; }
 
 # 0: the agent answers through the control socket; 1: tart closed it (agent not up); 2: no socket.
-agent_answers() {
-    python3 - "$SOCK" <<'PY'
-import os, socket, sys
-d, name = os.path.split(sys.argv[1])
-os.chdir(d)   # a relative path: AF_UNIX paths are capped at 104 bytes
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.settimeout(3)
-try:
-    s.connect(name)
-except OSError:
-    sys.exit(2)
-try:
-    # tart accepts, then dials the guest for this connection: it hangs up if nothing listens, and
-    # while the guest boots the dial can simply hang. Only the agent speaks first (its HTTP/2
-    # SETTINGS frame, within ~0.1 s), so data is the one sign it is up. Leaving after the
-    # timeout is safe: tart has accepted by then.
-    sys.exit(0 if s.recv(1) else 1)
-except (socket.timeout, OSError):
-    sys.exit(1)
-finally:
-    s.close()
-PY
-}
+agent_answers() { python3 "$HERE/agent-probe.py" "$SOCK"; }
 
 boot() {
     tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "--dir=cache:$CACHE" "$VM" >>"$TART_LOG" 2>&1 &

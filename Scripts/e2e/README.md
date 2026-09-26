@@ -57,6 +57,11 @@ brew install cirruslabs/cli/tart
 TART_HOME=/Volumes/<external>/tart Scripts/e2e/golden.sh     # or omit TART_HOME with 80 GB free
 ```
 
+Provisioning is idempotent. After a change to it, `Scripts/e2e/golden.sh --update` runs it again
+on the existing golden image without pulling anything, and keeps the previous image as
+`spacial-e2e-golden-prev`: delete that once an `e2e.sh --vm` run passes on the new one (or
+`tart delete` the golden and `tart rename` the backup back to roll back).
+
 `golden.sh` clones the base image (Homebrew, Command Line Tools, `tart-guest-agent`, auto-login as
 `admin`/`admin`, SIP disabled), gives it 4 CPUs, 8 GB, one 1920x1080 display and 60 GB of disk,
 then runs `guest/provision.sh` inside it:
@@ -65,6 +70,10 @@ then runs `guest/provision.sh` inside it:
   toolchain is present, installing the Command Line Tools if not
 - turns off sleep, the screen saver, window restoration and Dock visibility, and sets a
   plain desktop, so nothing interrupts a scenario or changes a screenshot
+- marks Notes' "Welcome to Notes" sheet as shown (#154): Notes shows it until its container
+  prefs hold `hasShownWelcomeScreen` and `lastShownStartupVersion-1` = the running macOS
+  version (the second is the one that gates it). Rebuilding the guest on a new macOS brings the
+  sheet back until the image is provisioned again
 - **bakes in the runner's TCC grants**: Accessibility and Screen Recording for
   `tart-guest-agent` (the per-user LaunchAgent, `--run-agent`, is every `tart exec` command's
   responsible process). This follows the Cirrus templates' `update-tcc-database.sh`, which already
@@ -247,6 +256,8 @@ times). No references; the frames land in the artefacts. Then, per recording:
 ```sh
 Scripts/e2e/media.sh .build/e2e/vm-…/overview/overview docs/media/live-overview 720
 Scripts/e2e/media.sh .build/e2e/vm-…/rail-apps/rail-apps docs/media/live-rail-apps 512 12 512:384:0:0
+GIF_COLORS=64 WEBP_Q=38 Scripts/e2e/media.sh .build/e2e/vm-…/spatialisation/spatialisation \
+    docs/media/spatialisation 720 12 "" 0.6 9.6      # #154: eight slides, under the old sizes
 ```
 
 | Scenario | Loop in `docs/media/` | Shows |
@@ -259,7 +270,8 @@ Scripts/e2e/media.sh .build/e2e/vm-…/rail-apps/rail-apps docs/media/live-rail-
 
 `media.sh` holds each frame until the next one's time, so the loop plays at recorded speed, and
 writes a gif (ffmpeg) and a webp (`img2webp`: Homebrew's ffmpeg has no libwebp). Its optional
-START and LENGTH cut the loop to the action (docs loops stay at or under 10 s). Recording speed
+START and LENGTH cut the loop to the action (docs loops stay at or under 10 s); `WEBP_Q` and
+`GIF_COLORS` (default 60 and 128) trade quality for size. Recording speed
 is real, so a switch's first capture in the GPU-less guest (1–4 s) shows as a pause before the
 slide: the scenarios do each move once off camera before the `record` step. The guest has one
 display: multi-display features are not in these recordings. None of these are renders
