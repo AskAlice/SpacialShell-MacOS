@@ -89,6 +89,13 @@ import SpacialShellKit
         #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
     }
 
+    /// #128, #129: the tab bar's and tab menu's own glyphs.
+    @Test func everyTabGlyphExists() {
+        let missing = ["pin.fill", "pin.circle.fill", "pin.circle", "pin.slash", "xmark"]
+            .filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil }
+        #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
+    }
+
     @Test func cheatSheetWrapsToFitItsArea() {
         let groups = CheatSheetController.grouped(CheatSheet.rows(for: Config()))
         #expect(CheatSheetView.fitting(groups, in: 4000).view.rows == 1)

@@ -525,7 +525,11 @@ public actor WorldStore {
             for gone in all.subtracting(present) {
                 vanished += 1
                 Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
-                world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; intents.forget(gone)
+                // #129: a pinned window leaves a placeholder in its slot instead of its tab going.
+                if let b = bundleIDs[gone], world.leavePlaceholder(for: gone, bundleID: b, title: titles[gone] ?? "") != nil {
+                    Self.log.notice("pinned \(gone.id, privacy: .public) \(b, privacy: .public) closed: placeholder left in its slot")
+                } else { world.remove(gone) }
+                observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; intents.forget(gone)
                 refused[gone] = nil
                 retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil

@@ -318,6 +318,7 @@ Generated from `KeyBindings.commandNames`:
 | `shrink-height` / `grow-height` | The same for its top or bottom edge, where the layout has rows (half, grid, drawn layouts) |
 | `balance` | Put every layout of the focused workspace back to its designed sizes |
 | `split-columns-more` / `split-columns-fewer` | Show one column more / fewer in the focused workspace's *split* (2–6, default 2; remembered per workspace and across relaunch). Unbound by default; does nothing when the layout is not split |
+| `toggle-pin` | Pin or unpin the focused window's tab (#129). A pinned tab stays when its window closes, as a placeholder that opens the app when clicked and cannot be closed until unpinned; pins survive relaunch. Unbound by default — the tab's right-click menu has Pin / Unpin |
 
 ### Key names
 
@@ -447,8 +448,8 @@ hand-editable, and pays for it in discoverability.
 
 Separately from config, `~/Library/Application Support/SpacialShell/state.json` holds the pinned
 workspace shells (name, symbol, layout, id, and any sizes you gave its layouts by resizing, #113)
-per screen, and each row's tabs in order — every window's app (bundle id), its last title and
-whether it floats (#128) — so they come back as placeholder tabs after a relaunch. Titles are
+per screen, and each row's tabs in order — every window's app (bundle id), its last title,
+whether it floats (#128) and whether its tab is pinned (#129) — so they come back as placeholder tabs after a relaunch. Titles are
 the only window content it holds, and it never leaves the machine. Written debounced on every
 model change. A `state.json` from before #128 has no tabs and loads as it always did.
 It is machine-owned — not meant for hand editing — and is not covered by this reference.

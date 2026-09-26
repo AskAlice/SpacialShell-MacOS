@@ -366,6 +366,8 @@ public enum CommandRunner {
             // #128: closing a placeholder forgets its slot; there is no window to ask.
             if r.isPlaceholder {
                 guard w.placeholders[r] != nil else { return fail(.unknownWindow(r)) }
+                // #129 (P17): a pinned placeholder stays until it is unpinned.
+                guard !w.pinnedTabs.contains(r) else { return noop("the tab is pinned; unpin it to close it") }
                 w.remove(r)
                 effects.append(.relayout)
                 return (w, effects)
@@ -382,20 +384,23 @@ public enum CommandRunner {
         case .dropWindow(let ref, let target):
             guard let from = w.location(of: ref) else { return fail(.unknownWindow(ref)) }
             guard let to = w.location(of: target) else { return fail(.unknownWindow(target)) }
-            guard ref != target, !ref.isPlaceholder, !target.isPlaceholder,
+            guard ref != target,
                   !w.screens[from.screen]!.workspaces[from.index].floating.contains(ref),
                   !w.screens[to.screen]!.workspaces[to.index].floating.contains(target) else { return noop("only two tiled windows swap") }
             if from == to {
                 var ws = w.screens[from.screen]!.workspaces[from.index]
                 ws.windows.swapAt(ws.windows.firstIndex(of: ref)!, ws.windows.firstIndex(of: target)!)
-                ws.anchor = ref
+                if !ref.isPlaceholder { ws.anchor = ref }
                 w.screens[from.screen]!.workspaces[from.index] = ws
-                w.focus = Focus(screen: from.screen, window: ref)
+                if !ref.isPlaceholder { w.focus = Focus(screen: from.screen, window: ref) }
+                w.normalize()
             } else {
                 let j = w.screens[to.screen]!.workspaces[to.index].windows.firstIndex(of: target)!
                 guard move(ref, to: to, at: j) else { return (w, []) }
             }
-            effects.append(.focus(ref)); effects.append(.relayout)
+            // #129: a placeholder in the hand has no window for focus to follow.
+            if !ref.isPlaceholder { effects.append(.focus(ref)) }
+            effects.append(.relayout)
 
         case .resizeWindow(let axis, let grow):
             // #113. Without geometry the page is the one the model sees (no #54 floor); the store
@@ -529,6 +534,16 @@ public enum CommandRunner {
             w.setFloating(f, !screen.active.floating.contains(f))
             w.normalize()
             effects.append(.relayout)
+
+        case .togglePinRef(let r):
+            guard w.location(of: r) != nil else { return fail(.unknownWindow(r)) }
+            if w.pinnedTabs.remove(r) == nil { w.pinnedTabs.insert(r) }
+            effects.append(.relayout)
+
+        case .togglePin:
+            guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
+            return apply(.togglePinRef(f), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
+                         categoryOrder: categoryOrder, why: &why)
 
         case .toggleFloatRef(let r):
             guard let loc = w.location(of: r) else { return fail(.unknownWindow(r)) }

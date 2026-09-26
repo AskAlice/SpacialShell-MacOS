@@ -59,12 +59,19 @@ public struct WindowTabItem: Identifiable, Equatable, Sendable {
     /// app icon and the saved title; a click opens the app, closing forgets it. `ref.pid` is the
     /// placeholder pid (`WindowRef.placeholderPid`), which `AppMetaCache` resolves by bundle id.
     public let isPlaceholder: Bool
+    /// #129: pinned — closing its window leaves a placeholder, and as a placeholder it cannot be
+    /// closed until unpinned. Drawn with `pin.circle.fill`.
+    public let isPinned: Bool
     public init(ref: WindowRef, isFocused: Bool, isFloating: Bool, isHidden: Bool, isFullscreen: Bool = false,
-                isOffSpace: Bool = false, title: String = "", wantsAttention: Bool = false, isPlaceholder: Bool = false) {
+                isOffSpace: Bool = false, title: String = "", wantsAttention: Bool = false, isPlaceholder: Bool = false,
+                isPinned: Bool = false) {
         self.ref = ref; self.isFocused = isFocused; self.isFloating = isFloating; self.isHidden = isHidden
         self.isFullscreen = isFullscreen; self.isOffSpace = isOffSpace; self.title = title
-        self.wantsAttention = wantsAttention; self.isPlaceholder = isPlaceholder
+        self.wantsAttention = wantsAttention; self.isPlaceholder = isPlaceholder; self.isPinned = isPinned
     }
+
+    /// #129: whether the tab menu's Close does anything — not on a pinned placeholder.
+    public var canClose: Bool { !(isPlaceholder && isPinned) }
 }
 
 /// #10: one layout as the popover and the ⋯ menu list it.
@@ -220,7 +227,8 @@ public enum ShellUI {
                 isOffSpace: world.offSpace.contains(w),
                 title: world.placeholders[w]?.title ?? titles[w] ?? "",
                 wantsAttention: attention.contains(w.pid),
-                isPlaceholder: world.placeholders[w] != nil)
+                isPlaceholder: world.placeholders[w] != nil,
+                isPinned: world.pinnedTabs.contains(w))
         }
         return ScreenShellState(
             display: display,

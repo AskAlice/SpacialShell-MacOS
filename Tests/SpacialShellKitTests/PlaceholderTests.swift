@@ -173,11 +173,11 @@ import SpacialShellProtocol
         #expect(w.screens["D1"]!.workspaces[0].windows == [refs[0], a])
     }
 
-    @Test func aPlaceholderNeitherFloatsNorSwaps() {
+    /// It has no window to float. (It does swap, since #129 — see `PinnedTabTests`.)
+    @Test func aPlaceholderDoesNotFloat() {
         let a = WindowRef(id: 1, pid: 1)
         let (w, refs) = world(live: [a], saved: [("com.term", "t")])
         #expect(CommandRunner.run(.toggleFloatRef(refs[0]), on: w).world == w)
-        #expect(CommandRunner.run(.dropWindow(a, onto: refs[0]), on: w).world == w)
     }
 
     // MARK: persistence

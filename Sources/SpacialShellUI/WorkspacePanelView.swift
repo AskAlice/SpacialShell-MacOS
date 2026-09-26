@@ -156,6 +156,10 @@ struct WorkspacePanelView: View {
                     .lineLimit(1)
                     .truncationMode(titled ? .middle : .tail)
             }
+            if tab.isPinned {
+                // #129: pinned — kept, as a placeholder, when its window closes.
+                Image(systemName: "pin.circle.fill").symbolRenderingMode(.hierarchical).font(.system(size: 12))
+            }
             if tab.isFloating {
                 Image(systemName: "pin.fill").font(.system(size: 8)).opacity(0.6)
             }
@@ -213,7 +217,7 @@ struct WorkspacePanelView: View {
                     RailMenu.tab(tab, rail: state.rail, metaFor: metaFor, send: send)
                         .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
                 },
-                onMiddle: { send(.closeWindowRef(tab.ref)) })
+                onMiddle: { if tab.canClose { send(.closeWindowRef(tab.ref)) } })
         }
         // #116: the whole title, however the tab truncates or hides it. The system tooltip keeps
         // its own delay; the rail's hover card (#6) is a separate surface and waits for nothing.

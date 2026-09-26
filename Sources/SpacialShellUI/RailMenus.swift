@@ -82,10 +82,16 @@ enum RailMenu {
         // #128: a placeholder's menu opens its app first; "Close" forgets the slot. It has no
         // window to float, so Float/Tile is shown but disabled — the menu keeps one shape.
         if tab.isPlaceholder { menu.addItem(ActionMenuItem("Open") { send(.focusWindowRef(ref)) }) }
-        menu.addItem(ActionMenuItem("Close") { send(.closeWindowRef(ref)) })
+        // #129: a pinned placeholder cannot be closed until it is unpinned (material-shell P17).
+        let close = ActionMenuItem("Close") { send(.closeWindowRef(ref)) }
+        close.isEnabled = tab.canClose
+        menu.addItem(close)
         let float = ActionMenuItem(tab.isFloating ? "Tile" : "Float") { send(.toggleFloatRef(ref)) }
         float.isEnabled = !tab.isPlaceholder
         menu.addItem(float)
+        let pin = ActionMenuItem(tab.isPinned ? "Unpin" : "Pin") { send(.togglePinRef(ref)) }
+        pin.image = NSImage(systemSymbolName: tab.isPinned ? "pin.slash" : "pin.circle", accessibilityDescription: nil)
+        menu.addItem(pin)
 
         let move = NSMenu()
         for item in rail where !item.isActive {

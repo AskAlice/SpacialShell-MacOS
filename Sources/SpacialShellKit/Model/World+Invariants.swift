@@ -33,6 +33,7 @@ extension World {
                 v.append("placeholder \(p) carries window state")
             }
         }
+        for p in pinnedTabs where seen[p] == nil { v.append("pinned tab \(p) not placed") }   // #129
         for (w, at) in seen where w.isPlaceholder && placeholders[w] == nil { v.append("\(w) in \(at) is a placeholder ref with no placeholder") }
         for s in screens.values { for ws in s.workspaces where ws.anchor?.isPlaceholder == true { v.append("placeholder \(ws.anchor!) is an anchor") } }
         for w in hidden where seen[w] == nil { v.append("\(w) hidden but not placed") }

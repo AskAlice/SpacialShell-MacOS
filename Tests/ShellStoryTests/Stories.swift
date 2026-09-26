@@ -154,10 +154,10 @@ enum Stories {
     /// `window` distinguishes several windows of one app — tabs are keyed by their ref.
     static func tab(_ pid: Int32, window: Int = 0, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
                     fullscreen: Bool = false, offSpace: Bool = false, title: String = "",
-                    attention: Bool = false) -> WindowTabItem {
+                    attention: Bool = false, pinned: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: pid),
                       isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen,
-                      isOffSpace: offSpace, title: title, wantsAttention: attention)
+                      isOffSpace: offSpace, title: title, wantsAttention: attention, isPinned: pinned)
     }
 
     /// #132: the spatial view's fixture world, `active` being the row the camera centres.
@@ -182,10 +182,13 @@ enum Stories {
         return SpatialView.state(for: d, in: world, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
     }
     /// #128: a placeholder tab for app `pid` — a negative pid, as `WindowRef.placeholderPid` gives.
-    static func placeholder(_ pid: Int32, window: Int = 0, title: String = "") -> WindowTabItem {
+    static func placeholder(_ pid: Int32, window: Int = 0, title: String = "", pinned: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: -pid),
-                      isFocused: false, isFloating: false, isHidden: false, title: title, isPlaceholder: true)
+                      isFocused: false, isFloating: false, isHidden: false, title: title, isPlaceholder: true,
+                      isPinned: pinned)
     }
+    /// A menu's submenu by its item's title, so a new item above it does not move the story.
+    static func submenu(_ menu: NSMenu, _ title: String) -> NSMenu { menu.items.first { $0.title == title }!.submenu! }
 
     static let railGeometry = CGSize(width: 48, height: 800)
     static let barGeometry = CGSize(width: 1200, height: 34)
@@ -446,6 +449,14 @@ enum Stories {
                          placeholder(4, title: "Re: Quarterly planning"),
                          placeholder(6)]),
             metaFor: meta, sizing: .fit, send: send))
+        // #129: pinned tabs — a live one (focused), a pinned placeholder whose window closed, and
+        // an unpinned floating tab beside them, whose pin glyph the pinned marker must not read as.
+        add("bar-pinned", barGeometry, WorkspacePanelView(
+            state: tabs([tab(3, focused: true, title: "~/code/spacial-shell — zsh", pinned: true),
+                         placeholder(4, title: "Inbox", pinned: true),
+                         tab(1, title: "Pull requests · AskAlice/SpacialShell-MacOS"),
+                         tab(2, floating: true, title: "Groceries")]),
+            metaFor: meta, sizing: .fit, send: send))
         // #55: on another Space, beside the two states it must not be mistaken for.
         add("bar-off-space", barGeometry, WorkspacePanelView(
             state: tabs([tab(3, focused: true), tab(1, offSpace: true), tab(2, hidden: true), tab(4, fullscreen: true)]),
@@ -504,7 +515,12 @@ enum Stories {
             railItem(3, name: "Workspace", symbol: "plus", count: 0, trailing: true),
         ], metaFor: meta, send: send)
         add("tab-menu", nil, MenuPreview(menu: tabMenu))
-        add("tab-menu-move", nil, MenuPreview(menu: tabMenu.items[3].submenu!))
+        add("tab-menu-move", nil, MenuPreview(menu: submenu(tabMenu, "Move to workspace")))
+        // #129: a pinned placeholder's menu — Unpin, and Close disabled until it is unpinned.
+        add("tab-menu-pinned-placeholder", nil, MenuPreview(menu: RailMenu.tab(placeholder(3, title: "~/code — zsh", pinned: true), rail: [
+            railItem(0, name: "Workspace", symbol: "globe", count: 2, active: true),
+            railItem(1, name: "Workspace", symbol: "plus", count: 0, trailing: true),
+        ], metaFor: meta, send: send)))
         // #128: a placeholder's menu leads with Open; it has no window to float.
         add("tab-menu-placeholder", nil, MenuPreview(menu: RailMenu.tab(placeholder(3, title: "~/code — zsh"), rail: [
             railItem(0, name: "Workspace", symbol: "globe", count: 2, active: true),

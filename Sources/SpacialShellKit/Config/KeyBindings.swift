@@ -62,6 +62,8 @@ public enum KeyBindings {
         "balance": .balance,
         // #114, unbound by default
         "split-columns-more": .adjustSplitColumns(1), "split-columns-fewer": .adjustSplitColumns(-1),
+        // #129, unbound by default: the tab menu is the everyday way in
+        "toggle-pin": .togglePin,
     ].merging((1...10).map { ("move-window-to-workspace-\($0)", Command.moveWindowToWorkspaceIndex($0)) }) { a, _ in a }
         .merging((1...9).map { ("focus-tab-\($0)", Command.focusTab($0)) }) { a, _ in a }
 

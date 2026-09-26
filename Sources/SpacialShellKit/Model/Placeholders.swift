@@ -54,13 +54,38 @@ extension World {
     /// Appends a placeholder to the end of workspace `id`'s row (restore builds rows slot by slot,
     /// so appending is "in its slot"). Returns its ref, or nil when the workspace is gone.
     @discardableResult
-    public mutating func addPlaceholder(_ p: Placeholder, floating: Bool = false, to id: UUID) -> WindowRef? {
+    public mutating func addPlaceholder(_ p: Placeholder, floating: Bool = false, pinned: Bool = false, to id: UUID) -> WindowRef? {
         guard let loc = location(ofWorkspace: id) else { return nil }
         let ref = mintPlaceholderRef(bundleID: p.bundleID)
         placeholders[ref] = p
         screens[loc.screen]!.workspaces[loc.index].windows.append(ref)
         if floating { screens[loc.screen]!.workspaces[loc.index].floating.insert(ref) }
+        if pinned { pinnedTabs.insert(ref) }
         return ref
+    }
+
+    /// #129 (material-shell P17): pinned window `w` has closed — its tab turns back into a
+    /// placeholder in the same slot (same row, same position, floating if it was, still pinned)
+    /// instead of disappearing. Focus leaves it exactly as it leaves a closed window: to the
+    /// neighbour. Returns the placeholder, or nil when `w` is not a pinned window in a row, in
+    /// which case nothing changes and the caller removes it the ordinary way.
+    @discardableResult
+    public mutating func leavePlaceholder(for w: WindowRef, bundleID: String, title: String) -> WindowRef? {
+        guard pinnedTabs.contains(w), !w.isPlaceholder, let loc = location(of: w) else { return nil }
+        var ws = screens[loc.screen]!.workspaces[loc.index]
+        let next = neighbour(of: w, in: ws)
+        let p = mintPlaceholderRef(bundleID: bundleID)
+        ws.windows[ws.windows.firstIndex(of: w)!] = p
+        if ws.floating.remove(w) != nil { ws.floating.insert(p) }
+        if ws.anchor == w { ws.anchor = nil }
+        screens[loc.screen]!.workspaces[loc.index] = ws
+        placeholders[p] = Placeholder(bundleID: bundleID, title: title)
+        pinnedTabs.remove(w); pinnedTabs.insert(p)
+        hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
+        parents = parents.filter { $0.value != w }
+        if focus.window == w { focus.window = next }
+        normalize()
+        return p
     }
 
     /// The placeholders, in rail order: displays left→right, workspaces top→bottom, tabs
@@ -86,6 +111,7 @@ extension World {
         if ws.floating.remove(p) != nil || kind == .float { ws.floating.insert(w) }
         screens[loc.screen]!.workspaces[loc.index] = ws
         placeholders[p] = nil
+        if pinnedTabs.remove(p) != nil { pinnedTabs.insert(w) }   // #129: the pin stays with the slot
         if focus.window == nil, loc.screen == focus.screen, loc.index == screens[loc.screen]!.activeIndex { focus.window = w }
         normalize()
     }

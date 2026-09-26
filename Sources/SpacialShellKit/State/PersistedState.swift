@@ -9,8 +9,10 @@ public struct PersistedState: Codable, Equatable, Sendable {
         public var title: String
         /// Written only when true, like every optional here.
         public var floating: Bool?
-        public init(bundleID: String, title: String, floating: Bool? = nil) {
-            self.bundleID = bundleID; self.title = title; self.floating = floating
+        /// #129: a pinned tab. Written only when true, so a file from before #129 reads as unpinned.
+        public var pinned: Bool?
+        public init(bundleID: String, title: String, floating: Bool? = nil, pinned: Bool? = nil) {
+            self.bundleID = bundleID; self.title = title; self.floating = floating; self.pinned = pinned
         }
     }
     public struct WorkspaceState: Codable, Equatable, Sendable {
@@ -56,8 +58,9 @@ public struct PersistedState: Codable, Equatable, Sendable {
         func saved(_ ws: Workspace) -> [SavedWindow]? {
             let rows = ws.windows.compactMap { w -> SavedWindow? in
                 let floating: Bool? = ws.floating.contains(w) ? true : nil
-                if let p = world.placeholders[w] { return SavedWindow(bundleID: p.bundleID, title: p.title, floating: floating) }
-                return bundleIDs[w].map { SavedWindow(bundleID: $0, title: titles[w] ?? "", floating: floating) }
+                let pinned: Bool? = world.pinnedTabs.contains(w) ? true : nil
+                if let p = world.placeholders[w] { return SavedWindow(bundleID: p.bundleID, title: p.title, floating: floating, pinned: pinned) }
+                return bundleIDs[w].map { SavedWindow(bundleID: $0, title: titles[w] ?? "", floating: floating, pinned: pinned) }
             }
             return rows.isEmpty ? nil : rows
         }
@@ -157,7 +160,10 @@ public struct PersistedState: Codable, Equatable, Sendable {
             w.screens[m] = s
         }
         for (id, saved) in slots {
-            for s in saved { w.addPlaceholder(Placeholder(bundleID: s.bundleID, title: s.title), floating: s.floating == true, to: id) }
+            for s in saved {
+                w.addPlaceholder(Placeholder(bundleID: s.bundleID, title: s.title), floating: s.floating == true,
+                                 pinned: s.pinned == true, to: id)
+            }
         }
         w.sortCategoryRows(order)
         w.normalize()

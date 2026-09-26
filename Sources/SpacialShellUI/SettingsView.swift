@@ -386,6 +386,7 @@ struct SettingsView: View {
         ("move-workspace-to-screen-up", "Move workspace to screen above"),
         ("move-workspace-to-screen-down", "Move workspace to screen below"),
         ("cycle-layout", "Cycle layout"), ("cycle-layout-reverse", "Cycle layout backwards"), ("toggle-float", "Toggle float"),
+        ("toggle-pin", "Pin / unpin tab"),
         ("close-window", "Close window"), ("toggle-shell-ui", "Toggle Zen mode"),
         ("toggle-overview", "Open overview"), ("toggle-spatial-view", "Spatial view"), ("open-settings", "Open settings"),
     ]

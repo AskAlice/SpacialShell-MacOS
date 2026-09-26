@@ -55,6 +55,11 @@ public enum Command: Sendable, Hashable {
     /// #127: the tab menu's Float/Tile — `toggleFloat` for a named window, focused or not. Focus
     /// and the active rows stay put.
     case toggleFloatRef(WindowRef)
+    /// #129: the tab menu's Pin/Unpin — a tab (window or placeholder) pinned or not. Focus and the
+    /// active rows stay put.
+    case togglePinRef(WindowRef)
+    /// #129: `toggle-pin` — pin or unpin the focused window's tab. Unbound by default.
+    case togglePin
     case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
     /// #132 (M3 B9): the spatialisation view — the focused display's workspaces as mini-desktops,
     /// zoomed out. App-layer, like the overview; holding Fn+W/S opens it too (`SpatialView`).
@@ -88,6 +93,8 @@ public enum Command: Sendable, Hashable {
     /// #108: a tiled window dragged by its title bar and released over another tile. Same row: the
     /// two swap places. Another row (another display's tile): the window takes that tile's slot,
     /// and — being in the user's hand, as in #57 — focus follows it.
+    /// #129: either side may be a placeholder (material-shell M2, "drag placeholders"): it swaps
+    /// and takes slots the same way, and focus, with no window to follow, stays where it was.
     case dropWindow(WindowRef, onto: WindowRef)
 
     // #113 (M4 G9 + G10): resizable portions.

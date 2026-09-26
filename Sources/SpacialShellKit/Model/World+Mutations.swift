@@ -206,6 +206,7 @@ extension World {
         let owner = self.owner(of: w)
         ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
         placeholders[w] = nil   // #128: removing a placeholder forgets its slot
+        pinnedTabs.remove(w)
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]

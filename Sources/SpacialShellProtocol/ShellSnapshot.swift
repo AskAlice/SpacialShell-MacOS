@@ -47,16 +47,19 @@ public struct ShellSnapshot: Codable, Sendable, Equatable {
         /// `pid` is negative and belongs to no process; `bundleID` and `title` are the saved ones.
         /// Absent (nil) on every real window, so the row's JSON is unchanged for them.
         public var isPlaceholder: Bool?
+        /// #129: a pinned tab — closing its window leaves a placeholder. Absent (nil) when unpinned.
+        public var isPinned: Bool?
 
         public init(
             window: WindowRef, pid: Int32, workspaceId: UUID?, title: String, appName: String,
             bundleID: String?, isFocused: Bool, isVisibleUnderLayout: Bool, isFloating: Bool,
-            isHidden: Bool, isPlaceholder: Bool? = nil
+            isHidden: Bool, isPlaceholder: Bool? = nil, isPinned: Bool? = nil
         ) {
             self.window = window; self.pid = pid; self.workspaceId = workspaceId
             self.title = title; self.appName = appName; self.bundleID = bundleID
             self.isFocused = isFocused; self.isVisibleUnderLayout = isVisibleUnderLayout
             self.isFloating = isFloating; self.isHidden = isHidden; self.isPlaceholder = isPlaceholder
+            self.isPinned = isPinned
         }
     }
 

@@ -26,6 +26,8 @@ public struct WireState: Codable, Equatable, Sendable {
         public var frame: [Double]?      // x, y, w, h — the last frame the backend observed
         /// #128: set (true) only on a placeholder tab, whose pid is negative and owns no process.
         public var isPlaceholder: Bool? = nil
+        /// #129: set (true) only on a pinned tab.
+        public var isPinned: Bool? = nil
     }
     public struct WorkspaceDTO: Codable, Equatable, Sendable {
         public var id: UUID
@@ -89,7 +91,8 @@ public struct WireState: Codable, Equatable, Sendable {
                                                isOffSpace: world.offSpace.contains(w),
                                                isParked: parked.contains(w),
                                                frame: observed[w].map { [$0.minX, $0.minY, $0.width, $0.height] },
-                                               isPlaceholder: w.isPlaceholder ? true : nil)
+                                               isPlaceholder: w.isPlaceholder ? true : nil,
+                                               isPinned: world.pinnedTabs.contains(w) ? true : nil)
                                  })
                 })
         }

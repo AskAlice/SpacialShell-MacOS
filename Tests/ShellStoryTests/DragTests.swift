@@ -116,6 +116,15 @@ import UniformTypeIdentifiers
         #expect(throws: (any Error).self) { try JSONDecoder().decode(DraggedWorkspace.self, from: tab) }
     }
 
+    /// #129: a placeholder tab drags like any tab — its ref (negative pid and all) survives the
+    /// trip to the rail and the bar.
+    @Test func aPlaceholderTabsPayloadRoundTrips() throws {
+        let ref = WindowRef(id: 3, pid: WindowRef.placeholderPid(bundleID: "com.apple.Terminal"))
+        let data = try JSONEncoder().encode(DraggedWindow(ref: ref))
+        guard case .window(let w) = try JSONDecoder().decode(RailDrop.self, from: data) else { Issue.record("not a tab"); return }
+        #expect(w.ref == ref && w.ref.isPlaceholder)
+    }
+
     /// Why a private type cannot be used here, recorded so nobody re-introduces one: a UTI
     /// invented at runtime has no conformance unless the bundle declares it, and the dev binary
     /// (Scripts/dev.sh) has no Info.plist to declare it in.

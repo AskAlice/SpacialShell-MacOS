@@ -54,6 +54,7 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Cycle layout backwards | `Fn+⇧Space` | `⌃⌥⇧Space` | — |
 | Set a specific layout (`set-layout-grid`, `set-layout-<saved id>`) | unbound | unbound | — |
 | Split: one column more / fewer (`split-columns-more` / `split-columns-fewer`) | unbound | unbound | — |
+| Pin / unpin the focused window's tab (`toggle-pin`) | unbound | unbound | tab menu "Pin" |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` | Super (overview) |
 | Spatial view: every workspace as a mini-desktop (`toggle-spatial-view`); also by holding `Fn+W` / `Fn+S` | `Fn+Z` | `⌃⌥Z` | — |
@@ -108,6 +109,15 @@ Semantics worth knowing:
   focused, so they never hide a live window; they drag between tabs and onto rail rows like any
   tab. Matching goes by the app's bundle id, then the same title, then the tab you clicked, then
   the order the tabs were in.
+- **Pinned tabs** (#129, material-shell's persistent tab): right-click a tab → **Pin** (or bind
+  `toggle-pin`). A pinned tab shows `pin.circle.fill`; when its window closes — or its app quits —
+  the tab stays where it was as a placeholder, and the app's next window takes it back, still
+  pinned. A pinned placeholder cannot be closed (Close is disabled, middle-click does nothing)
+  until you **Unpin** it. Pins survive relaunch.
+- **Dragging placeholders** (#129): a placeholder tab drags like any tab — along its bar, onto
+  another display's bar, onto a rail row (with ⌥, the whole app's tabs). It has no window to grab
+  by a title bar, so the tab is the handle; the drag-swap verb (`dropWindow`) accepts it on either
+  side, swapping within a row or taking a slot in another. Focus never follows a placeholder.
 - Move window left/right at the end of the row (or as the only tab) carries the window to the
   neighbouring screen in that direction, landing at the near end of its active row (moving right
   lands leftmost, moving left lands rightmost), keeping its floating flag; focus follows. On the

@@ -18,7 +18,8 @@ extension ShellSnapshot {
                              appName: appNames[w.pid] ?? "", bundleID: p?.bundleID ?? bundleIDs[w],
                              isFocused: world.focus.window == w, isVisibleUnderLayout: visible,
                              isFloating: floating, isHidden: world.hidden.contains(w),
-                             isPlaceholder: p == nil ? nil : true)
+                             isPlaceholder: p == nil ? nil : true,
+                             isPinned: world.pinnedTabs.contains(w) ? true : nil)
         }
         // A visitor has no workspace: it is listed on its owner's screen, else the focused one.
         let owners = Dictionary(world.screenOrder.flatMap { d in

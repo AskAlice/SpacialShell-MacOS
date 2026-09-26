@@ -100,6 +100,10 @@ public struct World: Codable, Equatable, Sendable {
     /// A key here is in exactly one workspace's `windows`, never focused, never an anchor, never
     /// tiled — see `Placeholder`.
     public var placeholders: [WindowRef: Placeholder] = [:]
+    /// #129 (material-shell P17): pinned tabs — live windows or placeholders. A pinned window that
+    /// closes leaves a placeholder in its slot instead of its tab disappearing, and a pinned
+    /// placeholder cannot be closed until it is unpinned. Every member is placed in a row.
+    public var pinnedTabs: Set<WindowRef> = []
     public var parents: [WindowRef: WindowRef] // dialog → owner
     public var defaultLayout: LayoutID
     /// Zen mode (M2 design ruling): true hides the shell panels and gives their edges back to the
