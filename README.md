@@ -136,8 +136,8 @@ apps — the fallback when `launcher-url` has no handler), a **hold-`Fn` cheat s
 live bindings, `Fn+,` opening the config file, and the control surface: unix-socket IPC,
 `spacialctl`, and the Raycast extension under [`raycast/`](raycast/). Panels are Apple-native
 materials, never take key focus (the overview's search field is the one exception), and every
-click re-enters the same command pipeline as a hotkey. Still to come: `Fn+Drag` window
-reordering, workspace rename/menus, and window titles in tabs (app name + icon until then).
+click re-enters the same command pipeline as a hotkey. Drag a window by its title bar onto another
+tile to swap them. Still to come: workspace menus, and window titles in tabs (app name + icon until then).
 
 Loops are served as animated **webp** (and **gif** next to them) from
 [`docs/media/`](docs/media/). The `live-*` ones are screen recordings from the test VM (see
@@ -218,8 +218,7 @@ for the cheat-sheet, presets, rebinding recipes and known conflicts, and `docs/c
 - **Non-Apple keyboards never deliver a real `Fn` key press** — the modifier lives in firmware and
   the HID layer never sees it. Use Karabiner-Elements (which re-emits through a virtual Apple
   keyboard) or the `ctrl-alt` preset instead.
-- **The shell UI is young.** The rail, tab bar, and overview are in; `Fn+Drag` window
-  reordering is not yet, and tabs show app names, not window titles. `show-panels = false` in
+- **The shell UI is young.** The rail, tab bar, overview and drag-to-swap are in; and tabs show app names, not window titles. `show-panels = false` in
   config brings back the panel-less behaviour (the overview and `spacialctl` stay).
 
 ## Licence and attribution
