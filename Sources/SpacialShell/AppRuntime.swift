@@ -43,6 +43,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var pointerFocus: PointerFocus?
     /// #138: warns while another window manager from `other-window-managers` runs.
     private var otherWindowManagers: OtherWindowManagerWatch?
+    /// #126: the Dock's badges and bounces, as marks on the rail and the tabs.
+    private var attention: DockAttention?
     private var shell: ShellController?
     private var overview: OverviewController?
     private var settingsWindow: SettingsWindowController?
@@ -139,6 +141,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 self?.ipc?.publish(snapshot)   // #117: returns at once; the diff runs on the IPC queue
                 self?.scheduleSave(world)
                 self?.shell?.update(world: world, snapshot: snapshot)
+                self?.attention?.update(world: world)
                 self?.overview?.update(world: world, snapshot: snapshot)
                 self?.layouts?.update(world: world)
             }
@@ -227,6 +230,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 alerts.update(problems: problems)
             }
         }
+        let attention = DockAttention { shell.update(attention: $0) }
+        attention.update(config: config)
+        self.attention = attention
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
@@ -468,6 +474,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         gestures?.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
         pointerFocus?.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
         shell?.update(config: config)
+        attention?.update(config: config)
         cheatSheet?.update(config: config)
         layouts?.update(config: config, overrides: overrides)
         guard let store else { return }

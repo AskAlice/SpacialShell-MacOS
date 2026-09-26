@@ -141,6 +141,12 @@ struct WorkspacePanelView: View {
             if sizing == .equal { Spacer(minLength: 0) }
             if let icon {
                 Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                    // #126: on the icon's corner, as the Dock draws a badge; beside the name without one.
+                    .overlay(alignment: .topTrailing) {
+                        if tab.wantsAttention { AttentionDot().offset(x: 2, y: -2) }
+                    }
+            } else if tab.wantsAttention {
+                AttentionDot()
             }
             if style != .icon || icon == nil {
                 // Middle truncation for titles: both ends carry the meaning ("Report — Pages",

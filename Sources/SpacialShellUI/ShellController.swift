@@ -28,6 +28,8 @@ public final class ShellController: NSObject {
     private var titles: [SpacialShellProtocol.WindowRef: String] = [:]
     private var config: Config
     private var problems: [Problem] = []
+    /// #126: pids asking for attention (`AttentionTracker.wanting`).
+    private var attention: Set<Int32> = []
     private let send: @Sendable (Command) -> Void
     private let appMeta: AppMetaCache
     /// One card for the whole shell, not one per display: only one pointer exists.
@@ -86,6 +88,13 @@ public final class ShellController: NSObject {
         render()
     }
 
+    /// #126: marks the tiles and tabs of apps asking for attention.
+    public func update(attention: Set<Int32>) {
+        guard attention != self.attention else { return }
+        self.attention = attention
+        render()
+    }
+
     public func update(config: Config) {
         let wasAutohide = self.config.railAutohide
         self.config = config
@@ -114,7 +123,7 @@ public final class ShellController: NSObject {
 
         for nsScreen in NSScreen.screens {
             let id = DisplayTopology.uuid(for: nsScreen)
-            guard let state = ShellUI.state(for: id, in: world, layouts: layouts, titles: titles) else { continue }
+            guard let state = ShellUI.state(for: id, in: world, layouts: layouts, titles: titles, attention: attention) else { continue }
             seen.insert(id)
             let p = panels[id] ?? makePanels(for: id)
             panels[id] = p

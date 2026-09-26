@@ -139,6 +139,7 @@ deliberately). Binding assignments from the spec:
 | Workspace tile | per `rail-icon-style` (#115, `RailTile.face`): `app` — up to four app icons, the workspace's `symbol` when it has none; `category` — the chosen `symbol`, else its category's (`AppCategory.symbol`); `hybrid` — that glyph over the top two app icons. Optional `category-colors` tint the glyph on inactive tiles |
 | Category glyphs | `globe` web · `chevron.left.forwardslash.chevron.right` coding · `terminal` · `bubble.left.and.bubble.right` communication · `play.rectangle` media · `paintbrush` design · `doc.text` productivity · `wrench.and.screwdriver` utilities |
 | Floating pin | `pin.fill` · close `xmark` |
+| Wants attention (#126) | not a symbol: `AttentionDot`, a 7 pt `systemRed` circle ringed in the window background — top-right of a rail tile (opposite the count), on a tab icon's corner, or beside the title when the tab has no icon |
 | Native-fullscreen tab | `arrow.up.left.and.arrow.down.right` |
 | On-another-Space tab | `macwindow.on.rectangle` (not drawn on hidden tabs, which read as dimmed, nor on fullscreen ones, whose marker already says "own Space") |
 

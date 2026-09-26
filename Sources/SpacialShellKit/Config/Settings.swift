@@ -18,6 +18,8 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var tabStyle: TabStyle?
     /// #115. `category-colors` stays the file's: a colour per category is a hand-edit, not a knob.
     public var railIconStyle: RailIconStyle?
+    /// #126.
+    public var dockAttention: Bool?
     public var keybindingPreset: KeybindingPreset?
     public var animations: Bool?
     public var emptyCheatsheet: Bool?
@@ -74,6 +76,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing)
         tabStyle = try c.decodeIfPresent(TabStyle.self, forKey: .tabStyle)
         railIconStyle = try c.decodeIfPresent(RailIconStyle.self, forKey: .railIconStyle)
+        dockAttention = try c.decodeIfPresent(Bool.self, forKey: .dockAttention)
         keybindingPreset = try c.decodeIfPresent(KeybindingPreset.self, forKey: .keybindingPreset)
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations)
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet)
@@ -141,6 +144,7 @@ public enum Settings {
         if let v = overrides.tabSizing { c.tabSizing = v }
         if let v = overrides.tabStyle { c.tabStyle = v }
         if let v = overrides.railIconStyle { c.railIconStyle = v }
+        if let v = overrides.dockAttention { c.dockAttention = v }
         if let v = overrides.keybindingPreset { c.keybindingPreset = v }
         if let v = overrides.animations { c.animations = v }
         if let v = overrides.emptyCheatsheet { c.emptyCheatsheet = v }

@@ -26,14 +26,18 @@ public struct WorkspaceRailItem: Identifiable, Equatable, Sendable {
     public let layout: LayoutID
     /// #114: how many columns this row's split shows — the layout popover's −/+.
     public let splitColumns: Int
+    /// #126 (G35): an app with a window in this row is asking for attention (a Dock badge or bounce).
+    public let wantsAttention: Bool
     public init(id: UUID, index: Int, name: String, symbol: String, windowCount: Int,
                 windows: [WindowRef] = [], isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool,
-                category: AppCategory? = nil, layout: LayoutID = .maximize, splitColumns: Int = SplitView.defaultColumns) {
+                category: AppCategory? = nil, layout: LayoutID = .maximize, splitColumns: Int = SplitView.defaultColumns,
+                wantsAttention: Bool = false) {
         self.id = id; self.index = index; self.name = name; self.symbol = symbol
         self.windowCount = windowCount; self.windows = windows
         self.isActive = isActive; self.isPinned = isPinned
         self.isTrailingEmpty = isTrailingEmpty
         self.category = category; self.layout = layout; self.splitColumns = splitColumns
+        self.wantsAttention = wantsAttention
     }
 }
 
@@ -48,10 +52,14 @@ public struct WindowTabItem: Identifiable, Equatable, Sendable {
     /// The window's title (#110), from the snapshot feed. Empty when it has none or none is known
     /// yet; the tab then shows the app name, as it did before titles.
     public let title: String
+    /// #126 (G35): this window's app is asking for attention. The Dock speaks per app, so every
+    /// window of it is marked.
+    public let wantsAttention: Bool
     public init(ref: WindowRef, isFocused: Bool, isFloating: Bool, isHidden: Bool, isFullscreen: Bool = false,
-                isOffSpace: Bool = false, title: String = "") {
+                isOffSpace: Bool = false, title: String = "", wantsAttention: Bool = false) {
         self.ref = ref; self.isFocused = isFocused; self.isFloating = isFloating; self.isHidden = isHidden
         self.isFullscreen = isFullscreen; self.isOffSpace = isOffSpace; self.title = title
+        self.wantsAttention = wantsAttention
     }
 }
 
@@ -176,9 +184,11 @@ public struct ScreenShellState: Equatable, Sendable {
 public enum ShellUI {
     /// Nil when the world does not know this display (mid hot-plug); the caller just skips it.
     /// `titles` is the snapshot feed's (`ShellSnapshot.titles`): the model carries no titles.
+    /// `attention` is `AttentionTracker.wanting` (#126): pids, since the Dock speaks per app.
     public static func state(for display: DisplayID, in world: World,
                              layouts: LayoutCatalogue = .builtins,
-                             titles: [WindowRef: String] = [:]) -> ScreenShellState? {
+                             titles: [WindowRef: String] = [:],
+                             attention: Set<Int32> = []) -> ScreenShellState? {
         guard let screen = world.screens[display] else { return nil }
         let rail = screen.workspaces.enumerated().map { i, ws in
             WorkspaceRailItem(
@@ -188,7 +198,8 @@ public enum ShellUI {
                 isActive: i == screen.activeIndex,
                 isPinned: ws.pinned,
                 isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned,
-                category: ws.category, layout: ws.layout, splitColumns: ws.splitColumns)
+                category: ws.category, layout: ws.layout, splitColumns: ws.splitColumns,
+                wantsAttention: ws.windows.contains { attention.contains($0.pid) })
         }
         let active = screen.active
         // #134: a sheet has no tab; its owner's tab is the focused one while the sheet has focus.
@@ -200,7 +211,8 @@ public enum ShellUI {
                 isHidden: world.hidden.contains(w),
                 isFullscreen: world.fullscreen.contains(w),
                 isOffSpace: world.offSpace.contains(w),
-                title: titles[w] ?? "")
+                title: titles[w] ?? "",
+                wantsAttention: attention.contains(w.pid))
         }
         return ScreenShellState(
             display: display,

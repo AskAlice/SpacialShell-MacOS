@@ -233,6 +233,10 @@ struct ScreenPanelView: View {
                     .foregroundStyle(.white)
                     .offset(x: 13, y: 13)
             }
+            // #126: an app here is asking for attention — opposite the count, where a Dock badge sits.
+            if item.wantsAttention && !item.isTrailingEmpty {
+                AttentionDot().offset(x: 13, y: -13)
+            }
         }
         .frame(width: 32, height: 32)
         .background(
@@ -306,6 +310,18 @@ struct ScreenPanelView: View {
             return AnyShapeStyle(active ? AnyShapeStyle(.white) : AnyShapeStyle(.secondary))
         }
         return AnyShapeStyle(Color(.sRGB, red: r, green: g, blue: b, opacity: a))
+    }
+}
+
+/// #126 (G35): "an app here wants you" — on a rail tile and on the app's tabs. Red, as the Dock's
+/// own badge is (`systemRed`, a semantic colour, not a palette entry), ringed in the panel's
+/// background so it reads over an app icon or the active tile's accent.
+struct AttentionDot: View {
+    var body: some View {
+        Circle().fill(Color(nsColor: .systemRed))
+            .frame(width: 7, height: 7)
+            .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1.2).padding(-1.2))
+            .accessibilityLabel("Wants attention")
     }
 }
 

@@ -112,10 +112,11 @@ enum Stories {
     /// category label from them, so a story without pids is a workspace of unknown apps.
     static func railItem(_ i: Int, name: String, symbol: String, count: Int, pids: [Int32] = [],
                          active: Bool = false, pinned: Bool = false, trailing: Bool = false,
-                         category: AppCategory? = nil) -> WorkspaceRailItem {
+                         category: AppCategory? = nil, attention: Bool = false) -> WorkspaceRailItem {
         WorkspaceRailItem(id: UUID(), index: i, name: name, symbol: symbol, windowCount: count,
                           windows: pids.map { WindowRef(id: WindowID($0) * 10, pid: $0) },
-                          isActive: active, isPinned: pinned, isTrailingEmpty: trailing, category: category)
+                          isActive: active, isPinned: pinned, isTrailingEmpty: trailing, category: category,
+                          wantsAttention: attention)
     }
     static func tabs(_ items: [WindowTabItem], layout: SpacialShellProtocol.LayoutID = .split,
                      layouts: LayoutCatalogue = .builtins) -> ScreenShellState {
@@ -149,10 +150,11 @@ enum Stories {
     }
     /// `window` distinguishes several windows of one app — tabs are keyed by their ref.
     static func tab(_ pid: Int32, window: Int = 0, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
-                    fullscreen: Bool = false, offSpace: Bool = false, title: String = "") -> WindowTabItem {
+                    fullscreen: Bool = false, offSpace: Bool = false, title: String = "",
+                    attention: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: pid),
                       isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen,
-                      isOffSpace: offSpace, title: title)
+                      isOffSpace: offSpace, title: title, wantsAttention: attention)
     }
 
     static let railGeometry = CGSize(width: 48, height: 800)
@@ -208,6 +210,22 @@ enum Stories {
         add("rail-icons-colours", railGeometry, ScreenPanelView(
             state: rail(styled), launcherURL: "raycast://", metaFor: unplaced, send: send, iconStyle: .hybrid,
             categoryColors: [.coding: "#BF5AF2", .web: "#0A84FF", .communication: "#30D158", .productivity: "#FF9F0A"]))
+        // #126 (G35): Mail (in the active row) has a Dock badge and Discord (in "Chat") is bouncing:
+        // a dot on both tiles — the active one too, over its accent — and on the icon-grid tile.
+        add("rail-attention", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
+                         railItem(1, name: "Mail", symbol: "envelope", count: 2, pids: [4, 1], active: true, attention: true),
+                         railItem(2, name: "Chat", symbol: "bubble.left.and.bubble.right", count: 1, pids: [6], attention: true),
+                         railItem(3, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta, send: send))
+        // …the same in the category style, where the dot sits on a glyph instead of an icon.
+        add("rail-attention-category", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Code", symbol: "square.grid.2x2", count: 3, pids: [5, 3, 5], category: .coding),
+                         railItem(1, name: "Chat", symbol: "square.grid.2x2", count: 1, pids: [6], active: true,
+                                  category: .communication, attention: true),
+                         railItem(2, name: "Web", symbol: "square.grid.2x2", count: 1, pids: [1], attention: true),
+                         railItem(3, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta, send: send, iconStyle: .category))
         // #75: "Chat" mid-drag over "Code" — the insertion line in the gap above where it lands.
         let reorder = [railItem(0, name: "Code", symbol: "terminal", count: 3, pids: [5, 3, 5]),
                        railItem(1, name: "Web", symbol: "globe", count: 2, pids: [1, 1], active: true),
@@ -366,6 +384,15 @@ enum Stories {
                              tab(1, title: "Pull requests · AskAlice/SpacialShell-MacOS"), tab(2)]),
                 metaFor: meta, sizing: .fit, style: style, send: send))
         }
+        // #126: the app's tabs carry the mark too — on the icon's corner, or beside the title in
+        // the `name` style, which has no icon.
+        let attentionRow = [tab(3, focused: true, title: "~/code/spacial-shell — zsh"),
+                            tab(4, title: "Inbox — 3 unread", attention: true),
+                            tab(4, window: 1, title: "Re: the quarterly numbers", attention: true), tab(2)]
+        add("bar-attention", barGeometry, WorkspacePanelView(
+            state: tabs(attentionRow), metaFor: meta, sizing: .fit, send: send))
+        add("bar-attention-name", barGeometry, WorkspacePanelView(
+            state: tabs(attentionRow), metaFor: meta, sizing: .fit, style: .name, send: send))
         // A title longer than the 220 pt tab ceiling truncates in the middle, keeping both ends.
         add("bar-long-title", barGeometry, WorkspacePanelView(
             state: tabs([tab(4, focused: true,

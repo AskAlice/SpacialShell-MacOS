@@ -201,6 +201,12 @@ struct SettingsView: View {
                     .help("Apps: the workspace's app icons. Category: its category's symbol. Hybrid: the symbol over its top apps.")
             } reset: { overrides.railIconStyle = nil }
 
+            // #126: the Dock's badges and bounces, as a dot on the tile and the tab.
+            row("Attention marks", overridden: overrides.dockAttention != nil) {
+                Toggle("", isOn: binding(\.dockAttention, default: file.dockAttention)).labelsHidden()
+                    .help("A red dot on the workspace and the tab of an app whose Dock icon has a badge or is bouncing")
+            } reset: { overrides.dockAttention = nil }
+
             Divider()
             row("Switch animation", overridden: overrides.animations != nil) {
                 Toggle("", isOn: binding(\.animations, default: file.animations)).labelsHidden()

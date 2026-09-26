@@ -137,6 +137,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// #115: a colour per category, tinting that category's glyph on the rail. Hex only, like
     /// `panel-color`; a category left out keeps the stock secondary glyph.
     public var categoryColors: [AppCategory: String] = [:]
+    /// #126 (G35): mirror the Dock's badges and bounces as a mark on the rail tile and the tab of
+    /// the app asking for attention. Off stops the Dock poll altogether.
+    public var dockAttention: Bool = true
     public var launcherURL: String = "raycast://"
     public var showPanels: Bool = true
     /// #13: an app arriving at launch with *more* windows than this, and no remembered placement,
@@ -236,7 +239,7 @@ public struct Config: Codable, Equatable, Sendable {
              launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
-        case railIconStyle = "rail-icon-style", categoryColors = "category-colors"
+        case railIconStyle = "rail-icon-style", categoryColors = "category-colors", dockAttention = "dock-attention"
         case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
              workspaceWrap = "workspace-wrap"
         case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert"
@@ -261,6 +264,7 @@ public struct Config: Codable, Equatable, Sendable {
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
         tabStyle = try c.decodeIfPresent(TabStyle.self, forKey: .tabStyle) ?? .full
         railIconStyle = try c.decodeIfPresent(RailIconStyle.self, forKey: .railIconStyle) ?? .app
+        dockAttention = try c.decodeIfPresent(Bool.self, forKey: .dockAttention) ?? true
         // A key that is not a category is left for `unknownKeys` to name; a bad colour rejects the
         // file, as a bad `panel-color` does.
         for (key, raw) in try c.decodeIfPresent([String: String].self, forKey: .categoryColors) ?? [:] {
@@ -370,6 +374,7 @@ public struct Config: Codable, Equatable, Sendable {
         tab-sizing = \(q(tabSizing.rawValue))
         tab-style = \(q(tabStyle.rawValue))
         rail-icon-style = \(q(railIconStyle.rawValue))
+        dock-attention = \(dockAttention)
         launcher-url = \(q(launcherURL))
         show-panels = \(showPanels)
         crowd-threshold = \(crowdThreshold)
