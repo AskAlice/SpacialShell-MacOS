@@ -74,6 +74,15 @@ then runs `guest/provision.sh` inside it:
   prefs hold `hasShownWelcomeScreen` and `lastShownStartupVersion-1` = the running macOS
   version (the second is the one that gates it). Rebuilding the guest on a new macOS brings the
   sheet back until the image is provisioned again
+- opens Terminal clean (#158): the base image's Terminal was left running with its setup history
+  on screen (`sudo spctl --global-disable` among it), and loginwindow relaunched it, scrollback
+  and all, on every boot. Provisioning quits Terminal, deletes zsh's history and sessions and
+  Terminal's saved state (on macOS 26 under talagent's daemon container, by UUID, as well as
+  `~/Library/Saved Application State`), and turns off Terminal's window restoration and zsh's
+  session restore (`SHELL_SESSIONS_DISABLE=1` in `~/.zshenv`). loginwindow still relaunches
+  Terminal at boot (the snapshot references have its rail row), now as one new window: a
+  "Last login" line and a prompt. Provisioning ends with `sync`: `tart stop` is not a clean
+  shutdown, and without it the guest lost these writes
 - **bakes in the runner's TCC grants**: Accessibility and Screen Recording for
   `tart-guest-agent` (the per-user LaunchAgent, `--run-agent`, is every `tart exec` command's
   responsible process). This follows the Cirrus templates' `update-tcc-database.sh`, which already
@@ -264,7 +273,7 @@ times). No references; the frames land in the artefacts. Then, per recording:
 
 ```sh
 Scripts/e2e/media.sh .build/e2e/vm-…/overview/overview docs/media/live-overview 720
-Scripts/e2e/media.sh .build/e2e/vm-…/rail-apps/rail-apps docs/media/live-rail-apps 512 12 512:384:0:0
+Scripts/e2e/media.sh .build/e2e/vm-…/rail-apps/rail-apps docs/media/live-rail-apps 512 12 512:384:0:0 1.0 9.2
 GIF_COLORS=64 WEBP_Q=38 Scripts/e2e/media.sh .build/e2e/vm-…/spatialisation/spatialisation \
     docs/media/spatialisation 720 12 "" 0.6 9.6      # #154: eight slides, under the old sizes
 ```

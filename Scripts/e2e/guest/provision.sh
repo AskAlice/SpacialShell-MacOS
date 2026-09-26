@@ -51,6 +51,37 @@ else
     say "no Notes container yet; its welcome sheet will show on first launch" >&2
 fi
 
+# Terminal opens clean (#158). The base image's Terminal was left running with the image's setup
+# history on screen (`sudo spctl --global-disable` among it), and it sat in the Terminal row of the
+# docs media. Measured on 26.6.2: loginwindow relaunches Terminal on every boot (TAL, even with
+# TALLogoutSavesState off, since `tart stop` is not a logout), and Terminal restores its windows'
+# scrollback from saved state, which macOS 26 keeps in talagent's daemon container under a UUID
+# (ApplicationMapping.plist maps it to the bundle id), not in ~/Library/Saved Application State.
+# So: quit Terminal, drop its saved state in both places and zsh's history and per-session files,
+# and turn off both restoring mechanisms: Terminal's window restoration and Apple's zsh session
+# save/restore. loginwindow still relaunches Terminal at boot (the snapshot references have its
+# rail row), and with nothing to restore it opens one new window: a "Last login" line, a prompt.
+killall Terminal 2>/dev/null && sleep 2 || true
+rm -rf ~/.zsh_history ~/.zsh_sessions ~/.bash_history ~/.bash_sessions \
+    "$HOME/Library/Saved Application State/com.apple.Terminal.savedState"
+for c in "$HOME/Library/Daemon Containers"/*; do
+    [ "$(sudo plutil -extract MCMMetadataIdentifier raw "$c/.com.apple.containermanagerd.metadata.plist" 2>/dev/null)" = com.apple.talagent ] || continue
+    S="$c/Data/Library/Saved Application State"
+    uuids="$(sudo python3 -c '
+import plistlib, sys
+try:
+    m = plistlib.load(open(sys.argv[1], "rb"))
+except (OSError, ValueError):
+    sys.exit(0)
+for app, uuid in zip(m[::2], m[1::2]):
+    if isinstance(app, dict) and app.get("protected", {}).get("signingIdentifier") == "com.apple.Terminal":
+        print(uuid)' "$S/ApplicationMapping.plist")"
+    for uuid in $uuids; do sudo rm -rf "$S/$uuid.savedState"; done
+done
+defaults write com.apple.Terminal NSQuitAlwaysKeepsWindows -bool false
+grep -qs SHELL_SESSIONS_DISABLE ~/.zshenv || echo 'export SHELL_SESSIONS_DISABLE=1   # no zsh session restore (#158)' >> ~/.zshenv
+say "Terminal: history and saved state cleared, session restore off"
+
 # The runner's grants: Accessibility and Screen Recording for tart-guest-agent, the responsible
 # process of every `tart exec` command (its per-user LaunchAgent, `--run-agent`). Cirrus's image
 # already has both; written again so the image does not depend on that. System and user DBs, as
@@ -70,4 +101,9 @@ done
 # Smoke: the runner's own tools answer without a prompt.
 osascript -l JavaScript -e 'ObjC.import("CoreGraphics"); "cg ok"'
 screencapture -x /tmp/provision.png && say "screencapture ok"
+
+# golden.sh stops the guest seconds after this returns, and `tart stop` is not a clean shutdown:
+# writes still in the guest's cache are lost. Measured (#158): the Terminal cleanup above, then
+# `tart stop` at once, and the next boot had every file back (history, saved state, no ~/.zshenv).
+sync
 say "done"

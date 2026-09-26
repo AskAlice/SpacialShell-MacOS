@@ -11,7 +11,9 @@ sh defaults write -g AppleKeyboardUIMode -int 0
 sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
 relaunch
 input move 600 400
-sh open -a Safari; true
+# Terminal's row comes from loginwindow relaunching Terminal at boot (#158); opened here too, so
+# the row does not depend on that.
+sh open -a Safari; sleep 2; open -a Terminal; true
 wait 6
 open 1 as a
 open 1 as b
