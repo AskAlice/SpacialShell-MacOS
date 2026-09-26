@@ -34,26 +34,32 @@ preset) — for about ¾ s and this table appears as an overlay with your *actua
 including everything you rebound; release to dismiss.
 
 Same shape as material-shell: **W/S move between workspaces (rows), A/D between windows (columns);
-Shift moves the window instead of the focus.** Arrow keys are aliases and are always on `⌃⌥`,
-in both presets — `Fn+arrows` are Home/End/PgUp/PgDn at the keyboard-driver level and can never be
-bound.
+Shift moves the window instead of the focus; Option means another display.** Arrow keys are
+row/tab aliases and are always on `⌃⌥`, in both presets. With Fn, the arrows mean **displays**:
+`Fn+⇧+arrow` moves the window to the display that way. (macOS turns `Fn+arrows` into
+Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are bound to.)
 
 | Command | `fn` preset | `ctrl-alt` preset | material-shell |
 |---|---|---|---|
 | Focus workspace up / down | `Fn+W` / `Fn+S` | `⌃⌥W` / `⌃⌥S` | Super+W / S |
 | Focus window left / right † | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` | Super+A / D |
 | Focus workspace 1…10 (again on the active one: back to the previous) | `Fn+1` … `Fn+9`, `Fn+0` | `⌃⌥1` … `⌃⌥0` | Super+1 … 0 |
+| Focus tab 1…9 of the active workspace (past the last: the last; `0`: the first) | `Fn+⌥1` … `Fn+⌥9`, `Fn+⌥0` | unbound ‡ | — |
 | Move window to workspace 1…10 | `Fn+⇧1` … `Fn+⇧0` | `⌃⌥⇧1` … `⌃⌥⇧0` | Super+Shift+1 … 0 |
 | Move the whole app to the workspace above / below | `Fn+⌥⇧W` / `Fn+⌥⇧S` | unbound ‡ | — |
 | Close focused window (app keeps running) | `Fn+Q` | `⌃⌥Q` | Super+Q |
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` | Super+Shift+A / D |
 | Move window to workspace above / below | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` | Super+Shift+W / S |
 | Cycle layout round the layout bar (default: maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
+| Cycle layout backwards | `Fn+⇧Space` | `⌃⌥⇧Space` | — |
+| Set a specific layout (`set-layout-grid`, `set-layout-<saved id>`) | unbound | unbound | — |
 | Toggle shell panels (Zen mode) | `Fn+Esc` | `⌃⌥Esc` | Super+Esc |
 | Open overview / launcher | `Fn+Tab` | `⌃⌥Tab` | Super (overview) |
 | Open the config file | `Fn+,` | `⌃⌥,` | — |
-| Focus previous / next screen | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` | — |
-| Move window to previous / next screen | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` | — |
+| Focus the display left / right / above / below | `Fn+⌥A` / `Fn+⌥D` / `Fn+⌥W` / `Fn+⌥S` | unbound ‡ | — |
+| Move window to the display left / right / above / below | `Fn+⇧←` / `Fn+⇧→` / `Fn+⇧↑` / `Fn+⇧↓` | unbound ‡ | — |
+| Focus previous / next screen (aliases) | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` | — |
+| Move window to previous / next screen (aliases) | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` | — |
 | Toggle float on the focused window | `Fn+G` | `⌃⌥G` | — |
 | Arrow aliases: focus / move | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` | same | — |
 
@@ -65,13 +71,26 @@ parked. Under *split* the focused window and its right neighbour are shown.
 
 ‡ The grammar is Fn = navigate, +⇧ = move, +⌃ = resize, +⌥ = monitor, and on the move chord +⌥
 means "the whole app". The `ctrl-alt` prefix already holds ⌥, so there the chord would be `⌃⌥⇧W/S`
-(move window up/down); bind `move-app-up` / `move-app-down` yourself if you want them.
+(move window up/down); bind `move-app-up` / `move-app-down` yourself if you want them. The same
+goes for the display chords (`⌃⌥A` is already focus-window-left, and `⌃⌥` + arrows are the row/tab
+aliases) and for the tab digits (`⌃⌥1` is workspace 1): bind `focus-screen-left`…,
+`move-window-to-screen-left`… and `focus-tab-1`… by name. Digits have no display meaning, which is
+why `Fn+⌥+digit` is free for tabs on the `fn` preset.
 
 Semantics worth knowing:
 
 - Focus workspace **down** from the last (empty) workspace does nothing; move window **down**
   from it creates a new workspace below (there is always one empty, unpinned workspace at the
-  bottom of every screen — that is where new things go).
+  bottom of every screen — that is where new things go). With `workspace-wrap = true`, `Fn+W` on
+  the first workspace goes to the last non-empty one and `Fn+S` on the last non-empty one goes to
+  the first; the empty one at the bottom is then reached by the rail's "+" or by `Fn+⇧S`.
+- "The display that way" is judged on the displays' real arrangement (System Settings → Displays),
+  not their order: the nearest display whose centre lies in that direction — within 45° of it if
+  any display does, else anywhere on that side. With nothing that way the chord does nothing (no
+  wrap). The `[`/`]` aliases still step through the displays in left-to-right order, wrapping.
+- `Fn+⌥N` focuses the Nth tab of the active workspace as the tab bar draws it, minimized tabs
+  included (landing on one brings it back, like clicking it). N past the last tab focuses the last;
+  `Fn+⌥0` focuses the first. On an empty workspace it does nothing.
 - Move window left/right at the end of the row (or as the only tab) carries the window to the
   neighbouring screen in that direction, landing at the near end of its active row (moving right
   lands leftmost, moving left lands rightmost), keeping its floating flag; focus follows. On the
@@ -117,7 +136,9 @@ point it at another command.)
 `alt`/`option`, `shift`, `cmd`/`command`. Key names are US-layout virtual-key positions
 (`kVK_ANSI_*`): `a`…`z`, `0`…`9`, `space`, `tab`, `enter`, `esc`, `backspace`, `minus`, `equal`,
 `leftSquareBracket`, `rightSquareBracket`, `semicolon`, `quote`, `comma`, `period`, `slash`,
-`backslash`, `backtick`, `left`, `right`, `up`, `down`. The full generated list and every command
+`backslash`, `backtick`, `left`, `right`, `up`, `down`, `home`, `end`, `pageUp`, `pageDown`
+(`fn-` + an arrow means the navigation key Fn turns it into: `fn-shift-left` is `fn-shift-home`).
+`set-layout-<id>` binds a specific layout: `"fn-alt-shift-g" = "set-layout-grid"`. The full generated list and every command
 name are in [`docs/config.md`](config.md#keybindings--overrides-and-additions).
 
 Config is watched: save the file and bindings reload live (invalid TOML keeps the previous config

@@ -183,6 +183,13 @@ public struct LayoutCatalogue: Sendable, Equatable {
         return bar[(i + 1) % bar.count]
     }
 
+    /// #119, `cycleLayoutReverse`: the previous id round the bar; from outside the bar, its end.
+    public func previous(before id: LayoutID) -> LayoutID {
+        guard let last = bar.last else { return id }
+        guard let i = bar.firstIndex(of: id) else { return last }
+        return bar[(i - 1 + bar.count) % bar.count]
+    }
+
     /// The warning the switcher shows for a workspace whose layout does not resolve; nil when it does.
     public func warning(for id: LayoutID) -> String? {
         let (def, ok) = resolve(id)

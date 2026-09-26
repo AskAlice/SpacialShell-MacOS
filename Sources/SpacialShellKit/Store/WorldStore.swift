@@ -232,7 +232,8 @@ public actor WorldStore {
         span.setAttribute(key: "command", value: String(detail.prefix { $0 != "(" }))
         span.setAttribute(key: "command.detail", value: detail)
         let before = world.focus
-        let outcome = CommandRunner.run(command, on: world, layouts: layouts)
+        let outcome = CommandRunner.run(command, on: world, layouts: layouts, displays: displays,
+                                        workspaceWrap: config.workspaceWrap)
         // M2 ruling: a failed command changes nothing, so there is nothing to reconcile.
         if case .failed(let e) = outcome.report {
             Self.log.notice("command \(String(describing: command), privacy: .public) failed: \(e.description, privacy: .public)")
@@ -952,7 +953,8 @@ public actor WorldStore {
     /// so the prediction is exactly what the next `prepare` will ask for. Nothing is written.
     private func predictedSwitches(insets: [DisplayID: ShellInsets], zero: Set<WindowRef>) -> [[Transition]] {
         Self.predictedCommands.map { command in
-            let next = CommandRunner.apply(command, to: world, layouts: layouts).0
+            let next = CommandRunner.apply(command, to: world, layouts: layouts, displays: displays,
+                                          workspaceWrap: config.workspaceWrap).0
             let desired = Reconciler.desired(world: next, displays: displays, config: layoutConfig,
                                              observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
                                              insets: insets)

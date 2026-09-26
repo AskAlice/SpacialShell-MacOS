@@ -24,6 +24,15 @@ import CoreGraphics
         }
     }
 
+    /// #118: Fn+⇧+arrow reaches the tap as Home/End/PgUp/PgDn with Fn set; unlike a real arrow,
+    /// that Fn is kept, so it matches the `fn-shift-left` (= `fn-shift-home`) binding.
+    @Test func fnArrowsKeepTheirFnFlag() {
+        let hw: CGEventFlags = [.maskSecondaryFn, .maskShift]
+        for (code, name) in [(115, "left"), (119, "right"), (116, "up"), (121, "down")] {
+            #expect(HotkeyTap.chord(from: hw, keyCode: UInt16(code)) == KeyBindings.parse("fn-shift-\(name)"))
+        }
+    }
+
     @Test func ignoresIrrelevantFlags() {
         // caps lock / numeric pad / help must not affect matching
         let c = HotkeyTap.chord(from: [.maskSecondaryFn, .maskAlphaShift, .maskNumericPad], keyCode: 0)

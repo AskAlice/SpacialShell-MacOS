@@ -85,6 +85,11 @@ struct SettingsView: View {
                 Toggle("", isOn: binding(\.pointerWarp, default: file.pointerWarp)).labelsHidden()
             } reset: { overrides.pointerWarp = nil }
 
+            row("Wrap workspaces", overridden: overrides.workspaceWrap != nil) {
+                Toggle("", isOn: binding(\.workspaceWrap, default: file.workspaceWrap)).labelsHidden()
+                    .help("Fn+W on the first workspace goes to the last one, and Fn+S on the last back to the first")
+            } reset: { overrides.workspaceWrap = nil }
+
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("config.toml").font(.system(size: 12, weight: .semibold))
@@ -224,11 +229,16 @@ struct SettingsView: View {
             ForEach(Self.commandOrder, id: \.0) { name, label in
                 keyRow(name: name, label: label, config: effective)
             }
+            // #119: one "set layout" command per layout the catalogue knows, saved ones included.
+            ForEach(LayoutCatalogue(config: effective).all.map(\.id), id: \.self) { id in
+                keyRow(name: KeyBindings.setLayoutPrefix + id.rawValue,
+                       label: "Layout: \(LayoutCatalogue(config: effective).resolve(id).def.name)", config: effective)
+            }
         }
     }
 
     private func keyRow(name: String, label: String, config: Config) -> some View {
-        let bound = KeyBindings.commandNames[name].flatMap { CheatSheet.primaryDisplay(for: $0, config: config) }
+        let bound = KeyBindings.command(named: name).flatMap { CheatSheet.primaryDisplay(for: $0, config: config) }
         let isOverridden = (overrides.keybindingOverrides?[name] ?? nil) != nil
         return HStack(spacing: 12) {
             Text(label).font(.system(size: 12)).frame(width: 190, alignment: .leading)
@@ -277,7 +287,13 @@ struct SettingsView: View {
         ("focus-screen-prev", "Focus previous screen"), ("focus-screen-next", "Focus next screen"),
         ("move-window-to-screen-prev", "Move window to previous screen"),
         ("move-window-to-screen-next", "Move window to next screen"),
-        ("cycle-layout", "Cycle layout"), ("toggle-float", "Toggle float"),
+        ("focus-screen-left", "Focus screen left"), ("focus-screen-right", "Focus screen right"),
+        ("focus-screen-up", "Focus screen above"), ("focus-screen-down", "Focus screen below"),
+        ("move-window-to-screen-left", "Move window to screen left"),
+        ("move-window-to-screen-right", "Move window to screen right"),
+        ("move-window-to-screen-up", "Move window to screen above"),
+        ("move-window-to-screen-down", "Move window to screen below"),
+        ("cycle-layout", "Cycle layout"), ("cycle-layout-reverse", "Cycle layout backwards"), ("toggle-float", "Toggle float"),
         ("close-window", "Close window"), ("toggle-shell-ui", "Toggle Zen mode"),
         ("toggle-overview", "Open overview"), ("open-settings", "Open settings"),
     ]

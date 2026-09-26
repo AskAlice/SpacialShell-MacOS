@@ -29,6 +29,7 @@ show-panels = true
 empty-cheatsheet = true           # dimmed cheat sheet behind an empty workspace
 rail-autohide = false             # hide the rail like the Dock; windows take its width
 pointer-warp = true               # keyboard focus to another display takes the pointer along
+workspace-wrap = false            # Fn+W on the first workspace goes to the last, Fn+S back round
 crowd-threshold = 8               # an app arriving at launch with more windows gets its own workspace
 category-order = ["web", "terminal", "coding", "media", "utilities"]   # [] turns routing off
 max-workspaces = 12               # routing never grows a display past this many rows
@@ -73,6 +74,7 @@ title-regex = "^Picture in Picture$"
 | `empty-cheatsheet` | boolean | `true` | When the focused display's active workspace has no windows, the key-binding cheat sheet (the one holding the bare modifier shows) sits dimmed at the bottom of that screen, behind everything and click-through. It goes as soon as a window arrives or focus moves to another display. Also a toggle in the settings window. |
 | `rail-autohide` | boolean | `false` | The rail hides off its screen edge (`rail-side`) like the Dock, and windows tile into its width. Resting the pointer at that edge for a moment slides it back in **over** the windows (nothing re-tiles); it slides away again shortly after the pointer leaves it, but stays while its hover card or a drag from it is open. It never takes focus. With Reduce Motion it appears and goes instantly. The tab bar is unaffected and spans the full width. Also a toggle in the settings window's Appearance pane. |
 | `pointer-warp` | boolean | `true` | When a key or `spacialctl run` moves focus to another display (`focus-screen-*`, `move-window-to-screen-*`, or any command that lands on another display), the pointer jumps to the centre of the newly focused window, or of that display when its workspace is empty. Never for a click, a drag or a focus change macOS reports, never within one display, and not when the pointer is already inside that window. Also a toggle (*Pointer follows focus*) in the settings window's General pane. |
+| `workspace-wrap` | boolean | `false` | Focus workspace up/down wraps round the ends of the stack: `Fn+W` on the first workspace goes to the **last non-empty** one, and `Fn+S` on the last non-empty one (or on the empty one below it) goes to the first. The trailing empty workspace is then not stepped onto: reach it with the rail's "+" or by moving a window down (`Fn+⇧S`). Also a toggle (*Wrap workspaces*) in the settings window's General pane. |
 | `crowd-threshold` | integer | `8` | An app arriving **at launch** with *more* windows than this, and no remembered placement, gets a workspace of its own on the display most of its windows are on, instead of piling into the active workspace. See [Where windows land at launch](#where-windows-land-at-launch). |
 | `category-order` | list of categories | `["web", "terminal", "coding", "media", "utilities"]` | Where an app's windows go: one row per listed category on each display, shared by every app of that category and kept at the top of the stack in this order. For these apps this beats the remembered workspace. Apps of any other category, or of none, get a row each below them. `[]` turns this off. Category names are the `app-categories` values. Also in the settings window's Workspaces pane. See [Where windows land](#where-windows-land-at-launch). |
 | `max-workspaces` | integer | `12` | Category routing never grows a display past this many rows (the empty row at the bottom does not count). Past it, a new app joins the last row. Also in the settings window's Workspaces pane (1–30). |
@@ -255,6 +257,11 @@ Generated from `KeyBindings.commandNames`:
 | `focus-workspace-1` … `focus-workspace-10` | Jump directly to workspace 1…10 on the focused screen (`focus-workspace-10` is bound to the `0` key by default); on the workspace already active, go back to the previously active one |
 | `move-window-to-workspace-1` … `move-window-to-workspace-10` | Move the focused window to workspace 1…10 of its screen and follow it; past the last row, into the trailing empty one |
 | `move-app-up` / `move-app-down` | Move every managed window of the focused window's app to the workspace above / below the focused one and follow; the app's new windows land there too, over its category |
+| `focus-screen-left` / `-right` / `-up` / `-down` | Focus the display in that direction, by the displays' real arrangement: the nearest display whose centre lies that way (within 45° of the direction if any does, else anywhere on that side) |
+| `move-window-to-screen-left` / `-right` / `-up` / `-down` | Move the focused window to the display in that direction (as above), onto its active workspace, and follow it |
+| `cycle-layout-reverse` | `cycle-layout` backwards; from a layout not on the bar, go to the bar's last |
+| `set-layout-<id>` | Set the active workspace's layout to `<id>` — any built-in (`set-layout-grid`) or saved layout (`set-layout-code`). Unbound by default; an id no layout has does nothing |
+| `focus-tab-1` … `focus-tab-9` | Focus tab N of the active workspace, in tab-bar order; past the last tab, the last; a minimized or hidden tab is brought back, like a click |
 
 ### Key names
 
@@ -264,13 +271,15 @@ Generated from `KeyCodes.byName` (macOS `kVK_ANSI_*` virtual key codes, US layou
 `4`, `6`, `5`, `equal` (`=`), `9`, `7`, `minus` (`-`), `8`, `0`, `rightSquareBracket` (`]`), `o`,
 `u`, `leftSquareBracket` (`[`), `i`, `p`, `enter`, `l`, `j`, `quote` (`'`), `k`, `semicolon` (`;`),
 `backslash` (`\`), `comma` (`,`), `slash` (`/`), `n`, `m`, `period` (`.`), `tab`, `space`,
-`backtick` (`` ` ``), `backspace`, `esc`, `left`, `right`, `down`, `up`.
+`backtick` (`` ` ``), `backspace`, `esc`, `left`, `right`, `down`, `up`, `home`, `end`, `pageUp`,
+`pageDown`.
 
-Note `Fn+arrows` are not usable no matter how you spell them: the HID layer remaps them to
-Home/End/Page Up/Page Down before the hotkey tap ever sees a `left`/`right`/`up`/`down` keycode —
-see `docs/platform-notes.md` check #2. The arrow keys only work meaningfully under the `ctrl-alt`
-(or another non-`fn`) modifier combination, which is why they ship pre-bound to `⌃⌥` in both
-presets rather than left for you to configure.
+`Fn+arrows` never arrive as arrows: the HID layer remaps them to Home/End/Page Up/Page Down (with
+the Fn flag set) before the hotkey tap sees them — see `docs/platform-notes.md` check #2. So a
+chord with `fn` and an arrow means the key it really is: `"fn-shift-left"` is `"fn-shift-home"`,
+`right` is `end`, `up` is `pageUp` and `down` is `pageDown`. That is how the default `Fn+⇧+arrows`
+(move window to the display that way) are bound. Without `fn`, the arrow keys are the arrows, and
+ship pre-bound to `⌃⌥` in both presets.
 
 ## `[telemetry]` — OpenTelemetry traces (#83)
 

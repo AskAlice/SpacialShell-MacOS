@@ -17,7 +17,12 @@ public enum KeyCodes {
         "j": 38, "quote": 39, "k": 40, "semicolon": 41, "backslash": 42, "comma": 43, "slash": 44, "n": 45, "m": 46, "period": 47,
         "tab": 48, "space": 49, "backtick": 50, "backspace": 51, "esc": 53,
         "left": 123, "right": 124, "down": 125, "up": 126,
+        // #118: what Fn+←/→/↑/↓ arrive as — IOHIDKeyboardFilter remaps them below the tap, with the
+        // Fn flag set (docs/platform-notes.md check 2).
+        "home": 115, "end": 119, "pageUp": 116, "pageDown": 121,
     ]
+    /// #118: an arrow → the key Fn turns it into.
+    static let fnArrow: [UInt16: UInt16] = [123: 115, 124: 119, 126: 116, 125: 121]
     public static let nameByCode: [UInt16: String] = Dictionary(uniqueKeysWithValues: byName.map { ($0.value, $0.key) })
 }
 
@@ -38,7 +43,25 @@ public enum KeyBindings {
         "focus-workspace-7": .focusWorkspaceIndex(7), "focus-workspace-8": .focusWorkspaceIndex(8), "focus-workspace-9": .focusWorkspaceIndex(9),
         "focus-workspace-10": .focusWorkspaceIndex(10),
         "move-app-up": .moveAppToWorkspace(.up), "move-app-down": .moveAppToWorkspace(.down),
+        // #118–#120, #143: the M4 keyboard grammar.
+        "focus-screen-left": .focusScreenDirection(.left), "focus-screen-right": .focusScreenDirection(.right),
+        "focus-screen-up": .focusScreenDirection(.up), "focus-screen-down": .focusScreenDirection(.down),
+        "move-window-to-screen-left": .moveWindowToScreenDirection(.left),
+        "move-window-to-screen-right": .moveWindowToScreenDirection(.right),
+        "move-window-to-screen-up": .moveWindowToScreenDirection(.up),
+        "move-window-to-screen-down": .moveWindowToScreenDirection(.down),
+        "cycle-layout-reverse": .cycleLayoutReverse,
     ].merging((1...10).map { ("move-window-to-workspace-\($0)", Command.moveWindowToWorkspaceIndex($0)) }) { a, _ in a }
+        .merging((1...9).map { ("focus-tab-\($0)", Command.focusTab($0)) }) { a, _ in a }
+
+    /// #119: `set-layout-<id>` is one command per layout, built-in or saved, so it cannot live in
+    /// the fixed table; every name lookup (config, settings, `spacialctl run`) comes through here.
+    public static let setLayoutPrefix = "set-layout-"
+    public static func command(named name: String) -> Command? {
+        if let c = commandNames[name] { return c }
+        guard name.hasPrefix(setLayoutPrefix), name.count > setLayoutPrefix.count else { return nil }
+        return .setLayout(LayoutID(rawValue: String(name.dropFirst(setLayoutPrefix.count))))
+    }
 
     /// "fn-shift-g" → Chord. Modifiers: fn, ctrl, alt, shift, cmd. Last token is a KeyCodes name.
     public static func parse(_ s: String) -> Chord? {
@@ -57,6 +80,9 @@ public enum KeyBindings {
             default: return nil
             }
         }
+        // #118: "fn-shift-left" can never arrive as written — Fn+← reaches the tap as Home — so it
+        // means the key it really is.
+        if c.fn, let k = KeyCodes.fnArrow[keyCode] { c.keyCode = k }
         return c
     }
 
@@ -64,7 +90,7 @@ public enum KeyBindings {
         ("w", "focus-workspace-up"), ("s", "focus-workspace-down"), ("a", "focus-window-left"), ("d", "focus-window-right"),
         ("q", "close-window"), ("shift-a", "move-window-left"), ("shift-d", "move-window-right"),
         ("shift-w", "move-window-up"), ("shift-s", "move-window-down"), ("space", "cycle-layout"), ("esc", "toggle-shell-ui"),
-        ("tab", "toggle-overview"),
+        ("tab", "toggle-overview"), ("shift-space", "cycle-layout-reverse"),
         ("leftSquareBracket", "focus-screen-prev"), ("rightSquareBracket", "focus-screen-next"),
         ("shift-leftSquareBracket", "move-window-to-screen-prev"), ("shift-rightSquareBracket", "move-window-to-screen-next"),
         ("g", "toggle-float"), ("comma", "open-settings"),
@@ -74,7 +100,19 @@ public enum KeyBindings {
     /// Fn preset only (#98, P6: +⌥ on the move chord = the whole app). The ctrl-alt prefix already
     /// holds ⌥, so there these would land on ⌃⌥⇧W/S and take them from move-window-up/down; they
     /// stay bindable by name.
-    static let fnOnly: [(String, String)] = [("alt-shift-w", "move-app-up"), ("alt-shift-s", "move-app-down")]
+    ///
+    /// #118 (G21, and the user's 2026-09-26 ruling): Fn+⌥W/A/S/D focus the display that way, and
+    /// Fn+⇧+arrows move the window there — bound as Home/End/PgUp/PgDn, which is what Fn+arrows
+    /// are by the time the tap sees them. On ctrl-alt, ⌃⌥+⌥A is ⌃⌥A (focus-window-left), and ⌃⌥+
+    /// arrows are already the row/tab aliases, so none of these are bound there.
+    /// #143: Fn+⌥+1…9 is tab N; Fn+⌥+0 is below 1, which clamps to the first tab.
+    static let fnOnly: [(String, String)] = [
+        ("alt-shift-w", "move-app-up"), ("alt-shift-s", "move-app-down"),
+        ("alt-a", "focus-screen-left"), ("alt-d", "focus-screen-right"), ("alt-w", "focus-screen-up"), ("alt-s", "focus-screen-down"),
+        ("shift-left", "move-window-to-screen-left"), ("shift-right", "move-window-to-screen-right"),
+        ("shift-up", "move-window-to-screen-up"), ("shift-down", "move-window-to-screen-down"),
+        ("alt-0", "focus-tab-1"),
+    ] + (1...9).map { ("alt-\($0)", "focus-tab-\($0)") }
     static let arrows: [(String, String)] = [
         ("ctrl-alt-up", "focus-workspace-up"), ("ctrl-alt-down", "focus-workspace-down"), ("ctrl-alt-left", "focus-window-left"), ("ctrl-alt-right", "focus-window-right"),
         ("ctrl-alt-shift-up", "move-window-up"), ("ctrl-alt-shift-down", "move-window-down"), ("ctrl-alt-shift-left", "move-window-left"), ("ctrl-alt-shift-right", "move-window-right"),
@@ -90,25 +128,26 @@ public enum KeyBindings {
         // An override that names an unknown command, or a chord that will not parse, is dropped
         // here rather than later: it must not take the default away and leave nothing behind.
         let rebound = Set(config.keybindingOverrides.compactMap { name, chord in
-            commandNames[name] != nil && parse(chord) != nil ? name : nil
+            command(named: name) != nil && parse(chord) != nil ? name : nil
         })
 
         for (k, name) in core + (config.keybindingPreset == .fn ? fnOnly : []) where !rebound.contains(name) {
-            if let ch = parse(prefix + k), let cmd = commandNames[name] { t[ch] = cmd }
+            if let ch = parse(prefix + k), let cmd = command(named: name) { t[ch] = cmd }
         }
         for (k, name) in arrows where !rebound.contains(name) {
-            if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd }
+            if let ch = parse(k), let cmd = command(named: name) { t[ch] = cmd }
         }
         for name in rebound {
-            if let ch = parse(config.keybindingOverrides[name]!), let cmd = commandNames[name] { t[ch] = cmd }
+            if let ch = parse(config.keybindingOverrides[name]!), let cmd = command(named: name) { t[ch] = cmd }
         }
         // Hand-written `keybindings` last: the file is the user's, and it wins over everything.
-        for (k, name) in config.keybindings { if let ch = parse(k), let cmd = commandNames[name] { t[ch] = cmd } }
+        for (k, name) in config.keybindings { if let ch = parse(k), let cmd = command(named: name) { t[ch] = cmd } }
         return t
     }
 
     public static func name(of command: Command) -> String? {
-        commandNames.first { $0.value == command }?.key
+        if case .setLayout(let id) = command { return setLayoutPrefix + id.rawValue }
+        return commandNames.first { $0.value == command }?.key
     }
 
     public static func serialize(_ c: Chord) -> String {
@@ -143,6 +182,11 @@ public enum KeyBindings {
         case "right": "→"
         case "up": "↑"
         case "down": "↓"
+        // #118: shown as the arrow the user presses; `display` has already written "Fn+".
+        case "home": "←"
+        case "end": "→"
+        case "pageUp": "↑"
+        case "pageDown": "↓"
         case "leftSquareBracket": "["
         case "rightSquareBracket": "]"
         case "comma": ","

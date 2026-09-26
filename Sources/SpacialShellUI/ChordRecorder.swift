@@ -48,7 +48,9 @@ struct ChordRecorder: NSViewRepresentable {
                 }
                 let f = event.modifierFlags
                 let chord = Chord(keyCode: event.keyCode,
-                                  fn: f.contains(.function),
+                                  // As `HotkeyTap.chord` (#31): macOS flags every arrow with fn,
+                                  // and the tap ignores it there, so a recorded one must too.
+                                  fn: f.contains(.function) && !(123...126).contains(event.keyCode),
                                   control: f.contains(.control),
                                   option: f.contains(.option),
                                   shift: f.contains(.shift),

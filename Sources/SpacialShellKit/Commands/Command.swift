@@ -3,6 +3,9 @@ import Foundation
 public enum Vertical: Sendable, Hashable { case up, down }
 public enum Horizontal: Sendable, Hashable { case left, right }
 public enum Neighbor: Sendable, Hashable { case prev, next }
+/// #118: a display "in a direction" — resolved against real display frames by
+/// `DisplayNeighbours.neighbour`, never against `screenOrder`.
+public enum Direction: Sendable, Hashable, CaseIterable { case left, right, up, down }
 
 public enum Command: Sendable, Hashable {
     case focusWorkspace(Vertical)
@@ -24,6 +27,20 @@ public enum Command: Sendable, Hashable {
     case moveWindowToScreen(Neighbor)
     case toggleFloat
     case openSettings
+
+    // #118–#120, the M4 keyboard grammar (spec G21, G24, G3).
+    /// #118: Fn+⌥W/A/S/D — focus the display in that direction, by frame geometry.
+    case focusScreenDirection(Direction)
+    /// #118: Fn+⇧+arrows — the focused window to the display in that direction; focus follows.
+    case moveWindowToScreenDirection(Direction)
+    /// #119: Fn+⇧Space — `cycleLayout` backwards round the bar.
+    case cycleLayoutReverse
+    /// #119: `set-layout-<id>` — the focused display's active workspace to that layout. Unbound by
+    /// default; an id the catalogue does not know is a no-op.
+    case setLayout(LayoutID)
+    /// #143: Fn+⌥+N — the Nth tab of the focused display's active row, clamped to the first and
+    /// last; a minimized one is brought back, as a tab click does (#48, #71).
+    case focusTab(Int)
 
     // Shell-UI verbs (M2 design §Decisions: distinct base names, payloads Hashable). The keyboard
     // verbs above are relative to the focused screen; a panel click or IPC call names its target

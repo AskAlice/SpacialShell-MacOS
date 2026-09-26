@@ -150,6 +150,9 @@ public struct Config: Codable, Equatable, Sendable {
     /// #107: a keyboard or command focus change to another display takes the pointer with it, to
     /// the centre of the newly focused window (or of the display, when its row is empty).
     public var pointerWarp: Bool = true
+    /// #120 (G3): Fn+W on the first workspace goes to the last non-empty one, and Fn+S on the last
+    /// non-empty one goes to the first. Off by default: the ends of the stack stay ends.
+    public var workspaceWrap: Bool = false
     /// Both panels' material tint and how opaque they are. "system" means the stock vibrancy
     /// material; a hex colour replaces it. One pair for both surfaces — split them only if the
     /// rail and bar ever need to differ.
@@ -200,7 +203,8 @@ public struct Config: Codable, Equatable, Sendable {
              launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
              panelColor = "panel-color", panelOpacity = "panel-opacity",
              keybindingOverrides = "keybinding-overrides"
-        case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp"
+        case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
+             workspaceWrap = "workspace-wrap"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
         case layouts = "layout", layoutBar = "layout-bar"
         case telemetry
@@ -227,6 +231,7 @@ public struct Config: Codable, Equatable, Sendable {
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
         railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide) ?? false
         pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp) ?? true
+        workspaceWrap = try c.decodeIfPresent(Bool.self, forKey: .workspaceWrap) ?? false
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
             guard let n = HexColor.normalize(raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
@@ -278,6 +283,7 @@ public struct Config: Codable, Equatable, Sendable {
         empty-cheatsheet = \(emptyCheatsheet)
         rail-autohide = \(railAutohide)
         pointer-warp = \(pointerWarp)
+        workspace-wrap = \(workspaceWrap)
         layout-bar = [\(layoutBar.map { q($0.rawValue) }.joined(separator: ", "))]
 
         """

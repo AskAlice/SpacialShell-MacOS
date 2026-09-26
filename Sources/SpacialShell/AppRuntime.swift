@@ -197,7 +197,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 return .ok(id: request.id, data: .object(["version": .string(SpacialShellKit.version)]))
             case "run":
                 let name = request.args["command"]?.stringValue ?? ""
-                guard let command = KeyBindings.commandNames[name]
+                guard let command = KeyBindings.command(named: name)
                 else { return .failure(id: request.id, "unknown command \"\(name)\"") }
                 // #88: exactly like a hotkey. App-layer commands go through `route` to their
                 // controllers (the store would drop them); model commands are awaited, so a

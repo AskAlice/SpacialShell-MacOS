@@ -54,6 +54,12 @@ public enum CheatSheet {
             out.append(Row(group: g, title: title, commandName: "\(family)1", chords: ["\(p)1…0"], symbol: symbol, letter: letter))
         }
         digits(.navigate, "focus-workspace-", "Workspace 1–10 / back", "1.circle", "1")
+        /// #143: tabs 1–9 ("Fn+⌥1…9"); the 0 chord is an alias of tab 1, so the family stops at 9.
+        if let ch = byName["focus-tab-1"]?.filter({ $0.keyCode != KeyCodes.byName["0"] }).first {
+            let p = KeyBindings.display(ch).dropLast()
+            out.append(Row(group: .navigate, title: "Tab 1–9", commandName: "focus-tab-1", chords: ["\(p)1…9"],
+                           symbol: "rectangle.topthird.inset.filled", letter: "⌥1"))
+        }
         add(.move, "move-window-left", "Move window left", "rectangle.lefthalf.inset.filled.arrow.left", "⇧A")
         add(.move, "move-window-right", "Move window right", "rectangle.righthalf.inset.filled.arrow.right", "⇧D")
         add(.move, "move-window-up", "Move to workspace above", "rectangle.tophalf.inset.filled", "⇧W")
@@ -63,10 +69,28 @@ public enum CheatSheet {
         add(.move, "move-app-down", "Move whole app down", "square.stack.3d.down.right", "⌥⇧S")
         add(.move, "toggle-float", "Toggle float", "rectangle.portrait.on.rectangle.portrait", "G")
         add(.layout, "cycle-layout", "Cycle layout", "square.split.2x1", "Space")
+        add(.layout, "cycle-layout-reverse", "Cycle layout backwards", "arrow.uturn.backward", "⇧Space")
         add(.screens, "focus-screen-prev", "Previous screen", "display", "[")
         add(.screens, "focus-screen-next", "Next screen", "display.2", "]")
         add(.screens, "move-window-to-screen-prev", "Move to previous screen", "rectangle.lefthalf.inset.filled.arrow.left", "⇧[")
         add(.screens, "move-window-to-screen-next", "Move to next screen", "rectangle.righthalf.inset.filled.arrow.right", "⇧]")
+        /// #118: one row per four-way family ("Fn+⌥W/A/S/D", "Fn+⇧↑/←/↓/→"), when all four share
+        /// their modifiers — the defaults do; a rebound family falls back to a row per direction.
+        func directions(_ family: String, _ title: String, _ symbol: String, _ letter: String) {
+            let names = ["up", "left", "down", "right"].map { family + $0 }
+            let chords = names.compactMap { byName[$0]?.sorted { KeyBindings.serialize($0) < KeyBindings.serialize($1) }.first }
+            let mods = Set(chords.map { KeyBindings.display(Chord(keyCode: 0, fn: $0.fn, control: $0.control,
+                                                                   option: $0.option, shift: $0.shift, command: $0.command)) })
+            if chords.count == 4, let m = mods.first, mods.count == 1 {
+                let keys = chords.map { KeyBindings.displayKey($0.keyCode) }.joined(separator: "/")
+                out.append(Row(group: .screens, title: title, commandName: names[0],
+                               chords: [m.dropLast() + keys], symbol: symbol, letter: letter))
+            } else {
+                for (n, d) in zip(names, ["up", "left", "down", "right"]) { add(.screens, n, "\(title) (\(d))", symbol, letter) }
+            }
+        }
+        directions("focus-screen-", "Screen that way", "display", "⌥W")
+        directions("move-window-to-screen-", "Move to screen that way", "macwindow.on.rectangle", "⇧←")
         add(.app, "toggle-shell-ui", "Zen mode", "eye", "Esc")
         add(.app, "toggle-overview", "Overview / launcher", "magnifyingglass", "⇥")
         add(.app, "open-settings", "Open config file", "gearshape", ",")
