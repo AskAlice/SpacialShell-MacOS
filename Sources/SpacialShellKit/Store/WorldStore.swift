@@ -151,7 +151,8 @@ public actor WorldStore {
     /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
     /// window belongs to, whether the shell has it parked, and the last frame it observed.
     public func wireState() -> WireState {
-        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed, layouts: layouts)
+        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed, layouts: layouts,
+                  problems: ProblemCenter.shared.current)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
@@ -345,6 +346,7 @@ public actor WorldStore {
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
             }
+            if vanished > 0 { publishWriteProblems() }
         }
         // Reservations only have to survive the gap between `PersistedState.restore` and the first
         // snapshot: restore holds a workspace open for each remembered placement so its window can
@@ -608,6 +610,7 @@ public actor WorldStore {
         let kind = config.kindOverride(bundleID: bundle, title: "") ?? .tile
         world.adopt(r, kind: kind, on: screenFor(frame), workspace: bundle.flatMap { placements[$0] })
         Self.log.notice("revive \(r.id, privacy: .public) pid=\(r.pid) \(bundle ?? "-", privacy: .public) \(reason, privacy: .public)")
+        publishWriteProblems()
     }
 
     /// Which display a window belongs to is decided by whoever owns its frame (#72, #57).
@@ -902,7 +905,15 @@ public actor WorldStore {
             world.remove(r); world.ignored.insert(r)
             observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r)
             if lastRaised == r { lastRaised = nil }
+            publishWriteProblems()
         }
+    }
+
+    /// #109: a retired window is a write failure that persisted. One problem per app, rebuilt from
+    /// `retired` whenever it changes, so a revived or vanished window clears itself.
+    private func publishWriteProblems() {
+        let apps = Set(retired.keys.map { bundleIDs[$0] ?? "pid:\($0.pid)" })
+        ProblemCenter.shared.replace(prefix: Problem.Key.axWritePrefix, with: apps.map { Problem.axWriteFailing(app: $0) })
     }
 
     /// Test-only window onto the side tables that must never outlive their window.

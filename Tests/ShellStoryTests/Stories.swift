@@ -275,6 +275,23 @@ enum Stories {
                                row(1, "Downloads")]),
             onGrantAccess: {}), truncates: true)
 
+        // #109: the error channel — a badge on the cog (the worst severity), and the list its
+        // hover opens. Warnings only on the rail, so the story shows the triangle; the card mixes.
+        add("rail-problems", railGeometry, ScreenPanelView(
+            state: rail([railItem(0, name: "Code", symbol: "terminal", count: 2, pids: [5, 3], active: true),
+                         railItem(1, name: "Workspace", symbol: "square.grid.2x2", count: 0, trailing: true)]),
+            launcherURL: "raycast://", metaFor: meta, send: send,
+            problems: [.screenRecordingMissing]))
+        let problems: [Problem] = [
+            .configInvalid("unknown key \"gapp\" on line 12"),
+            .screenRecordingMissing,
+            .axWriteFailing(app: "us.zoom.xos"),
+            .telemetryFailing(host: "otel.example.com"),
+        ]
+        add("rail-problems-open", nil, RailHoverCard(
+            title: "\(problems.count) problems", subtitle: "Each clears itself once it is fixed",
+            content: .problems(problems), onGrantAccess: {}))
+
         // panel-color / panel-opacity actually reaching the panels. These existed as config keys,
         // as persisted values and as settings-window controls while nothing read them, so the
         // point of these two stories is that a tinted panel is *visibly* tinted.

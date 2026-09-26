@@ -57,6 +57,12 @@ actor CaptureGate {
 
     private func end(_ outcome: CaptureApproval.Outcome) {
         approval.end(outcome, now: .now)
+        // #109: a decline is listed until a picture proves the grant is back.
+        switch outcome {
+        case .declined: ProblemCenter.shared.report(.screenRecordingMissing)
+        case .captured: ProblemCenter.shared.clear(Problem.Key.screenRecording)
+        default: break
+        }
         let woken = waiters; waiters = []
         for w in woken { w.resume() }
     }

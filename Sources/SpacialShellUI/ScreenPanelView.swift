@@ -27,6 +27,9 @@ struct ScreenPanelView: View {
     /// Pointer entered or left the tray (#73), or clicked it — a click opens the list too, for
     /// anyone who clicks before the hover lands. Same coordinate space as `onHoverTile`.
     var onHoverTray: (Bool, CGRect) -> Void = { _, _ in }
+    /// #109: what the shell cannot do right now. Non-empty badges the cog, and hovering it lists them.
+    var problems: [Problem] = []
+    var onHoverProblems: (Bool, CGRect) -> Void = { _, _ in }
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
     /// re-enters through `Command` like every other interaction. Settable for the stories.
@@ -42,6 +45,7 @@ struct ScreenPanelView: View {
     /// Where each tile is, so a hover can tell the controller what to put the card next to.
     @State private var tileFrames: [UUID: CGRect] = [:]
     @State private var trayFrame: CGRect = .zero
+    @State private var cogFrame: CGRect = .zero
 
     /// A 2x2 grid inside a 32 pt tile; past four, the count carries the load.
     private static let maxIcons = 4
@@ -134,9 +138,23 @@ struct ScreenPanelView: View {
                         .frame(height: 28)
                         .foregroundStyle(.secondary)
                         .contentShape(Rectangle())
+                        // #109: the worst severity, where the "+N" badge sits on a tile.
+                        .overlay {
+                            if let worst = problems.map(\.severity).max() {
+                                Image(systemName: ProblemsList.symbol(worst))
+                                    .symbolRenderingMode(.multicolor)
+                                    .font(.system(size: 9))
+                                    .offset(x: 7, y: -7)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
-                .help("SpacialShell settings")
+                // With problems the hover card is the label; two hover surfaces is one too many.
+                .help(problems.isEmpty ? "SpacialShell settings" : "")
+                .background(GeometryReader { geo in
+                    Color.clear.onChange(of: geo.frame(in: .global), initial: true) { _, frame in cogFrame = frame }
+                })
+                .onHover { onHoverProblems($0, cogFrame) }
                 .padding(.bottom, 6)
             }
         }

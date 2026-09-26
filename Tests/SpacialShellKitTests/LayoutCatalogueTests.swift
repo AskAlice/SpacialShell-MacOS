@@ -326,7 +326,7 @@ import SpacialShellProtocol
         }
         let now = WireState(world: w, bundleIDs: [WindowRef(id: 11, pid: 7): "com.example.app"])
         #expect(now.screens == old.screens)
-        #expect(now.capabilities == old.capabilities + ["layouts"])
+        #expect(now.capabilities == old.capabilities + ["layouts", "problems"])   // #109 added `problems`
         #expect(now.layouts.map(\.id) == ["maximize", "split", "column", "half", "grid"])
         #expect(now.layouts.allSatisfy { $0.builtin && $0.zones == nil })
     }

@@ -64,7 +64,13 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
     private func boot() async {
         log.info("stage 1/8: waiting for the Accessibility grant")
+        // #109: listed while the wait lasts; the grant-wait window itself is B7 (#130).
+        if !AXIsProcessTrusted() { ProblemCenter.shared.report(.accessibilityMissing) }
         await Permissions.waitForAccessibility(bundleID: Paths.bundleID)
+        ProblemCenter.shared.clear(Problem.Key.accessibility)
+        // Takes effect only at the next launch, so one look at boot is the whole check; a declined
+        // capture later (#92) reports the same key from `CaptureGate`.
+        if !CGPreflightScreenCaptureAccess() { ProblemCenter.shared.report(.screenRecordingMissing) }
 
         log.info("stage 2/8: loading config")
         loadOverrides()
@@ -158,7 +164,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { await store.run(command) }
             }
         }
-        shell = ShellController(config: config, appMeta: appMeta, send: route)
+        let shell = ShellController(config: config, appMeta: appMeta, send: route)
+        self.shell = shell
+        // #109: the rail cog's badge. Reporters run on any thread; the panels on the main actor.
+        ProblemCenter.shared.observe { problems in Task { @MainActor in shell.update(problems: problems) } }
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
@@ -201,6 +210,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             termination.arm(ipc: ipc)
         } catch {
             log.error("control socket failed (\(String(describing: error), privacy: .public)); spacialctl is inactive")
+            ProblemCenter.shared.report(.controlSocketInactive(String(describing: error)))
         }
 
         log.info("stage 7/8: starting the hotkey tap")
@@ -229,6 +239,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             try tap.start()
         } catch {
             log.error("event tap failed (\(String(describing: error), privacy: .public)); hotkeys are inactive")
+            ProblemCenter.shared.report(.hotkeysInactive(String(describing: error)))
         }
 
         log.info("stage 8/8: config watch and signal handlers")
@@ -245,11 +256,14 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         do {
             fileConfig = try Config.load(from: Paths.configFile)
             log.info("config loaded from \(Paths.configFile.path, privacy: .public)")
+            ProblemCenter.shared.clear(Problem.Key.config)
         } catch CocoaError.fileReadNoSuchFile {
             fileConfig = Config()
             log.info("no config file; using defaults")
+            ProblemCenter.shared.clear(Problem.Key.config)
         } catch {
             log.error("config invalid, keeping previous: \(String(describing: error), privacy: .public)")
+            ProblemCenter.shared.report(.configInvalid(String(describing: error)))
         }
         config = Settings.effective(config: fileConfig, overrides: overrides)
     }

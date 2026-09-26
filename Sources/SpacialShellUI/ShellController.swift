@@ -24,6 +24,7 @@ public final class ShellController: NSObject {
     private var panels: [DisplayID: Panels] = [:]
     private var world: World?
     private var config: Config
+    private var problems: [Problem] = []
     private let send: @Sendable (Command) -> Void
     private let appMeta: AppMetaCache
     /// One card for the whole shell, not one per display: only one pointer exists.
@@ -69,6 +70,14 @@ public final class ShellController: NSObject {
     public func update(world: World) {
         self.world = world
         WindowThumbnails.shared.retain(world.allWindowIDs)   // #90: a closed window's thumbnail goes with it
+        render()
+    }
+
+    /// #109: badges the rail cog. Never activates anything — the list is one hover away.
+    public func update(problems: [Problem]) {
+        guard problems != self.problems else { return }
+        self.problems = problems
+        if problems.isEmpty { hover.hide(RailHoverController.problemsID) }
         render()
     }
 
@@ -128,6 +137,11 @@ public final class ShellController: NSObject {
                                                   onHoverTray: { [weak self] inside, tile in
                                                       self?.trayHoverChanged(state, inside: inside, tile: tile,
                                                                              display: id, screen: nsScreen)
+                                                  },
+                                                  problems: problems,
+                                                  onHoverProblems: { [weak self] inside, tile in
+                                                      self?.problemsHoverChanged(inside: inside, tile: tile,
+                                                                                 display: id, screen: nsScreen)
                                                   })
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
                                                    chrome: PanelChrome(config: config), send: forward,
@@ -186,6 +200,14 @@ public final class ShellController: NSObject {
         hoverDisplay = display
         hover.showTray(state.tray, tile: inScreen, railSide: config.railSide,
                        bounds: screen.visibleFrame, metaFor: appMeta.meta(for:))
+    }
+
+    /// #109: the cog's problem list shares the hover card too.
+    private func problemsHoverChanged(inside: Bool, tile: CGRect, display: DisplayID, screen: NSScreen) {
+        guard inside, !problems.isEmpty else { hover.hide(RailHoverController.problemsID); return }
+        guard let inScreen = toScreen(tile, display: display) else { return }
+        hoverDisplay = display
+        hover.showProblems(problems, tile: inScreen, railSide: config.railSide, bounds: screen.visibleFrame)
     }
 
     private func toScreen(_ tile: CGRect, display: DisplayID) -> CGRect? {

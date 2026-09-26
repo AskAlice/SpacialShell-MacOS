@@ -110,6 +110,20 @@ final class RailHoverController {
         }
     }
 
+    /// #109: the cog's problem list. Same card, placement and hide grace as the tray; nothing to
+    /// capture, so it is drawn at once.
+    static let problemsID = UUID()
+    func showProblems(_ problems: [Problem], tile: CGRect, railSide: RailSide, bounds: CGRect) {
+        hideTask?.cancel(); hideTask = nil
+        guard shown != Self.problemsID else { return }
+        captureTask?.cancel()
+        shown = Self.problemsID
+        render(title: problems.count == 1 ? "1 problem" : "\(problems.count) problems",
+               subtitle: "Each clears itself once it is fixed", content: .problems(problems))
+        place(near: tile, railSide: railSide, bounds: bounds)
+        window.orderFrontRegardless()
+    }
+
     /// The pointer left `item`. Hides after a grace period, unless it has landed on the card
     /// itself — without which the "Open Screen Recording settings…" button could never be
     /// reached. A late exit for a tile the card has already moved on from is ignored.

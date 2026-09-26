@@ -23,6 +23,8 @@ struct RailHoverCard: View {
         case windows([WindowPreviewItem])
         case message(String)
         case needsScreenRecording
+        /// #109: the cog's list of what the shell cannot do right now.
+        case problems([Problem])
     }
 
     let title: String
@@ -65,6 +67,8 @@ struct RailHoverCard: View {
     @ViewBuilder
     private func body(for content: Content) -> some View {
         switch content {
+        case .problems(let problems):
+            ProblemsList(problems: problems)
         case .message(let text):
             Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

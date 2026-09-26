@@ -37,7 +37,7 @@ enum Tracing {
         let exporter = OtlpHttpTraceExporter(
             endpoint: target.url,
             config: OtlpConfiguration(timeout: exportTimeout, headers: target.headers.map { ($0.key, $0.value) }),
-            httpClient: LoggingHTTPClient(),
+            httpClient: LoggingHTTPClient(host: target.url.host ?? target.url.absoluteString),
             // The exporter's own env parsing mangles Basic auth; `export(env:)` already read it.
             envVarHeaders: nil,
             // A failed batch is dropped, not re-queued behind the next one forever.
@@ -76,6 +76,11 @@ private final class LoggingHTTPClient: HTTPClient, @unchecked Sendable {
     private let base = BaseHTTPClient()
     private let lock = NSLock()
     private var confirmed = false
+    /// #109: failures also list a problem, cleared by the next success. Its text is fixed, so a
+    /// collector that stays down reports once, not once per batch.
+    private let failing: Problem
+
+    init(host: String) { failing = .telemetryFailing(host: host) }
 
     func send(request: URLRequest, completion: @escaping (Result<HTTPURLResponse, Error>) -> Void) {
         base.send(request: request) { result in
@@ -96,8 +101,10 @@ private final class LoggingHTTPClient: HTTPClient, @unchecked Sendable {
         case .success(let r):
             lock.lock(); let first = !confirmed; confirmed = true; lock.unlock()
             if first { Self.log.notice("export ok: HTTP \(r.statusCode)") } else { Self.log.debug("export ok: HTTP \(r.statusCode)") }
+            ProblemCenter.shared.clear(failing.key)
         case .failure(let e):
             Self.log.error("export failed: \(String(describing: e), privacy: .public)")
+            ProblemCenter.shared.report(failing)
         }
     }
 }
