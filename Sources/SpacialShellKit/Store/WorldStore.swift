@@ -258,7 +258,7 @@ public actor WorldStore {
         span.setAttribute(key: "command.detail", value: detail)
         let before = world.focus
         let outcome = CommandRunner.run(command, on: world, layouts: layouts, displays: displays,
-                                        workspaceWrap: config.workspaceWrap)
+                                        workspaceWrap: config.workspaceWrap, categoryOrder: config.categoryOrder)
         // M2 ruling: a failed command changes nothing, so there is nothing to reconcile.
         if case .failed(let e) = outcome.report {
             Self.log.notice("command \(String(describing: command), privacy: .public) failed: \(e.description, privacy: .public)")

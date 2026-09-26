@@ -50,6 +50,10 @@ public enum KeyBindings {
         "move-window-to-screen-right": .moveWindowToScreenDirection(.right),
         "move-window-to-screen-up": .moveWindowToScreenDirection(.up),
         "move-window-to-screen-down": .moveWindowToScreenDirection(.down),
+        "move-workspace-to-screen-left": .moveWorkspaceToScreenDirection(.left),
+        "move-workspace-to-screen-right": .moveWorkspaceToScreenDirection(.right),
+        "move-workspace-to-screen-up": .moveWorkspaceToScreenDirection(.up),
+        "move-workspace-to-screen-down": .moveWorkspaceToScreenDirection(.down),
         "cycle-layout-reverse": .cycleLayoutReverse,
         // #113
         "shrink-width": .resizeWindow(.width, grow: false), "grow-width": .resizeWindow(.width, grow: true),
@@ -109,12 +113,15 @@ public enum KeyBindings {
     /// Fn+⇧+arrows move the window there — bound as Home/End/PgUp/PgDn, which is what Fn+arrows
     /// are by the time the tap sees them. On ctrl-alt, ⌃⌥+⌥A is ⌃⌥A (focus-window-left), and ⌃⌥+
     /// arrows are already the row/tab aliases, so none of these are bound there.
+    /// #136: Fn+⌥⇧+arrows move the whole workspace there (+⌥ = "all of it", as in #98).
     /// #143: Fn+⌥+1…9 is tab N; Fn+⌥+0 is below 1, which clamps to the first tab.
     static let fnOnly: [(String, String)] = [
         ("alt-shift-w", "move-app-up"), ("alt-shift-s", "move-app-down"),
         ("alt-a", "focus-screen-left"), ("alt-d", "focus-screen-right"), ("alt-w", "focus-screen-up"), ("alt-s", "focus-screen-down"),
         ("shift-left", "move-window-to-screen-left"), ("shift-right", "move-window-to-screen-right"),
         ("shift-up", "move-window-to-screen-up"), ("shift-down", "move-window-to-screen-down"),
+        ("alt-shift-left", "move-workspace-to-screen-left"), ("alt-shift-right", "move-workspace-to-screen-right"),
+        ("alt-shift-up", "move-workspace-to-screen-up"), ("alt-shift-down", "move-workspace-to-screen-down"),
         ("alt-0", "focus-tab-1"),
     ] + (1...9).map { ("alt-\($0)", "focus-tab-\($0)") }
     /// #113, P6 "+Ctrl = resize": Fn+⌃ on the fn preset, ⌃⌥⌘ on ctrl-alt (whose prefix already

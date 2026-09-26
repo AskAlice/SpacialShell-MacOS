@@ -36,7 +36,7 @@ including everything you rebound; release to dismiss.
 Same shape as material-shell: **W/S move between workspaces (rows), A/D between windows (columns);
 Shift moves the window instead of the focus; Option means another display.** Arrow keys are
 row/tab aliases and are always on `⌃⌥`, in both presets. With Fn, the arrows mean **displays**:
-`Fn+⇧+arrow` moves the window to the display that way. (macOS turns `Fn+arrows` into
+`Fn+⇧+arrow` moves the window to the display that way, and `Fn+⌥⇧+arrow` the whole workspace. (macOS turns `Fn+arrows` into
 Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are bound to.)
 
 | Command | `fn` preset | `ctrl-alt` preset | material-shell |
@@ -58,6 +58,7 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Open the config file | `Fn+,` | `⌃⌥,` | — |
 | Focus the display left / right / above / below | `Fn+⌥A` / `Fn+⌥D` / `Fn+⌥W` / `Fn+⌥S` | unbound ‡ | — |
 | Move window to the display left / right / above / below | `Fn+⇧←` / `Fn+⇧→` / `Fn+⇧↑` / `Fn+⇧↓` | unbound ‡ | — |
+| Move the whole workspace to the display left / right / above / below | `Fn+⌥⇧←` / `Fn+⌥⇧→` / `Fn+⌥⇧↑` / `Fn+⌥⇧↓` | unbound ‡ | — |
 | Focus previous / next screen (aliases) | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` | — |
 | Move window to previous / next screen (aliases) | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` | — |
 | Toggle float on the focused window | `Fn+G` | `⌃⌥G` | — |
@@ -77,7 +78,7 @@ means "the whole app". The `ctrl-alt` prefix already holds ⌥, so there the cho
 (move window up/down); bind `move-app-up` / `move-app-down` yourself if you want them. The same
 goes for the display chords (`⌃⌥A` is already focus-window-left, and `⌃⌥` + arrows are the row/tab
 aliases) and for the tab digits (`⌃⌥1` is workspace 1): bind `focus-screen-left`…,
-`move-window-to-screen-left`… and `focus-tab-1`… by name. Digits have no display meaning, which is
+`move-window-to-screen-left`…, `move-workspace-to-screen-left`… and `focus-tab-1`… by name. Digits have no display meaning, which is
 why `Fn+⌥+digit` is free for tabs on the `fn` preset.
 
 Semantics worth knowing:
@@ -106,6 +107,12 @@ Semantics worth knowing:
   an in-row swap promotes: a move to another screen leaves both layouts alone, and a refused move
   (outermost screen) changes nothing at all, layout included.
 - Move to another screen appends the window to that screen's active workspace and focus follows.
+- `Fn+⌥⇧+arrow` moves the active workspace itself to the display that way — its windows, layout,
+  resized portions and category go with it — and focus follows. It lands where `category-order`
+  puts its category (taking that category from any row already there), else just above the
+  display's empty bottom row; each display still ends in exactly one empty row. The display it
+  left activates the row above it (below, if it was the first). It does nothing with no display
+  that way, on the empty bottom row, or on a display's only workspace.
 - `Fn+N` on the workspace you are already on goes back to the one you were on before, so one chord
   flips between two workspaces. Each screen remembers its own previous workspace; if that
   workspace has gone away (emptied and removed), the re-press does nothing.

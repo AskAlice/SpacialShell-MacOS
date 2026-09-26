@@ -88,6 +88,80 @@ import Testing
         #expect(run(w, .focusScreenDirection(.left), displays: ds).1.isEmpty)
     }
 
+    // MARK: #136 move a workspace to another display
+
+    let d = WindowRef(id: 4, pid: 2)
+    let sideBySide = [DisplayInfo](arrayLiteral:
+        .init(id: "D1", frame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+              visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080), isMain: true),
+        .init(id: "D2", frame: CGRect(x: 1920, y: 0, width: 1920, height: 1080),
+              visibleFrame: CGRect(x: 1920, y: 0, width: 1920, height: 1080), isMain: false))
+    /// D1: [b] [a, active, grid, resized, web] +; D2: [d] +. Focus a on D1.
+    func twoDisplays() -> World {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        w.adopt(a, kind: .tile, on: "D1"); w.adopt(b, kind: .tile, on: "D1")
+        (w, _) = run(w, .moveWindowToWorkspace(.down))
+        w.adopt(d, kind: .tile, on: "D2")
+        w.screens["D1"]!.workspaces[1].layout = .grid
+        w.screens["D1"]!.workspaces[1].portions["grid#1"] = Portions(x: [0.3])
+        w.screens["D1"]!.workspaces[1].category = .web
+        return w
+    }
+    func move(_ w: World, _ dir: Direction, order: [AppCategory] = []) -> CommandOutcome {
+        let o = CommandRunner.run(.moveWorkspaceToScreenDirection(dir), on: w, displays: sideBySide, categoryOrder: order)
+        #expect(o.world.invariantViolations().isEmpty, "\(o.world.invariantViolations())")
+        for (id, s) in o.world.screens {   // exactly one trailing empty row on every display
+            #expect(s.workspaces.last!.isEmpty && s.workspaces.filter(\.isEmpty).count == 1, "\(id)")
+        }
+        return o
+    }
+
+    @Test func moveWorkspaceCarriesTheRowAndFocusFollows() {
+        let w = twoDisplays(), row = w.screens["D1"]!.active
+        let o = move(w, .right)
+        #expect(o.report == .done)
+        #expect(o.world.screens["D1"]!.workspaces.map(\.windows) == [[b], []])
+        #expect(o.world.screens["D1"]!.activeIndex == 0, "the source activates its neighbour")
+        let d2 = o.world.screens["D2"]!
+        #expect(d2.workspaces.map(\.windows) == [[d], [a], []], "no order: just above the trailing empty")
+        #expect(d2.activeIndex == 1 && d2.active.id == row.id)
+        #expect(d2.active.layout == .grid && d2.active.portions == row.portions && d2.active.category == .web)
+        #expect(o.world.focus == Focus(screen: "D2", window: a))
+        #expect(o.effects == [.focus(a), .relayout])
+        #expect(d2.previous == d2.workspaces[0].id, "Fn+N can come back to the row it covered")
+    }
+
+    @Test func moveWorkspaceLandsInItsCategorySlot() {
+        var w = twoDisplays()
+        w.screens["D2"]!.workspaces[0].category = .coding
+        let o = move(w, .right, order: [.web, .coding])
+        #expect(o.world.screens["D2"]!.workspaces.map(\.windows) == [[a], [d], []], "web before coding")
+        #expect(o.world.screens["D2"]!.activeIndex == 0 && o.world.focus == Focus(screen: "D2", window: a))
+    }
+
+    /// One row per category per display (#112): the arriving row keeps its category.
+    @Test func moveWorkspaceTakesItsCategoryFromTheRowThere() {
+        var w = twoDisplays()
+        w.screens["D2"]!.workspaces[0].category = .web
+        let o = move(w, .right, order: [.web])
+        #expect(o.world.screens["D2"]!.workspaces.map(\.category) == [.web, nil, nil])
+        #expect(o.world.screens["D2"]!.workspaces[0].windows == [a])
+    }
+
+    @Test func moveWorkspaceNoOps() {
+        let w = twoDisplays()
+        #expect(move(w, .left).report == .noop("no display that way"))
+        #expect(CommandRunner.run(.moveWorkspaceToScreenDirection(.right), on: w).report == .noop("no display that way"),
+                "no display frames, no move")
+        var trailing = w
+        trailing.activate(index: 2, on: "D1")
+        #expect(move(trailing, .right).report == .noop("the empty workspace stays"))
+        var only = w
+        only.focus = Focus(screen: "D2", window: d)
+        #expect(move(only, .left).report == .noop("the only workspace on this display"))
+        #expect(move(only, .left).world == only)
+    }
+
     // MARK: #119 layouts
 
     @Test func cycleLayoutReverseRingsTheBarBackwards() {
@@ -221,6 +295,18 @@ import Testing
         #expect(t[KeyBindings.parse("ctrl-alt-shift-left")!] == .moveWindow(.left), "the ⌃⌥ arrow aliases stand")
     }
 
+    /// #136: Fn+⌥⇧+arrows, i.e. the navigation keys with ⌥⇧.
+    @Test func fnAltShiftArrowsMoveTheWorkspace() {
+        let t = fnPreset
+        for (code, dir) in [(115, Direction.left), (119, .right), (116, .up), (121, .down)] {
+            let hw = Chord(keyCode: UInt16(code), fn: true, control: false, option: true, shift: true, command: false)
+            #expect(t[hw] == .moveWorkspaceToScreenDirection(dir))
+        }
+        #expect(KeyBindings.command(named: "move-workspace-to-screen-up") == .moveWorkspaceToScreenDirection(.up))
+        var c = Config(); c.keybindingPreset = .ctrlAlt
+        #expect(!KeyBindings.table(for: c).values.contains { if case .moveWorkspaceToScreenDirection = $0 { true } else { false } })
+    }
+
     @Test func reverseCycleAndTabChords() {
         let t = fnPreset
         #expect(t[KeyBindings.parse("fn-shift-space")!] == .cycleLayoutReverse)
@@ -259,6 +345,7 @@ import Testing
         func chords(_ name: String) -> [String]? { rows.first { $0.commandName == name }?.chords }
         #expect(chords("focus-screen-up") == ["Fn+⌥W/A/S/D"])
         #expect(chords("move-window-to-screen-up") == ["Fn+⇧↑/←/↓/→"])
+        #expect(chords("move-workspace-to-screen-up") == ["Fn+⌥⇧↑/←/↓/→"])   // #136
         #expect(chords("cycle-layout-reverse") == ["Fn+⇧Space"])
         #expect(chords("focus-tab-1") == ["Fn+⌥1…9"])
     }

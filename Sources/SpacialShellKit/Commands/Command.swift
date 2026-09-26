@@ -33,6 +33,9 @@ public enum Command: Sendable, Hashable {
     case focusScreenDirection(Direction)
     /// #118: Fn+⇧+arrows — the focused window to the display in that direction; focus follows.
     case moveWindowToScreenDirection(Direction)
+    /// #136 (G29): Fn+⌥⇧+arrows — the active workspace, whole (windows, layout, portions,
+    /// category), to the display in that direction; focus follows it.
+    case moveWorkspaceToScreenDirection(Direction)
     /// #119: Fn+⇧Space — `cycleLayout` backwards round the bar.
     case cycleLayoutReverse
     /// #119: `set-layout-<id>` — the focused display's active workspace to that layout. Unbound by

@@ -96,6 +96,7 @@ public enum CheatSheet {
         }
         directions("focus-screen-", "Screen that way", "display", "⌥W")
         directions("move-window-to-screen-", "Move to screen that way", "macwindow.on.rectangle", "⇧←")
+        directions("move-workspace-to-screen-", "Move workspace that way", "rectangle.stack", "⌥⇧←")   // #136
         add(.app, "toggle-shell-ui", "Zen mode", "eye", "Esc")
         add(.app, "toggle-overview", "Overview / launcher", "magnifyingglass", "⇥")
         add(.app, "open-settings", "Open config file", "gearshape", ",")

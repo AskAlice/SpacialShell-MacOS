@@ -5,24 +5,29 @@ public enum CommandRunner {
     /// windows a layout shows (#9). Defaults to the five built-ins.
     /// `displays` (#118): the real display frames the directional display commands resolve
     /// against; without them those commands are no-ops. `workspaceWrap` (#120): `workspace-wrap`.
+    /// `categoryOrder` (#136): `category-order`, where a workspace moved to another display lands.
     public static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue = .builtins,
-                             displays: [DisplayInfo] = [], workspaceWrap: Bool = false) -> (World, [Effect]) {
-        let o = run(command, on: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap)
+                             displays: [DisplayInfo] = [], workspaceWrap: Bool = false,
+                             categoryOrder: [AppCategory] = []) -> (World, [Effect]) {
+        let o = run(command, on: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
+                    categoryOrder: categoryOrder)
         return (o.world, o.effects)
     }
 
     /// #109: `apply` plus why a command did nothing. A path that sets no reason is `.done` when it
     /// changed the world or emitted an effect, else a generic no-op.
     public static func run(_ command: Command, on input: World, layouts: LayoutCatalogue = .builtins,
-                           displays: [DisplayInfo] = [], workspaceWrap: Bool = false) -> CommandOutcome {
+                           displays: [DisplayInfo] = [], workspaceWrap: Bool = false,
+                           categoryOrder: [AppCategory] = []) -> CommandOutcome {
         var why: CommandReport?
-        let (w, e) = apply(command, to: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap, why: &why)
+        let (w, e) = apply(command, to: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
+                           categoryOrder: categoryOrder, why: &why)
         return CommandOutcome(world: w, effects: e,
                               report: why ?? (e.isEmpty && w == input ? .noop("nothing to do") : .done))
     }
 
     static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue, displays: [DisplayInfo],
-                      workspaceWrap: Bool, why: inout CommandReport?) -> (World, [Effect]) {
+                      workspaceWrap: Bool, categoryOrder: [AppCategory], why: inout CommandReport?) -> (World, [Effect]) {
         var w = input
         var effects: [Effect] = []
         /// #109: the silent `(w, [])` returns, with their reason.
@@ -342,7 +347,7 @@ public enum CommandRunner {
         case .recoverWindow(let r):
             // #73: a placed window is exactly a tab click; a popup is focused *and* unhidden, since
             // nothing else in the model would ever un-minimize it. The rescue is the store's.
-            guard w.ephemeral.contains(r) else { return apply(.focusWindowRef(r), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap, why: &why) }
+            guard w.ephemeral.contains(r) else { return apply(.focusWindowRef(r), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap, categoryOrder: categoryOrder, why: &why) }
             w.focus.window = r
             return (w, [.unhide(r), .focus(r)])
 
@@ -426,6 +431,33 @@ public enum CommandRunner {
                   let target = DisplayNeighbours.neighbour(of: sid, dir, in: displays), let dest = w.screens[target],
                   move(f, to: (target, dest.activeIndex)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
+
+        case .moveWorkspaceToScreenDirection(let dir):
+            // #136 (G29): the active row itself moves, so its layout, portions and category go
+            // with it. It lands in its category's slot if `category-order` places it (#74), else
+            // just above the target's trailing empty row; focus follows. The source activates the
+            // row above it (below, if it was the first), as `removeWorkspace` does.
+            let from = screen.activeIndex
+            guard let target = DisplayNeighbours.neighbour(of: sid, dir, in: displays), w.screens[target] != nil
+            else { return noop("no display that way") }
+            guard !w.isTrailingEmpty((sid, from)) else { return noop("the empty workspace stays") }
+            guard screen.workspaces.indices.contains(where: { $0 != from && !screen.workspaces[$0].isEmpty })
+            else { return noop("the only workspace on this display") }
+            let row = w.screens[sid]!.workspaces.remove(at: from)
+            w.screens[sid]!.activeIndex = max(from - 1, 0)
+            // One row per category per display (#112): the arriving row keeps its category.
+            if let c = row.category {
+                for i in w.screens[target]!.workspaces.indices where w.screens[target]!.workspaces[i].category == c {
+                    w.screens[target]!.workspaces[i].category = nil
+                }
+            }
+            let at = World.categoryRank(row, categoryOrder).map { w.categoryRowIndex(on: target, rank: $0, order: categoryOrder) }
+                ?? w.screens[target]!.workspaces.count - 1
+            w.screens[target]!.workspaces.insert(row, at: at)
+            if w.screens[target]!.activeIndex >= at { w.screens[target]!.activeIndex += 1 }
+            w.focus.screen = target
+            activateAndLand(at, on: target)
+            effects.append(.relayout)
 
         case .cycleLayoutReverse:
             w.screens[sid]!.workspaces[screen.activeIndex].layout = layouts.previous(before: screen.active.layout)
