@@ -211,6 +211,15 @@ public final class AXWindowBackend: WindowBackend {
             eventMonitors.append(other)
         }
 
+        // #113: where the pointer is, so a border between tiles can be hovered and dragged.
+        // ponytail: every move, unthrottled — the store's hit test is a handful of rects and a drag
+        // coalesces to the newest position; throttle here if the event stream ever shows up in a trace.
+        if let moved = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { [weak self] _ in
+            self?.continuation.yield(.pointerMoved(Self.pointer()))
+        }) {
+            eventMonitors.append(moved)
+        }
+
         signals = Task { @MainActor [weak self, refreshSignals] in
             for await _ in refreshSignals {
                 guard let self else { return }

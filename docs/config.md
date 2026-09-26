@@ -262,6 +262,9 @@ Generated from `KeyBindings.commandNames`:
 | `cycle-layout-reverse` | `cycle-layout` backwards; from a layout not on the bar, go to the bar's last |
 | `set-layout-<id>` | Set the active workspace's layout to `<id>` — any built-in (`set-layout-grid`) or saved layout (`set-layout-code`). Unbound by default; an id no layout has does nothing |
 | `focus-tab-1` … `focus-tab-9` | Focus tab N of the active workspace, in tab-bar order; past the last tab, the last; a minimized or hidden tab is brought back, like a click |
+| `shrink-width` / `grow-width` | Move the focused tile's side edge 5 % (stopping on 25/50/75 %) to make it narrower / wider; its neighbour gives or takes the space |
+| `shrink-height` / `grow-height` | The same for its top or bottom edge, where the layout has rows (half, grid, drawn layouts) |
+| `balance` | Put every layout of the focused workspace back to its designed sizes |
 
 ### Key names
 
@@ -371,7 +374,8 @@ hand-editable, and pays for it in discoverability.
 ## State
 
 Separately from config, `~/Library/Application Support/SpacialShell/state.json` holds the pinned
-workspace shells (name, symbol, layout, id) per screen, written debounced on every model change.
+workspace shells (name, symbol, layout, id, and any sizes you gave its layouts by resizing, #113)
+per screen, written debounced on every model change.
 It is machine-owned — not meant for hand editing — and is not covered by this reference.
 
 

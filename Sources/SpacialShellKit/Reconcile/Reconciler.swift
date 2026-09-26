@@ -37,14 +37,12 @@ public enum Reconciler {
                 let size = observed[w]?.size ?? fallbackSize
                 return .parked(Parking.origin(windowSize: size, visibleFrame: visible, corner: corner, sliver: zeroSliver.contains(w) ? 0 : 1))
             }
-            var rect = viewport(screen: screen, display: display, insets: insets[sid, default: .zero])
-            rect = rect.insetBy(dx: config.gap, dy: config.gap)
-            rect.size.height -= 1   // macOS may refuse full-height frames on stacked displays
+            let rect = tilingRect(screen: screen, display: display, insets: insets[sid, default: .zero], gap: config.gap)
             for (i, ws) in screen.workspaces.enumerated() {
                 let active = i == screen.activeIndex
                 let tiled = world.tiled(in: ws)
                 let focusedIndex = ws.anchor.flatMap { tiled.firstIndex(of: $0) } ?? 0
-                let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap) : []
+                let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap, portions: ws.portions) : []
                 for w in ws.windows {
                     if suspended.contains(w) { out[w] = .untouched; continue }
                     // macOS owns a fullscreen window's frame and Space: never frame it, never park it.
@@ -79,6 +77,14 @@ public enum Reconciler {
     /// less whatever the shell panels claim. Also the clip a switch animation slides within (#64).
     public static func viewport(screen: Screen, display: DisplayInfo, insets: ShellInsets) -> CGRect {
         insets.apply(to: screen.rect ?? display.visibleFrame)
+    }
+
+    /// The rect the layout engine divides: the viewport less the outer gap. Also what a resize
+    /// (#113) measures its portions against.
+    public static func tilingRect(screen: Screen, display: DisplayInfo, insets: ShellInsets, gap: CGFloat) -> CGRect {
+        var rect = viewport(screen: screen, display: display, insets: insets).insetBy(dx: gap, dy: gap)
+        rect.size.height -= 1   // macOS may refuse full-height frames on stacked displays
+        return rect
     }
 
     /// Writes needed to move reality to `desired`. Unparks/frames first, then parks. Stable order by window id.

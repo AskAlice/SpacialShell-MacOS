@@ -24,17 +24,21 @@ public enum LayoutEngine {
     public static func frames(_ layout: BuiltinLayout, count: Int, focused: Int, in rect: CGRect, gap: CGFloat) -> [CGRect?] {
         guard count > 0 else { return [] }
         let f = min(max(focused, 0), count - 1)
-        // ponytail: linear search down from `count`, re-running the layout each step — O(n²) in
-        // tiny n (windows in one row). Closed-form capacity per layout if rows ever get huge.
+        var out = [CGRect?](repeating: nil, count: count)
+        guard let (start, k) = span(layout, count: count, focused: f, in: rect, gap: gap) else { out[f] = rect; return out }
+        out.replaceSubrange(start..<start + k, with: unfloored(layout, count: k, focused: f - start, in: rect, gap: gap))
+        return out
+    }
+
+    /// The #54 page `frames` lays out: its first index and size, nil when not even two fit.
+    /// ponytail: linear search down from `count`, re-running the layout each step — O(n²) in
+    /// tiny n (windows in one row). Closed-form capacity per layout if rows ever get huge.
+    static func span(_ layout: BuiltinLayout, count: Int, focused f: Int, in rect: CGRect, gap: CGFloat) -> (start: Int, k: Int)? {
         for k in stride(from: count, to: 1, by: -1) {
             let start = min(f / k * k, count - k)
-            let page = unfloored(layout, count: k, focused: f - start, in: rect, gap: gap)
-            guard page.allSatisfy({ $0.map(fits) ?? true }) else { continue }
-            var out = [CGRect?](repeating: nil, count: count)
-            out.replaceSubrange(start..<start + k, with: page)
-            return out
+            if unfloored(layout, count: k, focused: f - start, in: rect, gap: gap).allSatisfy({ $0.map(fits) ?? true }) { return (start, k) }
         }
-        var out = [CGRect?](repeating: nil, count: count); out[f] = rect; return out
+        return nil
     }
 
     /// Any layout, built-in or drawn (#9, design §4.3). A built-in is today's generator, verbatim.

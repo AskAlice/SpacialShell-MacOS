@@ -130,14 +130,30 @@ public actor WorldStore {
     /// #108: the drop target's frame (top-left global) for the indicator panel; nil hides it.
     private let onDropTarget: @Sendable (CGRect?) -> Void
 
+    /// #113: every shared edge between two tiles in an active row, as the last reconcile framed
+    /// them — what a press can grab and what hovering highlights.
+    private struct BorderRef { let display: DisplayID; let workspace: UUID; let key: String; let border: Resize.Border }
+    private var borders: [BorderRef] = []
+    /// #113: the border in the hand, from the press on it to the release. `latest` is the newest
+    /// pointer position; `applied` the one the row was last laid out for — moves arrive far faster
+    /// than frames can be written, so a pump lays out only the newest (`pumpGrab`).
+    private struct Grab { let ref: BorderRef; var latest: CGPoint; var applied: CGPoint? }
+    private var grab: Grab?
+    private var pump: Task<Void, Never>?
+    private var hovered: CGRect?
+    /// #113: the hovered or grabbed border's highlight (top-left global); nil hides it.
+    private let onBorder: @Sendable (CGRect?) -> Void
+
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:], movedApps: Set<String> = [],
                 now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
                 animator: (any SwitchAnimator)? = nil,
                 tracerProvider: (any TracerProvider)? = nil,
                 onDropTarget: @escaping @Sendable (CGRect?) -> Void = { _ in },
+                onBorder: @escaping @Sendable (CGRect?) -> Void = { _ in },
                 onChange: @escaping @Sendable (World, ShellSnapshot) -> Void) {
         self.onDropTarget = onDropTarget
+        self.onBorder = onBorder
         self.now = now
         self.tracerProvider = tracerProvider
         self.animator = animator
@@ -223,6 +239,15 @@ public actor WorldStore {
             guard rows.indices.contains(i) else { return .noop("no workspace that way") }
             command = .moveWindowRefToWorkspace(d.ref, rows[i].id)
         }
+        // #113: a resize key is measured against the real tiling rect, so it edits the page the
+        // #54 floor actually shows; `CommandRunner` alone only knows the model's page.
+        if case .resizeWindow(let axis, let grow) = command, let rect = tilingRect(world.focus.screen) {
+            guard let (id, page, i) = world.resizePage(layouts: layouts, in: rect, gap: config.gap) else { return .noop("nothing to resize") }
+            let (next, moved) = Resize.step(page, world.screens[world.focus.screen]?.active.portions[page.key],
+                                            index: i, axis: axis, grow: grow)
+            guard moved else { return .noop("already at the limit") }
+            command = .setPortions(id, key: page.key, next)
+        }
         let issued = now()
         // #83: the root of a command's trace. The case name is the low-cardinality key; the detail
         // carries only ids and enum values — `Command` has no string payloads.
@@ -289,12 +314,34 @@ public actor WorldStore {
             // The backend sweeps only with the button up, so a drag still open here lost its
             // mouse-up (released over the shell's own panels, which the global monitor never
             // sees). It lands nowhere: the reconcile below snaps the window home.
-            pointerDown = nil; endDrag()
+            pointerDown = nil; endDrag(); dropGrab()
             eventSpan = tracedSnapshot(s)
         case .pointerDown(let p):
-            pointerDown = p; lastHumanInput = now(); return
+            pointerDown = p; lastHumanInput = now()
+            // #113: a press on a shared edge grabs it, instead of anything else a press can start.
+            if !locked, let b = borders.first(where: { $0.border.contains(p) }) {
+                grab = Grab(ref: b, latest: p, applied: nil)
+                show(b.border.indicator)
+            } else { show(nil) }
+            return
+        case .pointerMoved(let p):
+            if locked { return }
+            if grab != nil {
+                grab?.latest = p
+                if pump == nil { pump = Task { await self.pumpGrab() } }
+            } else { show(pointerDown == nil ? borders.first { $0.border.contains(p) }?.border.indicator : nil) }
+            return
         case .pointerUp(let p):
             pointerDown = nil
+            if grab != nil {
+                // The release lands where it was let go: after the pump in flight, one more pass.
+                grab?.latest = p
+                await pump?.value
+                await pumpGrab()
+                grab = nil
+                show(borders.first { $0.border.contains(p) }?.border.indicator)
+                return
+            }
             guard let d = drag else { return }
             endDrag()
             if locked { return }
@@ -304,6 +351,9 @@ public actor WorldStore {
             let was = observed[r]
             observed[r] = f
             if locked { return }
+            // #113: the grabbed border's windows are being laid out move by move (and a press on a
+            // window's own resize handle resizes it natively); the release settles them.
+            if grab != nil { return }
             if case .windowMoved = event, trackDrag(r, to: f, was: was) { return }
             if case .windowMoved = event, rehomeDragged(r, to: f, was: was) { break }
             if let ws = world.workspace(containing: r), !ws.floating.contains(r) { /* tiled: snap back */ } else { return }
@@ -337,7 +387,7 @@ public actor WorldStore {
             // already mid-flight would keep writing frames at a locked screen, and its writes land
             // against whatever the lock screen reports. Bumping the generation is the same signal
             // a newer reconcile sends, and every await in `reconcile()` checks it.
-            locked = true; generation += 1; pointerDown = nil; endDrag(); publish(); return
+            locked = true; generation += 1; pointerDown = nil; endDrag(); dropGrab(); publish(); return
         case .screenUnlocked:
             locked = false
             eventSpan = tracedSnapshot(await backend.currentSnapshot())
@@ -741,6 +791,68 @@ public actor WorldStore {
         return .moveWindowRefToWorkspace(r, target)
     }
 
+    /// #113: lays the grabbed border's row out for the newest pointer position, then the next, until
+    /// it has caught up.
+    private func pumpGrab() async {
+        while let g = grab, g.latest != g.applied {
+            grab?.applied = g.latest
+            if moveGrab(to: g.latest) { await reconcile() }
+        }
+        pump = nil
+    }
+
+    /// #113: the grabbed line to the pointer, snapped and clamped, as a `setPortions` — false when
+    /// nothing changed or the row no longer shows the page the border belongs to.
+    private func moveGrab(to p: CGPoint) -> Bool {
+        guard let g = grab?.ref, let loc = world.location(ofWorkspace: g.workspace), let rect = tilingRect(loc.screen) else { return false }
+        let ws = world.screens[loc.screen]!.workspaces[loc.index], row = world.tiled(in: ws)
+        let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
+        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap),
+              page.key == g.key else { return false }
+        let axis = g.border.axis
+        let u = Resize.unit(axis == .width ? p.x : p.y, axis: axis, in: rect, gap: config.gap)
+        let next = Resize.drag(page, ws.portions[g.key], axis: axis, line: g.border.line, to: u)
+        let (w, effects) = CommandRunner.apply(.setPortions(g.workspace, key: g.key, next), to: world, layouts: layouts)
+        guard !effects.isEmpty else { return false }
+        world = w
+        return true
+    }
+
+    /// A lost mouse-up (released over the shell's own panels) or a lock: the border is let go where
+    /// it last was.
+    private func dropGrab() {
+        guard grab != nil else { return }
+        grab = nil; show(nil)
+    }
+
+    /// Points the border highlight at `rect` (nil hides it), telling the panel only on a change.
+    private func show(_ rect: CGRect?) {
+        guard rect != hovered else { return }
+        hovered = rect
+        onBorder(rect)
+    }
+
+    /// The rect `display`'s active row is tiled in, as the reconciler computes it.
+    private func tilingRect(_ display: DisplayID) -> CGRect? {
+        guard let screen = world.screens[display], let d = displays.first(where: { $0.id == display }) else { return nil }
+        return Reconciler.tilingRect(screen: screen, display: d, insets: ShellInsets(config: config, hidden: world.zen), gap: config.gap)
+    }
+
+    /// #113: every draggable border the reconcile is about to frame, per display's active row.
+    private func findBorders(_ desired: [WindowRef: Placement]) -> [BorderRef] {
+        var out: [BorderRef] = []
+        for sid in world.screenOrder {
+            guard let screen = world.screens[sid], let rect = tilingRect(sid) else { continue }
+            let ws = screen.active, row = world.tiled(in: ws)
+            let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
+            guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap)
+            else { continue }
+            let frames: [CGRect?] = row.map { if case .frame(let f)? = desired[$0] { f } else { nil } }
+            out += Resize.borders(page, frames: frames).map { BorderRef(display: sid, workspace: ws.id, key: page.key, border: $0) }
+        }
+        return out
+    }
+
     /// Puts a retired window back in the model (spec §11 "until it changes"). The app's remembered
     /// workspace still applies, exactly as at first adoption.
     private func revive(_ r: WindowRef, frame: CGRect, reason: StaticString) {
@@ -837,6 +949,12 @@ public actor WorldStore {
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
                                          insets: insets, suspended: drag.map { [$0.ref] } ?? [])
         tiles = DropTarget.tiles(world: world, desired: desired)
+        borders = findBorders(desired)
+        // The grabbed border's highlight follows it to where this pass puts it.
+        if let g = grab {
+            show(borders.first { $0.workspace == g.ref.workspace && $0.key == g.ref.key && $0.border.axis == g.ref.border.axis
+                && $0.border.line == g.ref.border.line && $0.border.contains(g.latest, tolerance: 1_000) }?.border.indicator)
+        }
         if let t = drag?.target, tiles[t] == nil { aim(nil) }   // its row went away under the hand (Fn+W/S)
         // #64: a switch is motion. The overlay goes up *before* the first write, so the real windows
         // jump to their final frames underneath it; `play` then slides the proxies after them.
@@ -855,7 +973,8 @@ public actor WorldStore {
         // routinely). That pass compares against the `lastShown` recorded above, plans no motion,
         // and would never play this one: the pictures sat frozen until the watchdog cut them (#66).
         defer { if animating, let animator { Task { await animator.play(trace: trace) } } }
-        if let animator, config.animations {
+        // #113: a border drag lays out on every move; the hand is the motion, so nothing slides.
+        if let animator, config.animations, grab == nil {
             if !transitions.isEmpty {
                 animating = await animator.prepare(transitions, trace: trace, since: since)
                 span.setAttribute(key: "animating", value: animating)

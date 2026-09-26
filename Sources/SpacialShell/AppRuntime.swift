@@ -92,6 +92,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         log.info("stage 5/8: constructing the store")
         let gate = termination
         let dropIndicator = DropIndicator()
+        let borderIndicator = DropIndicator.border()
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
             placements: restored?.placements ?? [:], movedApps: restored?.movedApps ?? [],
@@ -99,6 +100,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             animator: SwitchOverlay(),
             // #108: the tile a dragged window would swap with.
             onDropTarget: { frame in Task { @MainActor in dropIndicator.show(frame) } },
+            // #113: the border between tiles under the pointer, or being dragged.
+            onBorder: { frame in Task { @MainActor in borderIndicator.show(frame) } },
         ) { [weak self] world, snapshot in
             gate.note(world: world)
             Task { @MainActor in

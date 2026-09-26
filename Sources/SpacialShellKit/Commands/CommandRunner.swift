@@ -364,6 +364,26 @@ public enum CommandRunner {
             }
             effects.append(.focus(ref)); effects.append(.relayout)
 
+        case .resizeWindow(let axis, let grow):
+            // #113. Without geometry the page is the one the model sees (no #54 floor); the store
+            // turns the key press into `setPortions` against the real tiling rect first.
+            guard let (id, page, i) = w.resizePage(layouts: layouts) else { return (w, []) }
+            let current = screen.active.portions[page.key]
+            let (next, moved) = Resize.step(page, current, index: i, axis: axis, grow: grow)
+            guard moved else { return (w, []) }
+            return apply(.setPortions(id, key: page.key, next), to: w, layouts: layouts)
+
+        case .balance:
+            guard !screen.active.portions.isEmpty else { return (w, []) }
+            w.screens[sid]!.workspaces[screen.activeIndex].portions = [:]
+            effects.append(.relayout)
+
+        case .setPortions(let id, let key, let p):
+            guard let loc = w.location(ofWorkspace: id),
+                  w.screens[loc.screen]!.workspaces[loc.index].portions[key] != p else { return (w, []) }
+            w.screens[loc.screen]!.workspaces[loc.index].portions[key] = p
+            effects.append(.relayout)
+
         case .rescueWindows:
             // Geometry only: the store sweeps `observed` against the displays. Relayout so the
             // sweep runs inside the ordinary reconcile.

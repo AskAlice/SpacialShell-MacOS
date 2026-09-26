@@ -51,6 +51,10 @@ public enum KeyBindings {
         "move-window-to-screen-up": .moveWindowToScreenDirection(.up),
         "move-window-to-screen-down": .moveWindowToScreenDirection(.down),
         "cycle-layout-reverse": .cycleLayoutReverse,
+        // #113
+        "shrink-width": .resizeWindow(.width, grow: false), "grow-width": .resizeWindow(.width, grow: true),
+        "shrink-height": .resizeWindow(.height, grow: false), "grow-height": .resizeWindow(.height, grow: true),
+        "balance": .balance,
     ].merging((1...10).map { ("move-window-to-workspace-\($0)", Command.moveWindowToWorkspaceIndex($0)) }) { a, _ in a }
         .merging((1...9).map { ("focus-tab-\($0)", Command.focusTab($0)) }) { a, _ in a }
 
@@ -113,6 +117,11 @@ public enum KeyBindings {
         ("shift-up", "move-window-to-screen-up"), ("shift-down", "move-window-to-screen-down"),
         ("alt-0", "focus-tab-1"),
     ] + (1...9).map { ("alt-\($0)", "focus-tab-\($0)") }
+    /// #113, P6 "+Ctrl = resize": Fn+⌃ on the fn preset, ⌃⌥⌘ on ctrl-alt (whose prefix already
+    /// holds ⌃). Suffixes, prefixed per preset in `table`.
+    static let resize: [(String, String)] = [
+        ("a", "shrink-width"), ("d", "grow-width"), ("w", "shrink-height"), ("s", "grow-height"), ("equal", "balance"),
+    ]
     static let arrows: [(String, String)] = [
         ("ctrl-alt-up", "focus-workspace-up"), ("ctrl-alt-down", "focus-workspace-down"), ("ctrl-alt-left", "focus-window-left"), ("ctrl-alt-right", "focus-window-right"),
         ("ctrl-alt-shift-up", "move-window-up"), ("ctrl-alt-shift-down", "move-window-down"), ("ctrl-alt-shift-left", "move-window-left"), ("ctrl-alt-shift-right", "move-window-right"),
@@ -133,6 +142,10 @@ public enum KeyBindings {
 
         for (k, name) in core + (config.keybindingPreset == .fn ? fnOnly : []) where !rebound.contains(name) {
             if let ch = parse(prefix + k), let cmd = command(named: name) { t[ch] = cmd }
+        }
+        let resizePrefix = config.keybindingPreset == .fn ? "fn-ctrl-" : "ctrl-alt-cmd-"
+        for (k, name) in resize where !rebound.contains(name) {
+            if let ch = parse(resizePrefix + k), let cmd = commandNames[name] { t[ch] = cmd }
         }
         for (k, name) in arrows where !rebound.contains(name) {
             if let ch = parse(k), let cmd = command(named: name) { t[ch] = cmd }

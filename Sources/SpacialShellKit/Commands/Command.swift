@@ -81,6 +81,16 @@ public enum Command: Sendable, Hashable {
     /// and — being in the user's hand, as in #57 — focus follows it.
     case dropWindow(WindowRef, onto: WindowRef)
 
+    // #113 (M4 G9 + G10): resizable portions.
+    /// Fn+⌃A/D (width) and Fn+⌃W/S (height): the focused tile shrinks or grows by 5 %, stopping on
+    /// the 25/50/75 % detents. A no-op where that tile has no interior edge (maximize).
+    case resizeWindow(ResizeAxis, grow: Bool)
+    /// The focused row's layouts back to their designed sizes.
+    case balance
+    /// A workspace's portions for one page key, set outright (nil = as designed) — what a border
+    /// drag commits, move by move.
+    case setPortions(UUID, key: String, Portions?)
+
     // #10: the layout popover and editor. App-layer, like `.openSettings`: `AppRuntime` routes them
     // to the layouts controller, they edit `settings.json`, and the model ignores them.
     /// New… (nil) or Edit… from the popover. `workspace` is the one a newly saved layout is applied to.

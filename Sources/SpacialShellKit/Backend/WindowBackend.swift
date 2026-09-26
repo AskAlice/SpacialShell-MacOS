@@ -85,6 +85,9 @@ public enum BackendEvent: Sendable, Equatable {
     /// frame here). What turns a run of `windowMoved` into a drag the store can drop somewhere.
     case pointerDown(CGPoint)
     case pointerUp(CGPoint)
+    /// #113: the pointer moved, button up or dragging — hovering a border between tiles
+    /// highlights it, and a grabbed border follows it.
+    case pointerMoved(CGPoint)
     case screenLocked
     case screenUnlocked
 }

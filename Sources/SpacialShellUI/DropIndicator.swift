@@ -12,20 +12,33 @@ struct DropTargetView: View {
     }
 }
 
+/// #113: the border between two tiles under the pointer, or in the hand — a solid accent bar in
+/// the gap, so the edge you can drag is the edge you see.
+struct BorderTargetView: View {
+    var body: some View {
+        Capsule(style: .continuous).fill(Color.accentColor)
+    }
+}
+
 /// Owns the click-through panel `DropTargetView` lives in. `WorldStore` aims it at a tile
 /// (top-left global) or nil; it fades in, glides between tiles and fades out in 180 ms — instant
-/// under Reduce Motion.
+/// under Reduce Motion. #113 reuses it, with `BorderTargetView`, for the resize border.
 @MainActor
 public final class DropIndicator {
-    private let panel: PanelWindow = {
+    private let panel: PanelWindow
+
+    public convenience init() { self.init(DropTargetView()) }
+
+    /// #113: the border highlight.
+    public static func border() -> DropIndicator { DropIndicator(BorderTargetView()) }
+
+    init<V: View>(_ view: V) {
         let p = PanelWindow()
         p.ignoresMouseEvents = true      // the drag's mouse-up must reach whatever is underneath
-        p.contentView = NSHostingView(rootView: DropTargetView())
+        p.contentView = NSHostingView(rootView: view)
         p.alphaValue = 0
-        return p
-    }()
-
-    public init() {}
+        panel = p
+    }
 
     public func show(_ frame: CGRect?) {
         let instant = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

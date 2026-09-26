@@ -30,12 +30,20 @@ public struct Workspace: Codable, Equatable, Sendable {
     /// category finds it, wherever a drag has since moved it. Nil for every row routing did not
     /// make, and for every row in a state file older than #74.
     public var category: AppCategory?
+    /// #113: sizes the user gave this row's layouts, by `Resize.Page.key` (a drawn layout's id, a
+    /// built-in's `id#tiles`). Empty = every layout as designed; `balance` empties it.
+    /// Persisted by `PersistedState`, not here: the keys below leave it out so a `Workspace` written
+    /// before #113 still decodes.
+    public var portions: [String: Portions] = [:]
+    enum CodingKeys: String, CodingKey { case id, name, symbol, layout, windows, floating, anchor, pinned, reserved, category }
     public init(id: UUID = UUID(), name: String, symbol: String = "square.grid.2x2", layout: LayoutID,
                 windows: [WindowRef] = [], floating: Set<WindowRef> = [], anchor: WindowRef? = nil,
-                pinned: Bool = false, reserved: Bool = false, category: AppCategory? = nil) {
+                pinned: Bool = false, reserved: Bool = false, category: AppCategory? = nil,
+                portions: [String: Portions] = [:]) {
         self.id = id; self.name = name; self.symbol = symbol; self.layout = layout
         self.windows = windows; self.floating = floating; self.anchor = anchor
         self.pinned = pinned; self.reserved = reserved; self.category = category
+        self.portions = portions
     }
     public var isEmpty: Bool { windows.isEmpty }
 }

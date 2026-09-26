@@ -61,6 +61,9 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Focus previous / next screen (aliases) | `Fn+[` / `Fn+]` | `⌃⌥[` / `⌃⌥]` | — |
 | Move window to previous / next screen (aliases) | `Fn+⇧[` / `Fn+⇧]` | `⌃⌥⇧[` / `⌃⌥⇧]` | — |
 | Toggle float on the focused window | `Fn+G` | `⌃⌥G` | — |
+| Resize the focused tile: narrower / wider | `Fn+⌃A` / `Fn+⌃D` | `⌃⌥⌘A` / `⌃⌥⌘D` | — |
+| Resize the focused tile: shorter / taller | `Fn+⌃W` / `Fn+⌃S` | `⌃⌥⌘W` / `⌃⌥⌘S` | — |
+| Balance: the workspace's layouts back to their designed sizes | `Fn+⌃=` | `⌃⌥⌘=` | — |
 | Arrow aliases: focus / move | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` | same | — |
 
 † "Left/right" walks every *visible* window of the active workspace, floating ones included, and
@@ -114,6 +117,18 @@ Semantics worth knowing:
   dropping a tab** (on a rail tile or a tab bar) does the same for that tab's app, into that
   workspace, without switching to it. Either way the app's new windows land there too, and this
   wins over category routing for that app from then on.
+- **Resize** (`Fn+⌃A/D/W/S`, #113) moves one edge of the focused tile by 5 % of the tiling area: its
+  right (or bottom) edge, or its left (or top) edge when it is the last column (row), so `D`/`S`
+  always make it bigger. A step that would cross 25, 50 or 75 % stops on it. The neighbour across
+  that edge gives or takes the space; no tile goes below 10 % of the area, and the tiles never go
+  below the 120 × 80 pt floor on the real screen. Sizes are remembered per workspace, per layout,
+  per number of tiles shown (three columns and four keep their own), and survive relaunch;
+  `Fn+⌃=` (`balance`) puts every layout of the workspace back as designed. Maximize has no edge
+  to move, so the keys do nothing there; nor does a tile whose edge on that axis is the screen's.
+- **Mouse resize** (#113): hover the gap between two tiles and it lights up; drag it and both
+  tiles follow live, snapping to 25/50/75 % when you pass within 2 % of them. Grabbing a tile's own
+  edge next to a neighbour does the same. Every edge in line with it moves too: dragging the line
+  between the master and the stack in *half* resizes every window of the stack.
 - Close presses the window's close button; the app stays running (macOS convention). Focus goes to
   the left neighbour, else the right.
 - Autorepeat of a bound chord is swallowed, not re-fired: holding `Fn+D` moves once and types
