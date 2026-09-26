@@ -123,7 +123,7 @@ struct SettingsView: View {
             row("Layout swipes", overridden: overrides.gestureLayout != nil) {
                 Toggle("", isOn: binding(\.gestureLayout, default: file.gestureLayout)).labelsHidden()
                     .disabled(!(overrides.gestures ?? file.gestures) || file.gestureFingers == SwipeBindings.layoutFingerCount)
-                    .help("Swipe with four fingers up or down to cycle the layout (Fn+Space, Fn+⇧Space), right or left to make the focused tile wider or narrower (Fn+⌃D, Fn+⌃A)")
+                    .help("Swipe with four fingers up or down to cycle the layout (Fn+Space, Fn+⇧Space); drag them left or right to move the focused tile's edge, like dragging the border with the mouse")
             } reset: { overrides.gestureLayout = nil }
 
             row("Invert swipes", overridden: overrides.gestureInvert != nil) {

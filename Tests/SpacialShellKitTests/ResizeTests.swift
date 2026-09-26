@@ -77,6 +77,23 @@ import Foundation
         #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: 0.99)!.x, [1 - Resize.minPortion]))
     }
 
+    /// #162: a four-finger drag's travel maps onto the row one to one (full trackpad = full row),
+    /// moves the edge a resize key moves, and lands by a mouse drag's rules.
+    @Test func aFourFingerDragMapsTravelOntoTheRow() {
+        #expect(Resize.swipeGain == 1)
+        #expect(abs(Resize.swiped(from: 0.5, travel: 0.1) - 0.6) < 1e-9)
+        #expect(abs(Resize.swiped(from: 0.5, travel: -0.2) - 0.3) < 1e-9, "the edge follows the fingers left")
+        #expect(abs(Resize.swiped(from: 0, travel: 1) - 1) < 1e-9, "the whole trackpad crosses the whole row")
+        let p = page(.split, 2)
+        #expect(Resize.swipeLine(p, index: 0) == 0 && Resize.swipeLine(p, index: 1) == 0, "the one line, from either side")
+        #expect(Resize.swipeLine(page(.column, 3), index: 1) == 1, "the middle column's trailing edge")
+        #expect(Resize.swipeLine(page(.column, 3), index: 2) == 1, "the last column's leading edge")
+        #expect(Resize.swipeLine(page(.maximize, 2), index: 0) == nil, "maximize has no edge")
+        // Past there it is `drag`: the detents and the floor.
+        #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 0.26))!.x, [0.75]))
+        #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 0.8))!.x, [1 - Resize.minPortion]))
+    }
+
     // MARK: the engine
 
     let rect = CGRect(x: 10, y: 20, width: 1000, height: 600)
@@ -224,17 +241,83 @@ import Foundation
         #expect(abs(await be.frames[a]!.width - (0.5 * 992 - 8)) < 1)
     }
 
-    /// #160: a four-finger swipe left or right in maximize, through the store as the swipe's route
-    /// runs it: a no-op with its reason, and nothing moves.
-    @Test func aFourFingerSwipeInMaximizeIsANoop() async {
+    // MARK: the four-finger drag (#162)
+
+    /// Polls until `check` holds: a drag's moves are laid out by the store's pump, off the call.
+    func eventually(_ check: () async -> Bool) async -> Bool {
+        for _ in 0..<400 {
+            if await check() { return true }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        return false
+    }
+
+    func portion(_ store: WorldStore) async -> Double? { await store.world.screens["D1"]!.active.portions["split#2"]?.x.first }
+
+    /// The mouse border drag's path, driven by travel: the edge previews live as the fingers move
+    /// (snapping onto 75 %, stopping at the floor), settles where the lift leaves it, and a drag
+    /// ends once — anything after the lift finds nothing in the hand.
+    @Test func aFourFingerDragPreviewsLiveAndSettlesOnTheLiftOnce() async {
+        let box = Box()
+        let (store, be) = await make(box)
+        func drag(_ phase: SwipeDrag.Phase, _ travel: Double) -> SwipeDrag { SwipeDrag(phase, fingers: 4, travel: travel) }
+        func at(_ u: Double) async -> Bool { await portion(store).map { abs($0 - u) < 1e-9 } == true }
+
+        #expect(await store.swipeEdge(drag(.began, 0.1)) == .done)
+        #expect(await eventually { await at(0.6) }, "live from the lock")
+        #expect(await eventually { abs(await be.frames[a]!.width - (0.6 * 992 - 8)) < 1 }, "and laid out")
+        #expect(box.borders.last??.isEmpty == false, "the edge is highlighted, as under the mouse")
+        #expect(await store.swipeEdge(drag(.moved, 0.26)) == .done)
+        #expect(await eventually { await at(0.75) }, "0.76 snaps onto the 75 % detent")
+        #expect(await store.swipeEdge(drag(.moved, 0.9)) == .done)
+        #expect(await eventually { await at(1 - Resize.minPortion) }, "the floor")
+
+        #expect(await store.swipeEdge(drag(.ended, 0.2)) == .done)
+        #expect(await at(0.7), "settled where the lift left it, by the time the lift returns")
+        let (na, nb) = await (be.frames[a]!, be.frames[b]!)
+        #expect(abs(na.width - (0.7 * 992 - 8)) < 1 && abs(nb.minX - na.maxX - 8) < 1, "both tiles follow the line")
+        #expect(box.borders.last == .some(nil), "the highlight goes with the hand")
+
+        // Once: the lift let go of the edge.
+        #expect(await store.swipeEdge(drag(.moved, -0.3)) == .noop("no edge in the hand"))
+        #expect(await store.swipeEdge(drag(.ended, -0.3)) == .noop("no edge in the hand"))
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        #expect(await at(0.7))
+        // A new drag starts from where the last one left the edge.
+        #expect(await store.swipeEdge(drag(.began, -0.1)) == .done)
+        #expect(await store.swipeEdge(drag(.ended, -0.1)) == .done)
+        #expect(await at(0.6))
+    }
+
+    /// #160's no-op, with its reason: in maximize there is no edge, so the drag starts nothing and
+    /// the rest of it finds nothing in the hand. Nothing moves.
+    @Test func aFourFingerDragInMaximizeIsANoop() async {
         let (store, be) = await make(Box(), layout: .maximize)
         let before = await be.frames[a]
-        let bindings = SwipeBindings()
-        for motion in [Direction.right, .left] {
-            let command = bindings.command(for: Swipe(fingers: 4, direction: motion))!
-            #expect(await store.run(command) == .noop("the focused tile has no edge to move sideways in this layout"))
-        }
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.1))
+                == .noop("the focused tile has no edge to move sideways in this layout"))
+        #expect(await store.swipeEdge(SwipeDrag(.moved, fingers: 4, travel: 0.3)) == .noop("no edge in the hand"))
+        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 0.3)) == .noop("no edge in the hand"))
         #expect(await store.world.screens["D1"]!.active.portions.isEmpty)
         #expect(await be.frames[a] == before)
+        #expect(SwipeBindings().command(for: Swipe(fingers: 4, direction: .right)) == nil, "no step either")
+    }
+
+    /// The mouse and four fingers share one hand: a border held by the mouse is not taken by a
+    /// drag, and the pointer does not move an edge four fingers hold.
+    @Test func theMouseAndFourFingersDoNotFightOverTheEdge() async {
+        let (store, be) = await make(Box())
+        let fa = await be.frames[a]!, fb = await be.frames[b]!
+        let mid = CGPoint(x: (fa.maxX + fb.minX) / 2, y: fa.midY)
+        await store.apply(.pointerDown(mid))
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.2)) == .noop("a border is already in the hand"))
+        await store.apply(.pointerUp(mid))
+
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.1)) == .done)
+        await store.apply(.pointerMoved(CGPoint(x: 900, y: mid.y)))
+        await store.apply(.pointerDown(CGPoint(x: 900, y: mid.y)))
+        await store.apply(.pointerUp(CGPoint(x: 900, y: mid.y)))
+        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 0.1)) == .done)
+        #expect(await portion(store).map { abs($0 - 0.6) < 1e-9 } == true)
     }
 }

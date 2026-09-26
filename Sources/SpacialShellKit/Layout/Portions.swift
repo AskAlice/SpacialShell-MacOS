@@ -156,6 +156,21 @@ public enum Resize {
         return page.moving(p, axis, line: line, to: snapped)
     }
 
+    /// #162: the four-finger drag's gain — how far the edge moves, as a fraction of the tiling
+    /// rect's width, per unit of normalized trackpad travel. 1 is proportional: the full trackpad
+    /// width drags the edge across the full row. The one knob to tune.
+    public static let swipeGain = 1.0
+
+    /// #162: the line a four-finger drag moves for tile `index`, the same edge a resize key moves
+    /// (the trailing one, else the leading one), or nil when the tile has none sideways (maximize,
+    /// a full-width row).
+    public static func swipeLine(_ page: Page, index: Int) -> Int? { edge(page, index: index, axis: .width)?.line }
+
+    /// #162: where a four-finger drag puts the edge that started at unit position `start`, after
+    /// `travel` (normalized trackpad x): it follows the fingers, `swipeGain` to one. What happens
+    /// there is a mouse drag's, `drag`: the same detents, the same floor.
+    public static func swiped(from start: Double, travel: Double) -> Double { start + travel * swipeGain }
+
     /// A shared edge between two framed tiles, which the mouse can drag: the gap between them,
     /// in the same global top-left coordinates as the frames.
     public struct Border: Equatable, Sendable {

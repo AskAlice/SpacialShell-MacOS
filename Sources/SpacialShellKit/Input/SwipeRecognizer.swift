@@ -39,6 +39,34 @@ public struct Swipe: Equatable, Sendable {
     public init(fingers: Int, direction: Direction) { self.fingers = fingers; self.direction = direction }
 }
 
+/// #162: a horizontal drag on a finger count that drags (`SwipeRecognizer.dragFingers`), reported
+/// as it goes. `travel` is how far the centroid has moved across the trackpad (normalized x, right
+/// positive) since the fingers reached this count, so it includes the short way they went before
+/// the axis locked: the edge it moves stays under the fingers.
+public struct SwipeDrag: Equatable, Sendable {
+    public enum Phase: Equatable, Sendable {
+        /// The axis locked horizontal: the drag starts, with its travel so far.
+        case began
+        case moved
+        /// A real lift, with the last travel measured on the drag's own finger count. Once per drag.
+        case ended
+    }
+    public var phase: Phase
+    public var fingers: Int
+    public var travel: Double
+
+    public init(_ phase: Phase, fingers: Int, travel: Double) {
+        self.phase = phase; self.fingers = fingers; self.travel = travel
+    }
+}
+
+/// #162: what a frame (or a lapse of time, `SwipeRecognizer.expire`) came to: a discrete swipe, or
+/// a step of a drag.
+public enum TrackpadGesture: Equatable, Sendable {
+    case swipe(Swipe)
+    case drag(SwipeDrag)
+}
+
 /// #141 (G27), #160: turns a stream of `TouchFrame`s into at most one `Swipe` per gesture. It
 /// recognizes several finger counts at once: three to navigate, four for the layout.
 ///
@@ -63,6 +91,13 @@ public struct Swipe: Equatable, Sendable {
 ///   cut every swipe into one-frame pieces, and horizontal swipes (which need the most travel)
 ///   never fired. An empty frame with a timestamp is held for `liftGrace`: a frame with the fingers
 ///   still down inside it continues the swipe. Frames without timestamps keep the old rule.
+/// - **Counts that drag lock their axis early (#162).** On a count in `dragFingers` the axis is
+///   decided once the centroid has moved `axisLock` along one axis with the same `dominance`. A
+///   horizontal lock is a drag: `began`, `moved` for every frame on that count, `ended` on a real
+///   lift (an empty frame that stays empty for `liftGrace`, or one without a timestamp). Frames on
+///   other counts hold the drag where it is: fingers lift unevenly, and a centroid of fewer fingers
+///   is somewhere else. A vertical lock stays a discrete swipe, up or down only. Nothing ends a
+///   drag but a lift (or `reset`), and it ends once.
 ///
 /// The result is the way the fingers moved. `SwipeBindings` turns it into a command, and is where
 /// navigation's natural-scrolling direction is applied.
@@ -78,8 +113,15 @@ public struct SwipeRecognizer: Equatable, Sendable {
     /// millisecond of the next real frame, which arrives every ~4–10 ms while fingers move.
     public static let liftGrace: TimeInterval = 0.05
 
+    /// #162: how far the centroid moves before a dragging count decides its axis. About 4.5 mm
+    /// across a 15 cm trackpad: past the drift of fingers settling, short enough that the edge
+    /// picks the fingers up almost at once.
+    public static let axisLock = 0.03
+
     /// The finger counts a swipe can have. Empty recognizes nothing.
     public var fingers: Set<Int>
+    /// #162: the counts (among `fingers`) whose horizontal motion is a drag, not a swipe.
+    public var dragFingers: Set<Int>
     public var threshold: Double
     public var dominance: Double
     /// When an empty frame arrived that has not yet been confirmed or disproved as a lift.
@@ -92,30 +134,77 @@ public struct SwipeRecognizer: Equatable, Sendable {
         case idle
         /// The count matched here; watching the centroid move.
         case tracking(x: Double, y: Double)
+        /// #162: a dragging count that locked vertical: only up or down can fire.
+        case vertical(x: Double, y: Double)
+        /// #162: a horizontal drag on `fingers` fingers, from `x`, last reported at `travel`.
+        case dragging(fingers: Int, x: Double, travel: Double)
         /// This gesture has had its step. Quiet until the fingers lift.
         case done
     }
     private var phase = Phase.idle
 
-    public init(fingers: Set<Int> = [3],
+    public init(fingers: Set<Int> = [3], dragFingers: Set<Int> = [],
                 threshold: Double = SwipeRecognizer.defaultThreshold,
                 dominance: Double = SwipeRecognizer.defaultDominance) {
-        self.fingers = fingers; self.threshold = threshold; self.dominance = dominance
+        self.fingers = fingers; self.dragFingers = dragFingers; self.threshold = threshold; self.dominance = dominance
+    }
+
+    /// Listening for what `bindings` binds: its finger counts, and its layout count as a drag.
+    public init(bindings: SwipeBindings) {
+        self.init(fingers: bindings.fingerCounts, dragFingers: bindings.dragFingers)
+    }
+
+    /// #162: a drag is open (the platform then watches the clock for its lift, `expire`).
+    public var isDragging: Bool {
+        if case .dragging = phase { return true }
+        return false
     }
 
     /// Feeds one frame; returns a swipe the one time a gesture is recognized, and nil otherwise.
+    /// Drags are dropped: a recognizer with `dragFingers` is read through `step`.
     public mutating func feed(_ frame: TouchFrame) -> Swipe? {
+        if case .swipe(let s)? = step(frame) { return s }
+        return nil
+    }
+
+    /// Feeds one frame; returns the swipe or drag step it makes, if any.
+    public mutating func step(_ frame: TouchFrame) -> TrackpadGesture? {
         if frame.fingers == 0, let t = frame.time {
             // Maybe a lift, maybe macOS's interleaved empty event: decide on the next frame.
             if emptySince == nil { emptySince = t }
             return nil
         }
+        var ended: TrackpadGesture?
         if let since = emptySince {
             emptySince = nil
             let lifted = frame.time.map { $0 - since > Self.liftGrace } ?? true
-            if lifted { forget() }
+            if lifted { ended = lift() }
         }
+        // A frame arriving after a real lift is the first of a new gesture, which never reports on
+        // its first frame: the lift's `ended` is all this frame has to say.
+        let out = next(frame)
+        return ended ?? out
+    }
+
+    /// #162: the clock, with no frame. An empty frame that has stayed empty past `liftGrace` by
+    /// `time` (the frames' clock: seconds since boot) was a real lift. The platform calls it after
+    /// the grace when a drag is open, since after a real lift no next frame comes to decide it.
+    public mutating func expire(at time: TimeInterval) -> TrackpadGesture? {
+        guard let since = emptySince, time - since > Self.liftGrace else { return nil }
+        emptySince = nil
+        return lift()
+    }
+
+    private mutating func next(_ frame: TouchFrame) -> TrackpadGesture? {
         let n = frame.fingers
+        if case .dragging(let k, let x0, let last) = phase {
+            if n == 0 { return lift() }                        // an empty frame without a timestamp
+            guard n == k else { return nil }                   // fingers landing or lifting: hold
+            let travel = frame.x - x0
+            guard travel != last else { return nil }
+            phase = .dragging(fingers: k, x: x0, travel: travel)
+            return .drag(SwipeDrag(.moved, fingers: k, travel: travel))
+        }
         guard let fewest = fingers.min(), n >= fewest else { forget(); return nil }
         if n > peak {
             // A finger landed: the swipe starts again at the new count, unless it already fired.
@@ -128,16 +217,24 @@ public struct SwipeRecognizer: Equatable, Sendable {
             return nil
         }
         switch phase {
-        case .done:
+        case .done, .dragging:
             return nil
         case .idle:
             phase = .tracking(x: frame.x, y: frame.y)
             return nil
-        case .tracking(let x0, let y0):
+        case .tracking(let x0, let y0), .vertical(let x0, let y0):
             let dx = frame.x - x0, dy = frame.y - y0
             let ax = abs(dx), ay = abs(dy)
+            if dragFingers.contains(n), case .tracking = phase {
+                // #162: decide the axis early. Horizontal is a drag from here to the lift.
+                if ax >= Self.axisLock, ax > dominance * ay {
+                    phase = .dragging(fingers: n, x: x0, travel: dx)
+                    return .drag(SwipeDrag(.began, fingers: n, travel: dx))
+                }
+                if ay >= Self.axisLock, ay > dominance * ax { phase = .vertical(x: x0, y: y0) }
+            }
             let motion: Direction
-            if ax >= threshold, ax > dominance * ay {
+            if case .tracking = phase, ax >= threshold, ax > dominance * ay {
                 motion = dx < 0 ? .left : .right
             } else if ay >= threshold, ay > dominance * ax {
                 motion = dy > 0 ? .up : .down   // y grows upward
@@ -145,12 +242,25 @@ public struct SwipeRecognizer: Equatable, Sendable {
                 return nil
             }
             phase = .done
-            return Swipe(fingers: n, direction: motion)
+            return .swipe(Swipe(fingers: n, direction: motion))
         }
     }
 
-    /// Forget the gesture in progress, as if every finger lifted.
-    public mutating func reset() { forget(); emptySince = nil }
+    /// Forget the gesture in progress, as if every finger lifted. An open drag ends here, where
+    /// it last was, and that end is returned for the caller to settle.
+    @discardableResult
+    public mutating func reset() -> SwipeDrag? {
+        emptySince = nil
+        if case .drag(let d)? = lift() { return d }
+        return nil
+    }
+
+    /// The fingers lifted: forget the gesture, ending an open drag.
+    private mutating func lift() -> TrackpadGesture? {
+        defer { forget() }
+        guard case .dragging(let k, _, let travel) = phase else { return nil }
+        return .drag(SwipeDrag(.ended, fingers: k, travel: travel))
+    }
 
     private mutating func forget() { phase = .idle; peak = 0 }
 }
@@ -164,8 +274,9 @@ public struct SwipeRecognizer: Equatable, Sendable {
 ///   swipe points, like Mission Control's swipe up and like the rail: swiping up goes to the
 ///   workspace above (Fn+W). (Found live: natural vertical felt inverted.) `invert` flips both.
 /// - **Layout** (four fingers, `gesture-layout`): up runs `cycle-layout` and down
-///   `cycle-layout-reverse`; right runs `grow-width` and left `shrink-width`, so the focused tile's
-///   edge follows the fingers. `invert` does not apply: nothing scrolls. When navigation already
+///   `cycle-layout-reverse`. Sideways is not a swipe but a drag (#162, `dragFingers`): the focused
+///   tile's side edge follows the fingers, by distance, the way a mouse drags a border
+///   (`WorldStore.swipeEdge`). `invert` does not apply: nothing scrolls. When navigation already
 ///   uses four fingers it keeps them, and layout swipes are off.
 public struct SwipeBindings: Equatable, Sendable {
     /// The fingers layout swipes take.
@@ -195,7 +306,11 @@ public struct SwipeBindings: Equatable, Sendable {
         return out
     }
 
-    /// The command a swipe runs, or nil for a finger count nothing is bound to.
+    /// #162: the counts that drag sideways instead of swiping: the layout's.
+    public var dragFingers: Set<Int> { layoutFingers.map { [$0] } ?? [] }
+
+    /// The command a swipe runs, or nil for a finger count nothing is bound to (or a layout swipe
+    /// sideways, which is a drag).
     public func command(for swipe: Swipe) -> Command? {
         if swipe.fingers == navigationFingers {
             let d = swipe.direction
@@ -205,6 +320,9 @@ public struct SwipeBindings: Equatable, Sendable {
         if swipe.fingers == layoutFingers { return Self.layout(swipe.direction) }
         return nil
     }
+
+    /// #162: whether a drag on this many fingers moves the focused tile's edge.
+    public func dragsEdge(_ drag: SwipeDrag) -> Bool { drag.fingers == layoutFingers }
 
     /// The command a navigation direction runs: exactly the one Fn+W/A/S/D runs.
     public static func navigation(_ direction: Direction) -> Command {
@@ -217,13 +335,12 @@ public struct SwipeBindings: Equatable, Sendable {
     }
 
     /// The command a four-finger swipe runs, by the way the fingers moved: exactly the ones
-    /// Fn+Space, Fn+⇧Space, Fn+⌃D and Fn+⌃A run.
-    public static func layout(_ motion: Direction) -> Command {
+    /// Fn+Space and Fn+⇧Space run. Sideways is nil: since #162 it is a live drag, not a step.
+    public static func layout(_ motion: Direction) -> Command? {
         switch motion {
         case .up: .cycleLayout
         case .down: .cycleLayoutReverse
-        case .right: .resizeWindow(.width, grow: true)
-        case .left: .resizeWindow(.width, grow: false)
+        case .left, .right: nil
         }
     }
 }

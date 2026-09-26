@@ -241,22 +241,29 @@ axis, clearly more along that axis than the other; a diagonal does nothing. Lift
 swipe again. `gesture-fingers` picks 3, 4 or 5 fingers, and `gestures = false` turns swipes off
 (see [config](config.md)). Both toggles are also in the settings window's General pane.
 
-Swiping with **four** fingers changes the layout, one step per swipe (`gesture-layout`, on by
-default; *Layout swipes* in the General pane):
+**Four** fingers change the layout (`gesture-layout`, on by default; *Layout swipes* in the General
+pane):
 
-| Four-finger swipe | Runs | Same as |
+| Four fingers | Does | Same as |
 |---|---|---|
-| up | `cycle-layout` | `Fn+Space` |
-| down | `cycle-layout-reverse` | `Fn+⇧Space` |
-| right | `grow-width` | `Fn+⌃D` |
-| left | `shrink-width` | `Fn+⌃A` |
+| swipe up | `cycle-layout`, one step per swipe | `Fn+Space` |
+| swipe down | `cycle-layout-reverse`, one step per swipe | `Fn+⇧Space` |
+| drag left / right | move the focused tile's side edge, live, as far as the fingers go | dragging the border between tiles with the mouse |
 
-Right and left move the focused tile's edge the way the fingers go (the same 5 % steps and snaps
-as the keys); in `maximize` there is no edge, so they do nothing. `gesture-invert` doesn't apply
-here. Three- and four-finger swipes are told apart per gesture: fingers usually land one at a
-time, so a swipe counts as the most fingers it had down, and lifting a four-finger swipe through
-three never fires a three-finger one. With `gesture-fingers = 4`, four fingers navigate and layout
-swipes are off.
+Left and right are not steps but a drag. As soon as four fingers have moved a little (about 3 % of
+the trackpad) more sideways than up or down, they take hold of the focused tile's side edge (the
+edge `Fn+⌃A/D` move: its right edge, or its left one for the last column) and the edge follows them
+until you lift. The distance is proportional: the full width of the trackpad moves the edge across
+the full width of the row. It behaves exactly like dragging that border with the mouse: no tile gets
+narrower than a tenth of the row, the edge catches on the 25/50/75 % marks as it passes them, and
+where you lift is where it stays. Fingers lifting unevenly don't move it. In `maximize` there is no
+edge, so a sideways drag does nothing. A swipe that starts up or down stays a layout swipe, however
+it goes on.
+
+`gesture-invert` doesn't apply to four fingers. Three and four fingers are told apart per gesture:
+fingers usually land one at a time, so a gesture counts as the most fingers it had down, and
+lifting a four-finger gesture through three never fires a three-finger swipe. With
+`gesture-fingers = 4`, four fingers navigate and the layout gestures are off.
 
 **Turn off macOS's own gestures on the fingers SpacialShell uses.** SpacialShell can watch trackpad
 gestures but, through public API, not take them away from macOS, so a swipe that macOS also uses

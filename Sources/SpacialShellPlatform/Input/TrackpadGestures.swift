@@ -25,7 +25,10 @@ import os
 /// off, as `HotkeyTap.onCommand` does.
 ///
 /// **What a swipe runs** is `SwipeBindings`' (Kit): three fingers navigate like Fn+W/A/S/D and,
-/// with `gesture-layout` (#160), four fingers cycle the layout and resize the focused tile.
+/// with `gesture-layout` (#160), four fingers up/down cycle the layout. Four fingers sideways are a
+/// continuous drag (#162): `onDrag` gets `began`, `moved`… and one `ended` at the lift, for the
+/// store's border-drag path (`WorldStore.swipeEdge`). After a real lift no frame comes to confirm
+/// it, so while a drag is open an empty frame also starts a `liftGrace` timer (`expire`).
 ///
 /// `SPACIAL_LOG_GESTURES=1` logs every frame (finger count, centroid) and every recognized swipe —
 /// the instrument for the checks in `docs/platform-notes.md`.
@@ -36,20 +39,26 @@ public final class TrackpadGestures {
     private nonisolated static let systemSettingsBundleID = "com.apple.systempreferences"
 
     private let onSwipe: @Sendable (Command) -> Void
+    private let onDrag: @Sendable (SwipeDrag) -> Void
     private let problems: ProblemCenter
     private let logFrames: Bool
     private var bindings = SwipeBindings()
-    private var recognizer = SwipeRecognizer(fingers: SwipeBindings().fingerCounts)
+    private var recognizer = SwipeRecognizer(bindings: SwipeBindings())
     private var enabled = false
     private var tapPort: CFMachPort?
     private var source: CFRunLoopSource?
     private var observers: [any NSObjectProtocol] = []
     private var lastFingers = 0
+    /// #162: the pending lift check while a drag is open (`expire`).
+    private var liftCheck: DispatchWorkItem?
 
-    /// `onSwipe` gets the command a recognized swipe runs, to route exactly as a hotkey's.
-    public init(problems: ProblemCenter = .shared, onSwipe: @escaping @Sendable (Command) -> Void) {
+    /// `onSwipe` gets the command a recognized swipe runs, to route exactly as a hotkey's. `onDrag`
+    /// (#162) gets each step of a four-finger drag, in order, ending with exactly one `ended`.
+    public init(problems: ProblemCenter = .shared, onSwipe: @escaping @Sendable (Command) -> Void,
+                onDrag: @escaping @Sendable (SwipeDrag) -> Void = { _ in }) {
         self.problems = problems
         self.onSwipe = onSwipe
+        self.onDrag = onDrag
         self.logFrames = ProcessInfo.processInfo.environment["SPACIAL_LOG_GESTURES"] == "1"
     }
 
@@ -57,9 +66,10 @@ public final class TrackpadGestures {
     /// macOS's own gestures (the finger counts decide whether they conflict).
     public func update(enabled: Bool, bindings: SwipeBindings) {
         if bindings != self.bindings {
+            reset()   // under the old bindings: an open drag lands before they change
             self.bindings = bindings
             recognizer.fingers = bindings.fingerCounts
-            recognizer.reset()
+            recognizer.dragFingers = bindings.dragFingers
         }
         if enabled != self.enabled {
             self.enabled = enabled
@@ -122,7 +132,7 @@ public final class TrackpadGestures {
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tapPort = nil
         source = nil
-        recognizer.reset()
+        reset()
         lastFingers = 0
     }
 
@@ -130,7 +140,14 @@ public final class TrackpadGestures {
         guard let tapPort, !CGEvent.tapIsEnabled(tap: tapPort) else { return }
         Self.log.notice("re-enabling the trackpad gesture tap")
         CGEvent.tapEnable(tap: tapPort, enable: true)
-        recognizer.reset()
+        reset()
+    }
+
+    /// Forgets the gesture in progress. An open drag lands where it last was: frames were missed,
+    /// and whatever the fingers did meanwhile is unknown.
+    private func reset() {
+        liftCheck?.cancel(); liftCheck = nil
+        if let end = recognizer.reset() { deliver(.drag(end)) }
     }
 
     fileprivate func handle(_ frame: TouchFrame) {
@@ -139,13 +156,40 @@ public final class TrackpadGestures {
             Self.log.info("gesture frame fingers=\(frame.fingers) centroid=(\(frame.x, format: .fixed(precision: 3)), \(frame.y, format: .fixed(precision: 3)))")
         }
         lastFingers = frame.fingers
-        guard let swipe = recognizer.feed(frame) else { return }
-        let command = bindings.command(for: swipe)
-        if logFrames {
-            Self.log.info("swipe recognized: \(swipe.fingers) fingers \(String(describing: swipe.direction), privacy: .public) -> \(command.map { String(describing: $0) } ?? "nothing", privacy: .public)")
+        let gesture = recognizer.step(frame)
+        // #162: after a real lift no next frame comes to confirm it, so the clock does.
+        if frame.fingers == 0, recognizer.isDragging, liftCheck == nil {
+            let check = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.liftCheck = nil
+                    if let g = self.recognizer.expire(at: ProcessInfo.processInfo.systemUptime) { self.deliver(g) }
+                }
+            }
+            liftCheck = check
+            DispatchQueue.main.asyncAfter(deadline: .now() + SwipeRecognizer.liftGrace + 0.01, execute: check)
+        } else if frame.fingers != 0 {
+            liftCheck?.cancel(); liftCheck = nil
         }
-        guard let command else { return }
-        onSwipe(command)
+        if let gesture { deliver(gesture) }
+    }
+
+    private func deliver(_ gesture: TrackpadGesture) {
+        switch gesture {
+        case .swipe(let swipe):
+            let command = bindings.command(for: swipe)
+            if logFrames {
+                Self.log.info("swipe recognized: \(swipe.fingers) fingers \(String(describing: swipe.direction), privacy: .public) -> \(command.map { String(describing: $0) } ?? "nothing", privacy: .public)")
+            }
+            guard let command else { return }
+            onSwipe(command)
+        case .drag(let drag):
+            if logFrames || drag.phase != .moved {
+                Self.log.info("drag \(String(describing: drag.phase), privacy: .public): \(drag.fingers) fingers travel \(drag.travel, format: .fixed(precision: 3))")
+            }
+            guard bindings.dragsEdge(drag) else { return }
+            onDrag(drag)
+        }
     }
 
     /// The fingers on the trackpad now: touches that have not ended or been cancelled, and are not

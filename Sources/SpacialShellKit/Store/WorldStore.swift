@@ -136,10 +136,23 @@ public actor WorldStore {
     /// them — what a press can grab and what hovering highlights.
     private struct BorderRef { let display: DisplayID; let workspace: UUID; let key: String; let border: Resize.Border }
     private var borders: [BorderRef] = []
-    /// #113: the border in the hand, from the press on it to the release. `latest` is the newest
-    /// pointer position; `applied` the one the row was last laid out for — moves arrive far faster
+    /// #113: the border in the hand, from the press on it to the release — #162: or the focused
+    /// tile's side edge under four fingers, from the axis lock to the lift. `latest` is where the
+    /// hand has it now; `applied` where the row was last laid out for — moves arrive far faster
     /// than frames can be written, so a pump lays out only the newest (`pumpGrab`).
-    private struct Grab { let ref: BorderRef; var latest: CGPoint; var applied: CGPoint? }
+    private struct Grab {
+        /// The line in the hand: which workspace, which page of it, which line on which axis.
+        let workspace: UUID, key: String, axis: ResizeAxis, line: Int
+        /// #162: where the line was when four fingers took it; nil for the pointer.
+        let swipeStart: Double?
+        var latest: GrabTarget
+        var applied: GrabTarget?
+        /// Where the highlight is looked for along the line: the pointer, or the focused tile.
+        var anchor: CGPoint?
+        var bySwipe: Bool { swipeStart != nil }
+    }
+    /// Where the hand has the line: a pointer position, or (#162) a unit position on the axis.
+    private enum GrabTarget: Equatable { case pointer(CGPoint), unit(Double) }
     private var grab: Grab?
     private var pump: Task<Void, Never>?
     private var hovered: CGRect?
@@ -337,32 +350,34 @@ public actor WorldStore {
             if locked { return }
             // The backend sweeps only with the button up, so a drag still open here lost its
             // mouse-up (released over the shell's own panels, which the global monitor never
-            // sees). It lands nowhere: the reconcile below snaps the window home.
-            pointerDown = nil; endDrag(); dropGrab()
+            // sees). It lands nowhere: the reconcile below snaps the window home. (A four-finger
+            // drag has no button; it ends at its lift.)
+            pointerDown = nil; endDrag(); if grab?.bySwipe == false { dropGrab() }
             eventSpan = tracedSnapshot(s)
         case .pointerDown(let p):
             pointerDown = p; lastHumanInput = now()
+            if grab?.bySwipe == true { return }   // four fingers have the edge; the button waits
             // #113: a press on a shared edge grabs it, instead of anything else a press can start.
             if !locked, let b = borders.first(where: { $0.border.contains(p) }) {
-                grab = Grab(ref: b, latest: p, applied: nil)
+                grab = Grab(workspace: b.workspace, key: b.key, axis: b.border.axis, line: b.border.line,
+                            swipeStart: nil, latest: .pointer(p), applied: nil, anchor: p)
                 show(b.border.indicator)
             } else { show(nil) }
             return
         case .pointerMoved(let p):
             if locked { return }
-            if grab != nil {
-                grab?.latest = p
+            if let g = grab {
+                guard !g.bySwipe else { return }
+                grab?.latest = .pointer(p); grab?.anchor = p
                 if pump == nil { pump = Task { await self.pumpGrab() } }
             } else { show(pointerDown == nil ? borders.first { $0.border.contains(p) }?.border.indicator : nil) }
             return
         case .pointerUp(let p):
             pointerDown = nil
-            if grab != nil {
+            if let g = grab, !g.bySwipe {
                 // The release lands where it was let go: after the pump in flight, one more pass.
-                grab?.latest = p
-                await pump?.value
-                await pumpGrab()
-                grab = nil
+                grab?.latest = .pointer(p); grab?.anchor = p
+                await settleGrab()
                 show(borders.first { $0.border.contains(p) }?.border.indicator)
                 return
             }
@@ -861,22 +876,81 @@ public actor WorldStore {
         pump = nil
     }
 
-    /// #113: the grabbed line to the pointer, snapped and clamped, as a `setPortions` — false when
-    /// nothing changed or the row no longer shows the page the border belongs to.
-    private func moveGrab(to p: CGPoint) -> Bool {
-        guard let g = grab?.ref, let loc = world.location(ofWorkspace: g.workspace), let rect = tilingRect(loc.screen) else { return false }
+    /// #113: the grabbed line to the pointer (#162: or to where four fingers have it), snapped and
+    /// clamped, as a `setPortions` — false when nothing changed or the row no longer shows the page
+    /// the line belongs to.
+    private func moveGrab(to target: GrabTarget) -> Bool {
+        guard let g = grab, let loc = world.location(ofWorkspace: g.workspace), let rect = tilingRect(loc.screen) else { return false }
         let ws = world.screens[loc.screen]!.workspaces[loc.index], row = world.tiled(in: ws)
         let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
         guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap,
                                            split: ws.split(in: row)),
               page.key == g.key else { return false }
-        let axis = g.border.axis
-        let u = Resize.unit(axis == .width ? p.x : p.y, axis: axis, in: rect, gap: config.gap)
-        let next = Resize.drag(page, ws.portions[g.key], axis: axis, line: g.border.line, to: u)
+        let u = switch target {
+        case .pointer(let p): Resize.unit(g.axis == .width ? p.x : p.y, axis: g.axis, in: rect, gap: config.gap)
+        case .unit(let u): u
+        }
+        let next = Resize.drag(page, ws.portions[g.key], axis: g.axis, line: g.line, to: u)
         let (w, effects) = CommandRunner.apply(.setPortions(g.workspace, key: g.key, next), to: world, layouts: layouts)
         guard !effects.isEmpty else { return false }
         world = w
         return true
+    }
+
+    /// The release, a mouse-up's or (#162) a lift's: the line lands where it was let go — after
+    /// the pump in flight, one more pass for `latest` — and leaves the hand.
+    private func settleGrab() async {
+        await pump?.value
+        await pumpGrab()
+        grab = nil
+    }
+
+    // MARK: four-finger edge drag (#162)
+
+    /// #162: a four-finger horizontal drag moves the focused tile's side edge the way a mouse
+    /// drags a border (#113) — the same grab, the same pump, the same `setPortions`, snaps and
+    /// floor: `began` takes the edge the resize keys move (measured against the real tiling rect,
+    /// like them), each `moved` puts it `Resize.swiped` from where it was, and `ended` (a real
+    /// lift) settles it there, once. The platform recognizes; this is the only door to the model.
+    ///
+    /// In maximize, and wherever the focused tile has no edge sideways, `began` is a no-op with the
+    /// resize keys' reason, and the moves and the lift that follow find nothing in the hand.
+    @discardableResult
+    public func swipeEdge(_ drag: SwipeDrag) async -> CommandReport {
+        switch drag.phase {
+        case .began:
+            guard !locked else { return .failed(.locked) }
+            if let g = grab {
+                // A lost lift (the tap re-armed, the config changed): the old drag lands first.
+                guard g.bySwipe else { return .noop("a border is already in the hand") }
+                await settleGrab()
+            }
+            guard let rect = tilingRect(world.focus.screen),
+                  let (id, page, i) = world.resizePage(layouts: layouts, in: rect, gap: config.gap)
+            else { return .noop("nothing to resize") }
+            guard let line = Resize.swipeLine(page, index: i) else { return .noop(Resize.stuck(page, index: i, axis: .width)) }
+            let start = page.positions(world.screens[world.focus.screen]?.active.portions[page.key], .width)[line]
+            let anchor = world.focus.window.flatMap { tiles[$0] }.map { CGPoint(x: $0.midX, y: $0.midY) }
+            grab = Grab(workspace: id, key: page.key, axis: .width, line: line, swipeStart: start,
+                        latest: .unit(Resize.swiped(from: start, travel: drag.travel)), applied: nil, anchor: anchor)
+            Self.log.notice("swipe edge \(line, privacy: .public) of \(page.key, privacy: .public) from \(start, privacy: .public)")
+            lastHumanInput = now()
+            if pump == nil { pump = Task { await self.pumpGrab() } }
+            return .done
+        case .moved:
+            guard let g = grab, let start = g.swipeStart else { return .noop("no edge in the hand") }
+            grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel))
+            lastHumanInput = now()
+            if pump == nil { pump = Task { await self.pumpGrab() } }
+            return .done
+        case .ended:
+            guard let g = grab, let start = g.swipeStart else { return .noop("no edge in the hand") }
+            grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel))
+            await settleGrab()
+            show(nil)
+            Self.log.notice("swipe edge settled: \(String(describing: self.world.screens[self.world.focus.screen]?.active.portions[g.key]), privacy: .public)")
+            return .done
+        }
     }
 
     /// A lost mouse-up (released over the shell's own panels) or a lock: the border is let go where
@@ -1014,8 +1088,10 @@ public actor WorldStore {
         borders = findBorders(desired)
         // The grabbed border's highlight follows it to where this pass puts it.
         if let g = grab {
-            show(borders.first { $0.workspace == g.ref.workspace && $0.key == g.ref.key && $0.border.axis == g.ref.border.axis
-                && $0.border.line == g.ref.border.line && $0.border.contains(g.latest, tolerance: 1_000) }?.border.indicator)
+            show(g.anchor.flatMap { a in
+                borders.first { $0.workspace == g.workspace && $0.key == g.key && $0.border.axis == g.axis
+                    && $0.border.line == g.line && $0.border.contains(a, tolerance: 1_000) }?.border.indicator
+            })
         }
         if let t = drag?.target, tiles[t] == nil { aim(nil) }   // its row went away under the hand (Fn+W/S)
         // #64: a switch is motion. The overlay goes up *before* the first write, so the real windows

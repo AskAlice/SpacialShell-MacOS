@@ -181,24 +181,25 @@ import Foundation
 
     // MARK: four fingers (#160)
 
-    /// Up cycles the layout and down cycles it back; right widens the focused tile and left
-    /// narrows it, so the edge follows the fingers. The hotkeys' own commands.
+    /// Up cycles the layout and down cycles it back: the hotkeys' own commands. Sideways is no
+    /// command since #162: it is a drag (below).
     @Test func fourFingerDirectionsRunTheLayoutCommands() {
         let b = SwipeBindings()
         #expect(b.command(for: Swipe(fingers: 4, direction: .up)) == .cycleLayout)
         #expect(b.command(for: Swipe(fingers: 4, direction: .down)) == .cycleLayoutReverse)
-        #expect(b.command(for: Swipe(fingers: 4, direction: .right)) == .resizeWindow(.width, grow: true))
-        #expect(b.command(for: Swipe(fingers: 4, direction: .left)) == .resizeWindow(.width, grow: false))
+        #expect(b.command(for: Swipe(fingers: 4, direction: .right)) == nil)
+        #expect(b.command(for: Swipe(fingers: 4, direction: .left)) == nil)
         #expect(SwipeBindings(invert: true).command(for: Swipe(fingers: 4, direction: .up)) == .cycleLayout,
                 "invert is navigation's: nothing scrolls here")
         let fn = KeyBindings.table(for: Config())
-        for (chord, motion) in [("fn-space", Direction.up), ("fn-shift-space", .down), ("fn-ctrl-d", .right), ("fn-ctrl-a", .left)] {
+        for (chord, motion) in [("fn-space", Direction.up), ("fn-shift-space", .down)] {
             #expect(KeyBindings.parse(chord).flatMap { fn[$0] } == SwipeBindings.layout(motion), "\(chord)")
         }
         // End to end: frames in, command out.
-        var r = SwipeRecognizer(fingers: b.fingerCounts)
+        var r = SwipeRecognizer(bindings: b)
         #expect(swipes(&r, dx: 0, dy: 0.3, fingers: 4).compactMap(b.command(for:)) == [.cycleLayout])
-        #expect(swipes(&r, dx: 0.3, dy: 0, fingers: 4).compactMap(b.command(for:)) == [.resizeWindow(.width, grow: true)])
+        #expect(swipes(&r, dx: 0, dy: -0.3, fingers: 4).compactMap(b.command(for:)) == [.cycleLayoutReverse])
+        #expect(swipes(&r, dx: 0.3, dy: 0, fingers: 4).isEmpty, "a drag, not a swipe")
         #expect(swipes(&r, dx: -0.3, dy: 0, fingers: 3).compactMap(b.command(for:)) == [.focusWindow(.right)])
     }
 
@@ -420,6 +421,7 @@ import Foundation
 
     /// #160: the same capture on four fingers, with both counts listened for, is one four-finger
     /// swipe. Lifting afterwards through three, with the empties still interleaved, adds nothing.
+    /// (Swipes only: without `dragFingers`, as #160 had it. The drag version is below.)
     @Test func interleavedEmptyFramesDoNotSplitAFourFingerSwipe() {
         var r = SwipeRecognizer(fingers: SwipeBindings().fingerCounts)
         var out: [Swipe] = []
@@ -433,7 +435,6 @@ import Foundation
         for x in Self.capturedXs { feed(4, x) }
         for x in stride(from: 0.76, through: 0.95, by: 0.02) { feed(3, x) }   // one lifts; the rest keep going
         #expect(out == [Swipe(fingers: 4, direction: .right)])
-        #expect(out.compactMap(SwipeBindings().command(for:)) == [.resizeWindow(.width, grow: true)])
         // A real lift, then a fresh four-finger swipe fires again.
         t += 0.4
         for x in Self.capturedXs.reversed() { feed(4, x) }
@@ -465,5 +466,145 @@ import Foundation
         #expect(r.feed(TouchFrame(fingers: 0, x: 0, y: 0, time: 1)) == nil)
         // 200 ms later, far to the right: a new gesture starts here, so no fire yet.
         #expect(r.feed(TouchFrame(fingers: 3, x: 0.6, y: 0.5, time: 1.2)) == nil)
+    }
+
+    // MARK: four-finger drag (#162)
+
+    /// Every gesture a recognizer listening as `SwipeBindings()` does made of these frames.
+    private func gestures(_ r: inout SwipeRecognizer, _ frames: [TouchFrame]) -> [TrackpadGesture] {
+        frames.compactMap { r.step($0) }
+    }
+    private func drag(_ phase: SwipeDrag.Phase, _ travel: Double) -> TrackpadGesture {
+        .drag(SwipeDrag(phase, fingers: 4, travel: travel))
+    }
+    private func near(_ a: [TrackpadGesture], _ b: [TrackpadGesture]) -> Bool {
+        a.count == b.count && zip(a, b).allSatisfy { x, y in
+            switch (x, y) {
+            case (.drag(let p), .drag(let q)): p.phase == q.phase && p.fingers == q.fingers && abs(p.travel - q.travel) < 1e-9
+            default: x == y
+            }
+        }
+    }
+
+    /// Horizontal on four fingers locks at `axisLock`, not the swipe threshold, and reports its
+    /// travel from where the fourth finger landed: the edge stays under the fingers.
+    @Test func fourFingersSidewaysLockIntoADragEarly() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        #expect(r.dragFingers == [4])
+        let out = gestures(&r, [
+            TouchFrame(fingers: 4, x: 0.50, y: 0.5),
+            TouchFrame(fingers: 4, x: 0.52, y: 0.5),   // under the lock
+            TouchFrame(fingers: 4, x: 0.54, y: 0.51),  // 0.04 across, 0.01 up: horizontal
+            TouchFrame(fingers: 4, x: 0.60, y: 0.51),
+            TouchFrame(fingers: 4, x: 0.60, y: 0.53),  // no x change: nothing to report
+            TouchFrame(fingers: 4, x: 0.45, y: 0.52),  // back past the start: the edge follows
+            .lifted,
+        ])
+        #expect(near(out, [drag(.began, 0.04), drag(.moved, 0.10), drag(.moved, -0.05), drag(.ended, -0.05)]), "\(out)")
+        #expect(!r.isDragging)
+    }
+
+    /// Vertical first stays a discrete swipe — up or down only, however far the fingers then go
+    /// sideways — and never becomes a drag.
+    @Test func aVerticalStartStaysASwipe() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        let out = gestures(&r, [
+            TouchFrame(fingers: 4, x: 0.5, y: 0.5),
+            TouchFrame(fingers: 4, x: 0.5, y: 0.54),   // locks vertical
+            TouchFrame(fingers: 4, x: 0.8, y: 0.56),   // then sideways: no drag, no left/right
+            TouchFrame(fingers: 4, x: 0.8, y: 0.60),
+            .lifted,
+            TouchFrame(fingers: 4, x: 0.5, y: 0.5),
+            TouchFrame(fingers: 4, x: 0.5, y: 0.54),
+            TouchFrame(fingers: 4, x: 0.51, y: 0.7),   // on up the trackpad: the swipe
+            .lifted,
+        ])
+        #expect(out == [.swipe(Swipe(fingers: 4, direction: .up))])
+    }
+
+    /// A diagonal waits, as a swipe does, and locks once one axis dominates.
+    @Test func aDiagonalWaitsForTheLock() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        let out = gestures(&r, [
+            TouchFrame(fingers: 4, x: 0.5, y: 0.5),
+            TouchFrame(fingers: 4, x: 0.54, y: 0.54),  // 45°: undecided
+            TouchFrame(fingers: 4, x: 0.62, y: 0.55),  // 0.12 across vs 0.05 up: horizontal
+            .lifted,
+        ])
+        #expect(near(out, [drag(.began, 0.12), drag(.ended, 0.12)]), "\(out)")
+    }
+
+    /// Three fingers keep #141's rules: no early lock, no drag, a left/right swipe at the threshold.
+    @Test func threeFingersNeverDrag() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        #expect(swipes(&r, dx: 0.3, dy: 0, fingers: 3) == [Swipe(fingers: 3, direction: .right)])
+        #expect(gestures(&r, [TouchFrame(fingers: 3, x: 0.5, y: 0.5), TouchFrame(fingers: 3, x: 0.55, y: 0.5)]).isEmpty)
+    }
+
+    /// The captured frames on four fingers, each paired with macOS's empty event: one drag, moving
+    /// frame by frame, and it ends only at the real lift — after the grace, by the next frame or by
+    /// the clock (`expire`), exactly once.
+    @Test func interleavedEmptyFramesDoNotEndADrag() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        var out: [TrackpadGesture] = []
+        var t = 100.0
+        for x in Self.capturedXs {
+            t += 0.006
+            if let g = r.step(TouchFrame(fingers: 4, x: x, y: 0.645, time: t)) { out.append(g) }
+            if let g = r.step(TouchFrame(fingers: 0, x: 0, y: 0, time: t)) { out.append(g) }
+            #expect(r.isDragging == (x > 0.41))
+        }
+        let ends = out.filter { if case .drag(let d) = $0 { d.phase == .ended } else { false } }
+        #expect(ends.isEmpty, "no interleaved empty ended it")
+        // 0.416 is the first frame 0.03 from the landing.
+        #expect(out.first.map { near([$0], [drag(.began, 0.416 - 0.380)]) } == true, "\(out)")
+        #expect(out.dropFirst().allSatisfy { if case .drag(let d) = $0 { d.phase == .moved } else { false } })
+        #expect(out.count == Self.capturedXs.count - 4, "one step per frame from the lock on")
+        // Within the grace nothing ends; past it, the clock ends it once.
+        #expect(r.expire(at: t + 0.01) == nil && r.isDragging)
+        #expect(near([r.expire(at: t + 0.2)].compactMap { $0 }, [drag(.ended, 0.751 - 0.380)]))
+        #expect(r.expire(at: t + 0.4) == nil && !r.isDragging, "ended once")
+        // Or the next gesture's first frame ends it, and starts afresh.
+        _ = r.step(TouchFrame(fingers: 4, x: 0.3, y: 0.5, time: 200))
+        _ = r.step(TouchFrame(fingers: 4, x: 0.4, y: 0.5, time: 200.01))
+        _ = r.step(TouchFrame(fingers: 0, x: 0, y: 0, time: 200.01))
+        #expect(near([r.step(TouchFrame(fingers: 4, x: 0.7, y: 0.5, time: 201))].compactMap { $0 }, [drag(.ended, 0.1)]))
+        #expect(r.step(TouchFrame(fingers: 4, x: 0.72, y: 0.5, time: 201.01)) == nil, "measured from the new landing")
+    }
+
+    /// Fingers lift unevenly: frames on fewer (or more) than the drag's count hold the edge where
+    /// it was, and the drag ends at the lift with the last four-finger travel.
+    @Test func liftingThroughThreeHoldsTheEdge() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        let out = gestures(&r, [
+            TouchFrame(fingers: 3, x: 0.40, y: 0.5),   // landing one by one
+            TouchFrame(fingers: 4, x: 0.40, y: 0.5),
+            TouchFrame(fingers: 4, x: 0.50, y: 0.5),
+            TouchFrame(fingers: 3, x: 0.70, y: 0.5),   // one lifts: its centroid jumps
+            TouchFrame(fingers: 2, x: 0.20, y: 0.5),
+            TouchFrame(fingers: 5, x: 0.90, y: 0.5),
+            .lifted,
+        ])
+        #expect(near(out, [drag(.began, 0.10), drag(.ended, 0.10)]), "\(out)")
+    }
+
+    /// `reset` (the tap re-armed, the bindings changed) ends an open drag where it was, once.
+    @Test func resetEndsAnOpenDragOnce() {
+        var r = SwipeRecognizer(bindings: SwipeBindings())
+        _ = gestures(&r, [TouchFrame(fingers: 4, x: 0.5, y: 0.5), TouchFrame(fingers: 4, x: 0.3, y: 0.5)])
+        #expect(r.reset() == SwipeDrag(.ended, fingers: 4, travel: -0.2))
+        #expect(r.reset() == nil)
+        #expect(r.step(TouchFrame(fingers: 4, x: 0.3, y: 0.5)) == nil, "a fresh start")
+    }
+
+    /// Only the layout count moves the edge, and only while layout swipes are on.
+    @Test func dragsBelongToTheLayoutCount() {
+        let d = SwipeDrag(.began, fingers: 4, travel: 0.1)
+        #expect(SwipeBindings().dragsEdge(d))
+        #expect(!SwipeBindings(layout: false).dragsEdge(d) && SwipeBindings(layout: false).dragFingers.isEmpty)
+        #expect(!SwipeBindings(navigationFingers: 4).dragsEdge(d) && SwipeBindings(navigationFingers: 4).dragFingers.isEmpty)
+        // Navigation on four fingers keeps its left/right swipes.
+        var r = SwipeRecognizer(bindings: SwipeBindings(navigationFingers: 4))
+        #expect(swipes(&r, dx: 0.3, dy: 0, fingers: 4) == [Swipe(fingers: 4, direction: .right)])
     }
 }

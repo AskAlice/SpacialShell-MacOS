@@ -325,13 +325,30 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
 
         // #141: trackpad swipes are Fn+W/A/S/D by another route — the same `route`, the same
         // commands, so the slide animation and command outcomes are the hotkeys' own. #160: four
-        // fingers are Fn+Space/⇧Space/⌃D/⌃A the same way. Only installed while `gestures` is on;
+        // fingers up/down are Fn+Space/⇧Space the same way. Only installed while `gestures` is on;
         // `push` turns it on and off on config changes.
-        let gestures = TrackpadGestures { command in
+        // #162: four fingers sideways drag the focused tile's edge — the store's own border-drag
+        // path (#113), which a mouse drives with pointer events. The steps go through one stream,
+        // so they reach the store in order: a `moved` must never overtake its `began` or `ended`.
+        let (edgeDrags, edgeDragSink) = AsyncStream.makeStream(of: SwipeDrag.self)
+        let dragLog = log
+        Task {
+            for await drag in edgeDrags {
+                let report = await store.swipeEdge(drag)
+                if drag.phase == .began, report != .done {
+                    dragLog.info("four-finger drag: \(String(describing: report), privacy: .public)")
+                }
+            }
+        }
+        let gestures = TrackpadGestures(onSwipe: { command in
             guard !gate.isTerminating else { return }   // the tap is already stopped; so is this
             backend.noteHumanInput()
             route(command)
-        }
+        }, onDrag: { drag in
+            guard !gate.isTerminating else { return }
+            if drag.phase == .began { backend.noteHumanInput() }
+            edgeDragSink.yield(drag)
+        })
         gestures.update(enabled: config.gestures, bindings: SwipeBindings(config: config))
         self.gestures = gestures
 
