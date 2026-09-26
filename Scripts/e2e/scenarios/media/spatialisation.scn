@@ -1,7 +1,6 @@
-# #8 / #149 media (docs/media/live-rail-apps): the rail with real app icons. Real apps from the
-# guest, each landing where its category sends it; the pointer walks three tiles and each one's
-# hover card shows its row's live previews. Tiles are 36 pt apart from y 88, at x 23. The cards
-# take seconds to capture in the GPU-less guest, so the walk is done once off camera first.
+# #149 media (docs/media/spatialisation): workspaces are rows, windows are cells. Real apps, each
+# in the row its category sends it to (web, terminal, notes, TextEdit's two windows); Fn+S rides
+# down the rows, Fn+D / Fn+A along the TextEdit row, Fn+W back up to where the loop started.
 # Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
 # clock and date show through the translucent panels), then a fresh shell.
 appearance light
@@ -12,9 +11,9 @@ sh defaults write -g AppleKeyboardUIMode -int 0
 # A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
 sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
 relaunch
-input move 400 300
+input move 700 520
 # Not Calendar: it asks for notification permission in a banner that stays in every frame.
-sh open -a Safari; open -a Terminal; open -a Finder ~; sleep 3; open -a Notes; true
+sh open -a Safari; sleep 2; open -a Terminal; sleep 2; open -a Notes; true
 wait 8
 # Notes opens on a first-run welcome window the first time (an earlier scenario may have been it).
 input axclick pid:Notes Continue ?
@@ -22,25 +21,46 @@ wait 1
 open 1 as a
 open 1 as b
 settle
+focus a1
+run set-layout-maximize
+settle
 run focus-workspace-1
 settle
-input move 23 88
-wait 3.5
-input move 23 124
-wait 3.5
-input move 23 232
-wait 3.5
-input move 400 300
+# One pass off camera: a switch's first capture in the GPU-less guest takes seconds.
+input key fn-s
 wait 2
-# Rows: Safari 88, Terminal 124, Finder 160, Notes 196, TextEdit (two windows) 232. The guest's
-# hover tracking lags the pointer, so each card gets a long look, as a reader would give it.
-record rail-apps 12 30
-wait 0.6
-input move 24 89
-wait 2.6
-input move 22 125
-wait 2.6
-input move 24 232
-wait 2.8
-input move 400 300
+input key fn-s
+wait 2
+input key fn-s
+wait 2
+input key fn-d
+wait 2
+input key fn-a
+wait 2
+input key fn-w
+wait 2
+input key fn-w
+wait 2
+input key fn-w
+# Not `settle`: after this walk the state did not read the same twice within 10 s in the guest.
+wait 3
+input move 700 520
+wait 1
+record spatialisation 12 30
+wait 0.8
+input key fn-s
+wait 1.05
+input key fn-s
+wait 1.05
+input key fn-s
+wait 1.05
+input key fn-d
+wait 1.05
+input key fn-a
+wait 1.05
+input key fn-w
+wait 1.05
+input key fn-w
+wait 1.05
+input key fn-w
 wait 1.5

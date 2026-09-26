@@ -66,7 +66,7 @@ successor [Veshell](https://github.com/free-explorers/veshell) is its own Waylan
 
 ![Workspaces as rows, windows as cells](media/spatialisation.webp)
 
-*Render, not a live capture.*
+*Live capture.*
 
 ## Placement memory
 
@@ -90,7 +90,7 @@ N-column sliding view, N per workspace), **column**, **half** and **grid**.
 
 ![Cycling the layouts](media/tiling-showcase.webp)
 
-*Render, not a live capture.*
+*Live capture.*
 
 - **Layouts are data:** draw your own in the layout editor, or write `[[layout]]` blocks in
   `config.toml`.

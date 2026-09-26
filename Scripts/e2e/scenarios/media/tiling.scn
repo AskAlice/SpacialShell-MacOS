@@ -1,6 +1,5 @@
-# #8 / #149 media (docs/media/live-tab-drag): a tab dragged along the bar (reorder, #32), then onto
-# a workspace in the rail, which moves its window there. Tabs
-# sit at y 47, about 100 pt each from x 54; rail rows are 36 pt apart from y 88 (row 1, web).
+# #149 media (docs/media/tiling-showcase): Fn+Space through the five built-in layouts with four
+# real windows in one row: maximize, split, column, half, grid, and round to maximize again.
 # Known state (#81): light, full-speed motion, no config file, no desktop widgets (their live
 # clock and date show through the translucent panels), then a fresh shell.
 appearance light
@@ -11,28 +10,39 @@ sh defaults write -g AppleKeyboardUIMode -int 0
 # A flat desktop: a photo behind the translucent panels is most of every reference's bytes.
 sh osascript -l JavaScript -e 'ObjC.import("AppKit"); $.NSWorkspace.sharedWorkspace.setDesktopImageURLForScreenOptionsError($.NSURL.fileURLWithPath("/System/Library/Desktop Pictures/Solid Colors/Stone.png"), $.NSScreen.mainScreen, $({}), null)'
 relaunch
-input move 640 420
-sh open -a Safari; true
-wait 4
+input move 760 600
 open 1 as a
 open 1 as b
 open 1 as c
+open 1 as d
 settle
-require same-workspace a1 b1 c1
+require same-workspace a1 b1 c1 d1
 focus a1
 run set-layout-maximize
 settle
-wait 1.5
-record tab-drag 11 30
-wait 0.7
-# a1 (first tab) to just before the last one.
-input drag 105 47 318 47
-wait 1.1
-# The last tab onto row 1. A hand waits on the row until it lights up before letting go: the
-# 0.5 s hold, because the guest's drag session trails the pointer.
-input drag 290 47 24 89 0.5
-# Back into the window, off the rail (resting there would open a hover card): the tab leaves the
-# bar, and row 1's badge counts it.
-input move 560 430
-wait 3
-expect workspace c1 1
+# One round off camera: each layout's first switch is slow to capture in the GPU-less guest.
+input key fn-space
+wait 1.8
+input key fn-space
+wait 1.8
+input key fn-space
+wait 1.8
+input key fn-space
+wait 1.8
+input key fn-space
+wait 1.8
+settle
+expect layout a1 maximize
+wait 1
+record tiling 11 30
+wait 0.8
+input key fn-space
+wait 1.6
+input key fn-space
+wait 1.6
+input key fn-space
+wait 1.6
+input key fn-space
+wait 1.6
+input key fn-space
+wait 1.8

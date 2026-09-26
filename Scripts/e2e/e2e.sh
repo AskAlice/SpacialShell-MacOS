@@ -89,12 +89,77 @@ mkdir -p "$OUT"
 CACHE="${SPACIAL_E2E_CACHE:-$REPO/.build/e2e/guest-cache}"
 mkdir -p "$CACHE"
 cleanup() {
+    [ -n "${WATCHDOG:-}" ] && kill "$WATCHDOG" 2>/dev/null
     run tart stop "$VM" >/dev/null 2>&1 || true
     if [ -z "$KEEP" ]; then run tart delete "$VM" >/dev/null 2>&1 || true
     else echo "e2e: kept $VM (tart run $VM / tart delete $VM)"; fi
     [ -n "${TART_PID:-}" ] && wait "$TART_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
+trap 'exit 130' INT TERM HUP   # through the EXIT trap: a killed run still deletes its clone
+
+# ---- boot, and knowing when the guest answers (#149) --------------------------------------------
+# `tart exec` never fails fast. While the guest agent is still starting, one call waits 20 s or
+# more; once tart's control socket is dead, every call waits for its gRPC pool to give up, and
+# the old 90-probe loop spun for over an hour and a half. The socket dies for good (until
+# `tart run` restarts) on one bad connection: a client that goes away before tart has accepted
+# it makes NIO's fcntl on the accepted socket fail with EINVAL, and tart 2.38's ControlSocket.run
+# lets that one error end its accept loop ("Failed to run control socket: NIOFcntlFailedError()"
+# in tart-run.log). Repeated `tart exec` probes against a booting guest are such clients: each
+# one's gRPC pool keeps redialling, and drops a dial still waiting to be accepted when it quits.
+#
+# So: the probe is a plain connection that waits for the agent's first bytes (it leaves only
+# seconds later, never before tart has accepted it), `tart exec` runs only
+# once the agent answers, every wait is bounded, the log is watched for the failure, and a boot
+# whose control socket dies is retried once with a fresh `tart run`.
+TART_LOG="$OUT/tart-run.log"
+SOCK="$TART_DIR/vms/$VM/control.sock"
+BOOT_TIMEOUT="${SPACIAL_E2E_BOOT_TIMEOUT:-600}"
+socket_failed() { grep -q "control socket" "$TART_LOG" 2>/dev/null; }
+tart_alive() { kill -0 "$TART_PID" 2>/dev/null; }
+bounded() { local secs="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; }
+
+# 0: the agent answers through the control socket; 1: tart closed it (agent not up); 2: no socket.
+agent_answers() {
+    python3 - "$SOCK" <<'PY'
+import os, socket, sys
+d, name = os.path.split(sys.argv[1])
+os.chdir(d)   # a relative path: AF_UNIX paths are capped at 104 bytes
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(3)
+try:
+    s.connect(name)
+except OSError:
+    sys.exit(2)
+try:
+    # tart accepts, then dials the guest for this connection: it hangs up if nothing listens, and
+    # while the guest boots the dial can simply hang. Only the agent speaks first (its HTTP/2
+    # SETTINGS frame, within ~0.1 s), so data is the one sign it is up. Leaving after the
+    # timeout is safe: tart has accepted by then.
+    sys.exit(0 if s.recv(1) else 1)
+except (socket.timeout, OSError):
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+boot() {
+    tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "--dir=cache:$CACHE" "$VM" >>"$TART_LOG" 2>&1 &
+    TART_PID=$!
+    local t0=$SECONDS rc
+    while :; do
+        if socket_failed; then return 2; fi
+        tart_alive || { echo "e2e: tart run exited during boot:" >&2; sed 's/^/  | /' "$TART_LOG" >&2; exit 5; }
+        rc=0; agent_answers || rc=$?
+        if [ "$rc" = 0 ] && bounded 30 tart exec "$VM" true 2>/dev/null; then return 0; fi
+        if [ $((SECONDS - t0)) -ge "$BOOT_TIMEOUT" ]; then
+            echo "e2e: the guest agent did not answer within ${BOOT_TIMEOUT}s (probe: $rc; tart-run.log:)" >&2
+            sed 's/^/  | /' "$TART_LOG" >&2; exit 5
+        fi
+        sleep 3
+    done
+}
 
 run tart clone "$GOLDEN" "$VM"
 # The repo goes in read-only (the guest builds from its own copy); artefacts come out through
@@ -102,11 +167,17 @@ run tart clone "$GOLDEN" "$VM"
 if [ -n "$DRY" ]; then
     echo "+ tart run --no-graphics --dir=repo:$REPO:ro --dir=out:$OUT --dir=cache:$CACHE $VM &"
 else
-    tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "--dir=cache:$CACHE" "$VM" >"$OUT/tart-run.log" 2>&1 &
-    TART_PID=$!
     echo "e2e: waiting for the guest agent…"
-    for i in $(seq 1 90); do tart exec "$VM" true 2>/dev/null && break; sleep 2
-        [ "$i" = 90 ] && { echo "e2e: guest agent never answered" >&2; exit 5; }; done
+    for attempt in 1 2; do
+        rc=0; boot || rc=$?
+        [ "$rc" = 0 ] && break
+        echo "e2e: tart's control socket died during boot (tart-run.log: $(grep 'control socket' "$TART_LOG" | tail -1))" >&2
+        tart stop "$VM" >/dev/null 2>&1 || true
+        wait "$TART_PID" 2>/dev/null || true
+        [ "$attempt" = 2 ] && { echo "e2e: giving up: tart exec cannot reach the guest" >&2; exit 5; }
+        echo "e2e: restarting the VM once" >&2
+        echo "--- restart" >>"$TART_LOG"
+    done
 fi
 
 SHARE="/Volumes/My Shared Files"
@@ -116,7 +187,29 @@ for s in "${SCENARIOS[@]}"; do
     GUEST_SCENARIOS+=("$SHARE/repo/${abs#"$REPO"/}")
 done
 status=0
-run tart exec "$VM" /bin/bash "$SHARE/repo/Scripts/e2e/guest/run.sh" $RECORD "${GUEST_SCENARIOS[@]}" || status=$?
+if [ -n "$DRY" ]; then
+    run tart exec "$VM" /bin/bash "$SHARE/repo/Scripts/e2e/guest/run.sh" $RECORD "${GUEST_SCENARIOS[@]}"
+else
+    # A control socket or VM that dies mid-run leaves this `tart exec` waiting forever: the
+    # watchdog ends it with the reason instead.
+    tart exec "$VM" /bin/bash "$SHARE/repo/Scripts/e2e/guest/run.sh" $RECORD "${GUEST_SCENARIOS[@]}" &
+    EXEC_PID=$!
+    (
+        while sleep 5; do
+            kill -0 "$EXEC_PID" 2>/dev/null || exit 0
+            if socket_failed; then why="tart's control socket died ($(grep 'control socket' "$TART_LOG" | tail -1))"
+            elif ! tart_alive; then why="tart run exited ($(tail -1 "$TART_LOG"))"
+            else continue; fi
+            echo "e2e: $why; the guest can no longer answer. Stopping." >&2
+            kill "$EXEC_PID" 2>/dev/null; exit 0
+        done
+    ) &
+    WATCHDOG=$!
+    wait "$EXEC_PID" || status=$?
+    kill "$WATCHDOG" 2>/dev/null || true
+    WATCHDOG=""
+    if [ "$status" != 0 ] && socket_failed; then status=5; fi
+fi
 
 # --record in the guest writes references into its own copy of the repo; bring them home.
 if [ -n "$RECORD" ] && [ -d "$OUT/references" ]; then

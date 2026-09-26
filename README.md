@@ -84,9 +84,9 @@ Recorded in the test VM (one 1024×768 display) while a scenario drives the real
 ## The model
 
 <p align="center">
-  <img src="docs/media/spatialisation.webp" width="720" alt="Workspaces as rows, windows as cells (render)">
+  <img src="docs/media/spatialisation.webp" width="720" alt="Live: workspaces as rows of apps; Fn+S and Fn+W ride between rows, Fn+D and Fn+A along one">
 </p>
-<p align="center"><sub>Render, not a live capture.</sub></p>
+<p align="center"><sub>Live capture: one row per workspace (web, terminal, notes, two TextEdit windows); <code>Fn+S</code> / <code>Fn+W</code> between rows, <code>Fn+D</code> / <code>Fn+A</code> along a row.</sub></p>
 
 A **workspace** is a row; an **application window** is a cell. New windows append to the current
 row, new workspaces append underneath. **Up/down** changes workspace, **left/right** changes
@@ -107,9 +107,9 @@ window. The screen is a viewport over a larger, always-sorted grid.
 ## Interface and layouts
 
 <p align="center">
-  <img src="docs/media/tiling-showcase.webp" width="720" alt="Cycle maximize, split, column, half, grid (render)">
+  <img src="docs/media/tiling-showcase.webp" width="720" alt="Live: Fn+Space cycles maximize, split, column, half, grid">
 </p>
-<p align="center"><sub>Render, not a live capture.</sub></p>
+<p align="center"><sub>Live capture: <code>Fn+Space</code> through maximize, split, column, half and grid, four windows in one row.</sub></p>
 
 - **The rail** (left): one row per workspace with its apps and category, hover previews, a tray
   for hidden and minimized windows, right-click menus (quit an app, set a row's category), scroll

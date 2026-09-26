@@ -249,10 +249,36 @@ Scripts/e2e/media.sh .build/e2e/vm-…/overview/overview docs/media/live-overvie
 Scripts/e2e/media.sh .build/e2e/vm-…/rail-apps/rail-apps docs/media/live-rail-apps 512 12 512:384:0:0
 ```
 
+| Scenario | Loop in `docs/media/` | Shows |
+|---|---|---|
+| `spatialisation.scn` | `spatialisation` | workspaces as rows of real apps; `Fn+S`/`Fn+W` between rows, `Fn+D`/`Fn+A` along one |
+| `tiling.scn` | `tiling-showcase` | `Fn+Space` through maximize, split, column, half, grid |
+| `tab-drag.scn` | `live-tab-drag` | a tab dragged along the bar, then onto a rail row |
+| `rail-apps.scn` | `live-rail-apps` | the rail with real apps, hover cards with live previews |
+| `overview.scn`, `settings.scn` | `live-overview`, `live-settings` | the whole shell; Settings pane by pane |
+
 `media.sh` holds each frame until the next one's time, so the loop plays at recorded speed, and
-writes a gif (ffmpeg) and a webp (`img2webp`: Homebrew's ffmpeg has no libwebp). Recording
-speed is real, so a switch's first capture in the GPU-less guest (1–4 s) shows as a pause before
-the slide. The guest has one display: multi-display features are not in these recordings.
+writes a gif (ffmpeg) and a webp (`img2webp`: Homebrew's ffmpeg has no libwebp). Its optional
+START and LENGTH cut the loop to the action (docs loops stay at or under 10 s). Recording speed
+is real, so a switch's first capture in the GPU-less guest (1–4 s) shows as a pause before the
+slide: the scenarios do each move once off camera before the `record` step. The guest has one
+display: multi-display features are not in these recordings. None of these are renders
+(`Scripts/render-m2-media.py` no longer writes `spatialisation` or `tiling-showcase`).
+
+**Pointer motion** (`input.swift`, #149) is meant to read as a hand: each move bows slightly to
+one side (a quadratic Bézier), follows a minimum-jerk speed profile, takes 250–600 ms by a
+Fitts-like curve of its distance, posts at about 100 Hz, and rests 80–150 ms before a click or a
+drop. A drag presses, nudges a few points past the drag threshold, then glides.
+
+**When the guest never answers.** `e2e.sh` bounds every wait for the guest (default 600 s,
+`SPACIAL_E2E_BOOT_TIMEOUT`) and stops with the reason and `tart-run.log`, rather than spinning.
+A `tart-run.log` line `Failed to run control socket: NIOFcntlFailedError()` means tart's
+control socket is dead until `tart run` restarts: a client that disconnected before tart
+accepted it made the accept's `fcntl` fail, and tart 2.38 ends its accept loop on that one
+error. Repeated `tart exec` probes against a booting guest were such clients, so the boot probe
+is now a plain connection that waits for the agent's first bytes (so it never leaves before
+tart has accepted it), and `tart exec` runs only once the agent answers. If the socket dies anyway, `e2e.sh` restarts the VM once during boot, and a watchdog
+ends a run whose socket dies midway.
 
 ## Status
 

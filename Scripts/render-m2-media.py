@@ -2,7 +2,10 @@
 """Render M2 chrome stills + looping showcases (webp / gif) for the README.
 
 Usage: render-m2-media.py [scene ...] — no args renders every scene; naming scenes
-(e.g. `render-m2-media.py spatialisation ui-showcase`) regenerates only those files.
+(e.g. `render-m2-media.py general-showcase ui-showcase`) regenerates only those files.
+
+spatialisation and tiling-showcase are no longer rendered: they are screen recordings from the
+test VM now (#149, Scripts/e2e/scenarios/media/), and a render would overwrite them.
 """
 from __future__ import annotations
 import math
@@ -349,13 +352,6 @@ def scene_general():
         seq.append(frame(ws, 1 if t < 0.5 else 0, "split", (browse[1] if t < 0.5 else code[1]), 0, 1))
     encode(seq, "general-showcase")
 
-def scene_tiling():
-    kinds = ["maximize", "split", "column", "half", "grid"]
-    seq = []
-    for k in kinds:
-        seq += hold(frame(WS, 0, k, CODE[1], 0, 1), 12)
-    encode(seq, "tiling-showcase")
-
 def scene_interface():
     ws, code, browse, notes = WS, CODE, BROWSE, NOTES
     seq = []
@@ -369,26 +365,6 @@ def scene_interface():
     ):
         seq += hold(frame(ws, active, lay, tabs, foc, 1), 12)
     encode(seq, "interface-showcase")
-
-def scene_spatialisation():
-    ws = WS
-    # spatialisation: three stacked mini-desktops, camera slides
-    seq = []
-    mini_h = 180
-    for step in range(42):
-        t = ease(step / 41)
-        cam = lerp(0, mini_h * 1.15, t if t < 0.5 else 1 - t)  # down then back
-        canvas = WALL.copy().convert("RGBA")
-        for i, wset in enumerate(ws):
-            cell = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-            # shrink-draw by rendering full then resize
-            full = frame([wset, ("", [])], 0, "split" if i == 0 else "maximize", wset[1], 0, 1 if i == int(cam / mini_h + 0.2) else 0.2)
-            thumb = full.resize((int(W * 0.72), int(H * 0.72)), Image.Resampling.LANCZOS)
-            oy = int(40 + i * (mini_h + 16) - cam)
-            ox = 80
-            canvas.paste(thumb, (ox, oy))
-        seq.append(canvas.convert("RGB"))
-    encode(seq, "spatialisation")
 
 def scene_ui():
     """UI showcase: overview opens on Fn+Tab, search filters, Enter jumps; hold-Fn cheat
@@ -417,9 +393,7 @@ def scene_ui():
 SCENES = {
     "hero-still": scene_hero,
     "general-showcase": scene_general,
-    "tiling-showcase": scene_tiling,
     "interface-showcase": scene_interface,
-    "spatialisation": scene_spatialisation,
     "ui-showcase": scene_ui,
 }
 

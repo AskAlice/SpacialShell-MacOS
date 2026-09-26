@@ -163,6 +163,10 @@ class Run:
                 break
             sh(CTL, "run", "focus-screen-next")
             time.sleep(0.3)
+        # Fn+N on the workspace already active flips back to the previous one (#106), and a
+        # freshly opened window has usually brought its workspace forward already.
+        if focused_ws(state())[1] == row["ws"]["id"]:
+            return
         if row["wsIndex"] >= 10:
             raise Fail(f"{name} is in workspace {row['wsIndex'] + 1}; only 1-10 have a command")
         sh(CTL, "run", f"focus-workspace-{row['wsIndex'] + 1}")
