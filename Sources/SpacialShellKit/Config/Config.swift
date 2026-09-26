@@ -117,6 +117,10 @@ public struct TelemetryConfig: Codable, Equatable, Sendable {
 public struct Config: Codable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
     public var gap: Double = 8
+    /// #124 (M4 G11): the space between the row and the screen edge, when it should differ from
+    /// `gap` (material-shell's `screen-gap`). Nil follows `gap`; `outerGap` is what applies.
+    public var screenGap: Double?
+    public var outerGap: Double { screenGap ?? gap }
     /// Any id: a built-in, a `[[layout]]`, or one drawn in the editor. An id nothing defines is
     /// kept, and resolves to maximize (#9).
     public var defaultLayout: LayoutID = .maximize
@@ -218,7 +222,7 @@ public struct Config: Codable, Equatable, Sendable {
     public init() {}
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case keybindingPreset = "keybinding-preset", gap, defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
+        case keybindingPreset = "keybinding-preset", gap, screenGap = "screen-gap", defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
              refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
              ephemeral, float, ignore, tile, keybindings,
              panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing", tabStyle = "tab-style",
@@ -238,6 +242,7 @@ public struct Config: Codable, Equatable, Sendable {
         let c = try d.container(keyedBy: CodingKeys.self)
         keybindingPreset = try c.decodeIfPresent(KeybindingPreset.self, forKey: .keybindingPreset) ?? .fn
         gap = try c.decodeIfPresent(Double.self, forKey: .gap) ?? 8
+        screenGap = try c.decodeIfPresent(Double.self, forKey: .screenGap)
         defaultLayout = try c.decodeIfPresent(LayoutID.self, forKey: .defaultLayout) ?? .maximize
         axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
         refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
@@ -329,11 +334,13 @@ public struct Config: Codable, Equatable, Sendable {
     /// ponytail: hand-written TOML (no encoder in deps). Round-trips values; drops comments.
     public func render() -> String {
         let q = Config.quote
+        // #124: written only when set, so an unset screen gap keeps following `gap` after a render.
+        let screenGapLine = screenGap.map { "screen-gap = \($0)\n" } ?? ""
         var o = """
         # written by SpacialShell settings; hand-edited comments are not preserved
         keybinding-preset = \(q(keybindingPreset.rawValue))
         gap = \(gap)
-        default-layout = \(q(defaultLayout.rawValue))
+        \(screenGapLine)default-layout = \(q(defaultLayout.rawValue))
         ax-timeout-ms = \(axTimeoutMs)
         refresh-interval-ms = \(refreshIntervalMs)
         start-at-login = \(startAtLogin)

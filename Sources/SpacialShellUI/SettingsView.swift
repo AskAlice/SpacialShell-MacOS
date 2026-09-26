@@ -207,7 +207,7 @@ struct SettingsView: View {
 
     private var layout: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Layout", "Panel sizes and the gap between tiled windows.")
+            header("Layout", "Panel sizes, the gap between tiled windows and the gap to the screen edge.")
             row("Rail width", overridden: overrides.panelWidth != nil) {
                 stepper(binding(\.panelWidth, default: file.panelWidth), range: 36...320, suffix: "pt")
             } reset: { overrides.panelWidth = nil }
@@ -219,6 +219,11 @@ struct SettingsView: View {
             row("Window gap", overridden: overrides.gap != nil) {
                 stepper(binding(\.gap, default: file.gap), range: 0...64, suffix: "pt")
             } reset: { overrides.gap = nil }
+
+            // #124: the row's distance from the screen edge; follows the window gap until set.
+            row("Screen edge gap", overridden: overrides.screenGap != nil) {
+                stepper(binding(\.screenGap, default: file.screenGap ?? overrides.gap ?? file.gap), range: 0...64, suffix: "pt")
+            } reset: { overrides.screenGap = nil }
 
             row("Tab sizing", overridden: overrides.tabSizing != nil) {
                 Picker("", selection: binding(\.tabSizing, default: file.tabSizing)) {

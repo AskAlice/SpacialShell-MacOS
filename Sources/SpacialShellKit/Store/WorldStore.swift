@@ -847,7 +847,7 @@ public actor WorldStore {
     /// The rect `display`'s active row is tiled in, as the reconciler computes it.
     private func tilingRect(_ display: DisplayID) -> CGRect? {
         guard let screen = world.screens[display], let d = displays.first(where: { $0.id == display }) else { return nil }
-        return Reconciler.tilingRect(screen: screen, display: d, insets: ShellInsets(config: config, hidden: world.zen), gap: config.gap)
+        return Reconciler.tilingRect(screen: screen, display: d, insets: ShellInsets(config: config, hidden: world.zen), screenGap: config.outerGap)
     }
 
     /// #113: every draggable border the reconcile is about to frame, per display's active row.
@@ -1063,7 +1063,7 @@ public actor WorldStore {
         }
     }
 
-    private var layoutConfig: LayoutConfig { LayoutConfig(gap: config.gap, layouts: layouts) }
+    private var layoutConfig: LayoutConfig { LayoutConfig(gap: config.gap, screenGap: config.outerGap, layouts: layouts) }
 
     /// Design §8: a workspace whose layout was deleted (or mistyped) keeps its id and draws the
     /// fallback; the switcher badges it, and the log says so once per id.

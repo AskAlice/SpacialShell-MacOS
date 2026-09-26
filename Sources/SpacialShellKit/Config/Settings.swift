@@ -10,6 +10,8 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var panelWidth: Double?
     public var panelHeight: Double?
     public var gap: Double?
+    /// #124.
+    public var screenGap: Double?
     public var panelColor: String?
     public var railSide: RailSide?
     public var tabSizing: TabSizing?
@@ -64,6 +66,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth)
         panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight)
         gap = try c.decodeIfPresent(Double.self, forKey: .gap)
+        screenGap = try c.decodeIfPresent(Double.self, forKey: .screenGap)
         panelColor = try c.decodeIfPresent(String.self, forKey: .panelColor)
         railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide)
         tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing)
@@ -129,6 +132,7 @@ public enum Settings {
         if let v = overrides.panelWidth { c.panelWidth = v }
         if let v = overrides.panelHeight { c.panelHeight = v }
         if let v = overrides.gap { c.gap = v }
+        if let v = overrides.screenGap { c.screenGap = v }
         if let v = overrides.panelColor { c.panelColor = v }
         if let v = overrides.railSide { c.railSide = v }
         if let v = overrides.tabSizing { c.tabSizing = v }

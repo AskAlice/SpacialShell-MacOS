@@ -17,7 +17,8 @@ below.
 
 ```toml
 keybinding-preset = "fn"          # or "ctrl-alt"
-gap = 8                           # pt between windows and to the screen edge
+gap = 8                           # pt between windows (and to the screen edge, unless screen-gap is set)
+# screen-gap = 8                  # pt between the windows and the screen edge; follows gap when unset
 default-layout = "maximize"       # maximize | split | column | half | grid | a [[layout]] id
 ax-timeout-ms = 1000
 refresh-interval-ms = 2000
@@ -70,7 +71,8 @@ title-regex = "^Picture in Picture$"
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `keybinding-preset` | `"fn"` \| `"ctrl-alt"` | `"fn"` | Which modifier the built-in bindings (`KeyBindings.core`) are prefixed with. `fn` uses the Globe key; `ctrl-alt` (`⌃⌥`) is for keyboards without one. The arrow-key bindings are always on `⌃⌥` regardless of this setting. |
-| `gap` | number (pt) | `8` | Space left between tiled windows and between a window and the screen edge, in every layout. |
+| `gap` | number (pt) | `8` | Space left between tiled windows, in every layout. Also the space to the screen edge unless `screen-gap` is set. Also in the settings window's Layout pane (*Window gap*). |
+| `screen-gap` | number (pt) | follows `gap` | Space left between the tiled row and the screen edge (and the rail and tab bar), on all four sides, in every layout — material-shell's `screen-gap`. `0` puts windows flush with the edges while `gap` still separates them. Unset, it follows `gap` (including a gap set in the settings window). Also in the settings window's Layout pane (*Screen edge gap*). |
 | `default-layout` | layout id | `"maximize"` | The layout a newly created workspace starts with: one of the five built-ins or a `[[layout]]` id (see below). |
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |

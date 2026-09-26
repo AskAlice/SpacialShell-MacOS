@@ -1,11 +1,16 @@
 import Foundation
 
 public struct LayoutConfig: Sendable, Equatable {
+    /// Between tiles.
     public var gap: CGFloat
+    /// #124: between the row and the screen edge (`screen-gap`); `gap` unless set.
+    public var screenGap: CGFloat
     /// #9: what a workspace's layout id means. Every caller builds this from the effective config,
     /// so the #77 prediction and the real switch can never disagree about a layout.
     public var layouts: LayoutCatalogue
-    public init(gap: CGFloat, layouts: LayoutCatalogue = .builtins) { self.gap = gap; self.layouts = layouts }
+    public init(gap: CGFloat, screenGap: CGFloat? = nil, layouts: LayoutCatalogue = .builtins) {
+        self.gap = gap; self.screenGap = screenGap ?? gap; self.layouts = layouts
+    }
 }
 
 public enum Placement: Sendable, Equatable { case frame(CGRect), parked(CGPoint), untouched }
@@ -37,7 +42,7 @@ public enum Reconciler {
                 let size = observed[w]?.size ?? fallbackSize
                 return .parked(Parking.origin(windowSize: size, visibleFrame: visible, corner: corner, sliver: zeroSliver.contains(w) ? 0 : 1))
             }
-            let rect = tilingRect(screen: screen, display: display, insets: insets[sid, default: .zero], gap: config.gap)
+            let rect = tilingRect(screen: screen, display: display, insets: insets[sid, default: .zero], screenGap: config.screenGap)
             for (i, ws) in screen.workspaces.enumerated() {
                 let active = i == screen.activeIndex
                 let tiled = world.tiled(in: ws)
@@ -79,10 +84,10 @@ public enum Reconciler {
         insets.apply(to: screen.rect ?? display.visibleFrame)
     }
 
-    /// The rect the layout engine divides: the viewport less the outer gap. Also what a resize
-    /// (#113) measures its portions against.
-    public static func tilingRect(screen: Screen, display: DisplayInfo, insets: ShellInsets, gap: CGFloat) -> CGRect {
-        var rect = viewport(screen: screen, display: display, insets: insets).insetBy(dx: gap, dy: gap)
+    /// The rect the layout engine divides: the viewport less the outer gap (`screen-gap`, #124;
+    /// the engine puts `gap` only between tiles). Also what a resize (#113) measures its portions against.
+    public static func tilingRect(screen: Screen, display: DisplayInfo, insets: ShellInsets, screenGap: CGFloat) -> CGRect {
+        var rect = viewport(screen: screen, display: display, insets: insets).insetBy(dx: screenGap, dy: screenGap)
         rect.size.height -= 1   // macOS may refuse full-height frames on stacked displays
         return rect
     }
