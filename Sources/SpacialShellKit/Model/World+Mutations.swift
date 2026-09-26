@@ -36,6 +36,28 @@ extension World {
     }
     /// Windows reachable by left/right navigation: not hidden.
     public func visible(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !hidden.contains($0) } }
+
+    /// #134 (M3c): the window `w` is attached to — its AX owner, when `w` is a floating child (a
+    /// sheet, an attached dialog) in its owner's own row. Such a window is part of the owner's
+    /// tile: no tab, moves with it, hands focus back to it. Nil for everything else.
+    public func owner(of w: WindowRef) -> WindowRef? {
+        guard let p = parents[w], let ws = workspace(containing: w) else { return nil }
+        return Self.isAttached(w, parent: p, in: ws) ? p : nil
+    }
+    /// The top of `w`'s owner chain (a sheet on a sheet belongs to the first owner); `w` itself
+    /// when it is attached to nothing.
+    public func root(of w: WindowRef) -> WindowRef {
+        var r = w, seen: Set<WindowRef> = [w]
+        while let p = owner(of: r), seen.insert(p).inserted { r = p }
+        return r
+    }
+    /// The row as the tab bar draws it and the keys walk it: every window but attached ones.
+    public func tabs(in ws: Workspace) -> [WindowRef] {
+        ws.windows.filter { w in !(parents[w].map { Self.isAttached(w, parent: $0, in: ws) } ?? false) }
+    }
+    static func isAttached(_ w: WindowRef, parent p: WindowRef, in ws: Workspace) -> Bool {
+        p != w && ws.floating.contains(w) && ws.windows.contains(p)
+    }
     /// Whether display `d` is showing a native-fullscreen Space right now (#72): it holds a
     /// fullscreen window that is on its display's active Space. The Space test is what makes this
     /// honest — a window keeps reporting fullscreen after the user swipes away from its Space, but
@@ -180,11 +202,13 @@ extension World {
     }
 
     public mutating func remove(_ w: WindowRef) {
+        let owner = self.owner(of: w)
         ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]
-            if focus.window == w { focus.window = neighbour(of: w, in: ws) }
+            // #134: a closed sheet hands focus back to the window it was on.
+            if focus.window == w { focus.window = owner.flatMap { hidden.contains($0) ? nil : $0 } ?? neighbour(of: w, in: ws) }
             ws.windows.removeAll { $0 == w }; ws.floating.remove(w)
             if ws.anchor == w { ws.anchor = focus.window.flatMap { ws.windows.contains($0) ? $0 : nil } ?? ws.windows.first }
             screens[loc.screen]!.workspaces[loc.index] = ws
@@ -308,7 +332,8 @@ extension World {
         let vis = visible(in: fs.active)
         if let w = focus.window, !(vis.contains(w) || ephemeral.contains(w)) { focus.window = nil }
         if focus.window == nil { focus.window = fs.active.anchor.flatMap { vis.contains($0) ? $0 : nil } ?? vis.first }
-        if let w = focus.window, vis.contains(w) { screens[focus.screen]!.workspaces[fs.activeIndex].anchor = w }
+        // #134: a focused sheet anchors its owner, so the layout's page stays on the owner's tile.
+        if let w = focus.window, vis.contains(w) { screens[focus.screen]!.workspaces[fs.activeIndex].anchor = root(of: w) }
     }
 
     /// #114: every row's split view slid just far enough to hold its anchor — past the edge by

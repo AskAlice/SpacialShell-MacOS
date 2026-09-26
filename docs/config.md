@@ -205,6 +205,12 @@ windows of an app outside the order follow it by rule 2. Rules 1 and 4 never gro
 `max-workspaces` rows; past it, the app joins the last row. Dialogs, popups and ephemeral windows
 are never routed.
 
+**Sheets and attached dialogs.** A dialog macOS attaches to a window (a sheet, a save panel)
+joins that window's row and belongs to its tile: it has no tab of its own (the owner's tab lights
+while it has focus), `Fn+A`/`Fn+D` step past it, it moves and parks with its owner at the same
+place on it, moving either one to another workspace takes both, and closing it hands focus back
+to the owner.
+
 **Order of the rows.** On every display, rows of a category in `category-order` sit at the top,
 in that order. Pinned rows and rows without a category keep their own order below them, and are
 never re-sorted, so a drag (#75) of one of those sticks. The category rows are sorted each time

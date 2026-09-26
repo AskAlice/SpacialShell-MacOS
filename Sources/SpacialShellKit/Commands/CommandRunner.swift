@@ -47,25 +47,29 @@ public enum CommandRunner {
         /// if that row is inactive), and nothing else moves — every active row stays active, and
         /// focus stays put unless it was on this window, when it falls to the neighbour exactly as
         /// on a close. A focus change is emitted here; the caller adds the rest.
-        func move(_ ref: WindowRef, to dest: (screen: DisplayID, index: Int), at position: Int? = nil,
+        func move(_ moved: WindowRef, to dest: (screen: DisplayID, index: Int), at position: Int? = nil,
                   follow: Bool = true) -> Bool {
+            // #134: a sheet moves as part of its owner's tile, and the owner takes its sheets along.
+            let ref = w.root(of: moved)
             guard let from = w.location(of: ref) else { return false }
             guard from.screen != dest.screen || from.index != dest.index else { return false }
             let source = w.screens[from.screen]!.workspaces[from.index]
-            let neighbour = w.neighbour(of: ref, in: source)
-            w.screens[from.screen]!.workspaces[from.index].windows.removeAll { $0 == ref }
-            w.screens[from.screen]!.workspaces[from.index].floating.remove(ref)
-            w.screens[dest.screen]!.workspaces[dest.index].windows.insert(
-                ref, at: position ?? w.screens[dest.screen]!.workspaces[dest.index].windows.count)
-            if source.floating.contains(ref) { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
+            let group = [ref] + source.windows.filter { $0 != ref && w.root(of: $0) == ref }
+            var rest = source; rest.windows.removeAll { group.dropFirst().contains($0) }
+            let neighbour = w.neighbour(of: ref, in: rest)
+            w.screens[from.screen]!.workspaces[from.index].windows.removeAll { group.contains($0) }
+            w.screens[from.screen]!.workspaces[from.index].floating.subtract(group)
+            let at = position ?? w.screens[dest.screen]!.workspaces[dest.index].windows.count
+            w.screens[dest.screen]!.workspaces[dest.index].windows.insert(contentsOf: group, at: at)
+            w.screens[dest.screen]!.workspaces[dest.index].floating.formUnion(group.filter(source.floating.contains))
             w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
             if follow {
                 w.rememberActive(on: dest.screen, before: dest.index)
                 w.screens[dest.screen]!.activeIndex = dest.index
-                w.focus = Focus(screen: dest.screen, window: ref)
+                w.focus = Focus(screen: dest.screen, window: moved)
             } else {
                 if source.anchor == ref { w.screens[from.screen]!.workspaces[from.index].anchor = neighbour }
-                if w.focus.window == ref {
+                if let f = w.focus.window, group.contains(f) {
                     w.focus.window = neighbour
                     if let neighbour { effects.append(.focus(neighbour)) }
                 }
@@ -145,9 +149,10 @@ public enum CommandRunner {
             // minimized and app-hidden windows included, and landing on one brings it back — the
             // same promise a tab click keeps (#48). Walking only the visible windows meant a tab
             // you could click was one the keyboard stepped straight over.
-            let row = screen.active.windows
+            // #134: the tabs, which a sheet is not; from a sheet, its owner's neighbours.
+            let row = w.tabs(in: screen.active)
             guard !row.isEmpty else { return noop("no windows in this workspace") }
-            let i = w.focus.window.flatMap { row.firstIndex(of: $0) } ?? 0
+            let i = w.focus.window.flatMap { row.firstIndex(of: w.root(of: $0)) } ?? 0
             let j = dir == .right ? (i + 1) % row.count : (i - 1 + row.count) % row.count
             if w.hidden.contains(row[j]) { w.hidden.remove(row[j]); effects.append(.unhide(row[j])) }
             setFocus(row[j]); effects.append(.relayout)
@@ -487,7 +492,7 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .focusTab(let n):
-            let row = screen.active.windows
+            let row = w.tabs(in: screen.active)
             guard !row.isEmpty else { return (w, []) }
             let r = row[min(max(n, 1), row.count) - 1]
             if w.hidden.contains(r) { w.hidden.remove(r); effects.append(.unhide(r)) }

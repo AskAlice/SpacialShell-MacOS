@@ -191,10 +191,11 @@ public enum ShellUI {
                 category: ws.category, layout: ws.layout, splitColumns: ws.splitColumns)
         }
         let active = screen.active
-        let tabs = active.windows.map { w in
+        // #134: a sheet has no tab; its owner's tab is the focused one while the sheet has focus.
+        let tabs = world.tabs(in: active).map { w in
             WindowTabItem(
                 ref: w,
-                isFocused: world.focus.window == w,
+                isFocused: world.focus.window.map { world.root(of: $0) } == w,
                 isFloating: active.floating.contains(w),
                 isHidden: world.hidden.contains(w),
                 isFullscreen: world.fullscreen.contains(w),

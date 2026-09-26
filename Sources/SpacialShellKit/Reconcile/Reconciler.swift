@@ -71,6 +71,7 @@ public enum Reconciler {
             let rect = tilingRect(screen: screen, display: display, insets: insets[sid, default: .zero], screenGap: config.screenGap)
             for (i, ws) in screen.workspaces.enumerated() {
                 let active = i == screen.activeIndex
+                var attached: [(WindowRef, owner: WindowRef)] = []
                 let tiled = world.tiled(in: ws)
                 let focusedIndex = ws.anchor.flatMap { tiled.firstIndex(of: $0) } ?? 0
                 let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap, portions: ws.portions, split: ws.split(in: tiled)) : []
@@ -81,6 +82,7 @@ public enum Reconciler {
                     if world.hidden.contains(w) || world.fullscreen.contains(w) || world.offSpace.contains(w) {
                         out[w] = .untouched; continue
                     }
+                    if let p = world.parents[w], World.isAttached(w, parent: p, in: ws) { attached.append((w, world.root(of: w))); continue }
                     if !active { out[w] = park(w); continue }
                     if ws.floating.contains(w) {
                         if parkedNow.contains(w) {
@@ -97,6 +99,24 @@ public enum Reconciler {
                     }
                     let ti = tiled.firstIndex(of: w)!
                     out[w] = frames[ti].map { .frame(refused[w]?.fitted(in: $0) ?? $0) } ?? park(w)
+                }
+                // #134: a sheet keeps its place on its owner — framed, parked or left alone with it,
+                // at the offset it had from the owner. A parked pair measures from where both were
+                // before parking, not from the corner macOS clamped them into.
+                func base(_ r: WindowRef) -> CGRect? { parkedNow.contains(r) ? prePark[r] ?? observed[r] : observed[r] }
+                for (w, p) in attached {
+                    let offset = zip2(base(w), base(p)).map { CGVector(dx: $0.minX - $1.minX, dy: $0.minY - $1.minY) }
+                    let size = observed[w]?.size ?? fallbackSize
+                    switch out[p] {
+                    case .frame(let f)?:
+                        // Unmeasured (never seen): centred across the owner, at its top, like a sheet.
+                        let d = offset ?? CGVector(dx: (f.width - size.width) / 2, dy: 0)
+                        out[w] = .frame(CGRect(x: f.minX + d.dx, y: f.minY + d.dy, width: size.width, height: size.height))
+                    case .parked(let o)?:
+                        out[w] = offset.map { .parked(CGPoint(x: o.x + $0.dx, y: o.y + $0.dy)) } ?? park(w)
+                    default:
+                        out[w] = .untouched
+                    }
                 }
             }
         }
@@ -160,6 +180,8 @@ public enum Reconciler {
             let a = d.frame.intersection(frame); return (d.id, a.isNull ? 0 : a.width * a.height)
         }.filter { $0.1 > 0 }.max { $0.1 < $1.1 }?.0
     }
+
+    private static func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? { if let a, let b { (a, b) } else { nil } }
 
     static func centered(size: CGSize, in rect: CGRect) -> CGRect {
         CGRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
