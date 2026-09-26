@@ -80,18 +80,20 @@ import Foundation
     /// #162: a four-finger drag's travel maps onto the row one to one (full trackpad = full row),
     /// moves the edge a resize key moves, and lands by a mouse drag's rules.
     @Test func aFourFingerDragMapsTravelOntoTheRow() {
-        #expect(Resize.swipeGain == 1)
-        #expect(abs(Resize.swiped(from: 0.5, travel: 0.1) - 0.6) < 1e-9)
-        #expect(abs(Resize.swiped(from: 0.5, travel: -0.2) - 0.3) < 1e-9, "the edge follows the fingers left")
-        #expect(abs(Resize.swiped(from: 0, travel: 1) - 1) < 1e-9, "the whole trackpad crosses the whole row")
+        #expect(Resize.swipeGain == 0.5)
+        #expect(abs(Resize.swiped(from: 0.5, travel: 0.1) - 0.55) < 1e-9)
+        #expect(abs(Resize.swiped(from: 0.5, travel: -0.2) - 0.4) < 1e-9, "a trailing edge follows the fingers left")
+        #expect(abs(Resize.swiped(from: 0, travel: 1) - 0.5) < 1e-9, "the whole trackpad moves the edge half the row")
+        // Right grows the focused tile on either side: a leading edge (the last column's) moves left.
+        #expect(abs(Resize.swiped(from: 0.5, travel: 0.2, trailing: false) - 0.4) < 1e-9, "right grows a last column")
         let p = page(.split, 2)
-        #expect(Resize.swipeLine(p, index: 0) == 0 && Resize.swipeLine(p, index: 1) == 0, "the one line, from either side")
-        #expect(Resize.swipeLine(page(.column, 3), index: 1) == 1, "the middle column's trailing edge")
-        #expect(Resize.swipeLine(page(.column, 3), index: 2) == 1, "the last column's leading edge")
+        #expect(Resize.swipeLine(p, index: 0)?.line == 0 && Resize.swipeLine(p, index: 1)?.line == 0, "the one line, from either side")
+        #expect(Resize.swipeLine(page(.column, 3), index: 1).map { [$0.line, $0.trailing ? 1 : 0] } == [1, 1], "the middle column's trailing edge")
+        #expect(Resize.swipeLine(page(.column, 3), index: 2).map { [$0.line, $0.trailing ? 1 : 0] } == [1, 0], "the last column's leading edge")
         #expect(Resize.swipeLine(page(.maximize, 2), index: 0) == nil, "maximize has no edge")
         // Past there it is `drag`: the detents and the floor.
-        #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 0.26))!.x, [0.75]))
-        #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 0.8))!.x, [1 - Resize.minPortion]))
+        #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 0.52))!.x, [0.75]))
+        #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 1.6))!.x, [1 - Resize.minPortion]))
     }
 
     // MARK: the engine
@@ -263,16 +265,16 @@ import Foundation
         func drag(_ phase: SwipeDrag.Phase, _ travel: Double) -> SwipeDrag { SwipeDrag(phase, fingers: 4, travel: travel) }
         func at(_ u: Double) async -> Bool { await portion(store).map { abs($0 - u) < 1e-9 } == true }
 
-        #expect(await store.swipeEdge(drag(.began, 0.1)) == .done)
+        #expect(await store.swipeEdge(drag(.began, 0.2)) == .done)   // gain 0.5: travel 0.2 → +0.1
         #expect(await eventually { await at(0.6) }, "live from the lock")
         #expect(await eventually { abs(await be.frames[a]!.width - (0.6 * 992 - 8)) < 1 }, "and laid out")
         #expect(box.borders.last??.isEmpty == false, "the edge is highlighted, as under the mouse")
-        #expect(await store.swipeEdge(drag(.moved, 0.26)) == .done)
+        #expect(await store.swipeEdge(drag(.moved, 0.52)) == .done)
         #expect(await eventually { await at(0.75) }, "0.76 snaps onto the 75 % detent")
-        #expect(await store.swipeEdge(drag(.moved, 0.9)) == .done)
+        #expect(await store.swipeEdge(drag(.moved, 1.8)) == .done)
         #expect(await eventually { await at(1 - Resize.minPortion) }, "the floor")
 
-        #expect(await store.swipeEdge(drag(.ended, 0.2)) == .done)
+        #expect(await store.swipeEdge(drag(.ended, 0.4)) == .done)
         #expect(await at(0.7), "settled where the lift left it, by the time the lift returns")
         let (na, nb) = await (be.frames[a]!, be.frames[b]!)
         #expect(abs(na.width - (0.7 * 992 - 8)) < 1 && abs(nb.minX - na.maxX - 8) < 1, "both tiles follow the line")
@@ -284,8 +286,8 @@ import Foundation
         try? await Task.sleep(nanoseconds: 30_000_000)
         #expect(await at(0.7))
         // A new drag starts from where the last one left the edge.
-        #expect(await store.swipeEdge(drag(.began, -0.1)) == .done)
-        #expect(await store.swipeEdge(drag(.ended, -0.1)) == .done)
+        #expect(await store.swipeEdge(drag(.began, -0.2)) == .done)
+        #expect(await store.swipeEdge(drag(.ended, -0.2)) == .done)
         #expect(await at(0.6))
     }
 
@@ -313,11 +315,11 @@ import Foundation
         #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.2)) == .noop("a border is already in the hand"))
         await store.apply(.pointerUp(mid))
 
-        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.1)) == .done)
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.2)) == .done)
         await store.apply(.pointerMoved(CGPoint(x: 900, y: mid.y)))
         await store.apply(.pointerDown(CGPoint(x: 900, y: mid.y)))
         await store.apply(.pointerUp(CGPoint(x: 900, y: mid.y)))
-        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 0.1)) == .done)
+        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 0.2)) == .done)
         #expect(await portion(store).map { abs($0 - 0.6) < 1e-9 } == true)
     }
 }

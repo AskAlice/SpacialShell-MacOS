@@ -248,13 +248,13 @@ pane):
 |---|---|---|
 | swipe up | `cycle-layout`, one step per swipe | `Fn+Space` |
 | swipe down | `cycle-layout-reverse`, one step per swipe | `Fn+⇧Space` |
-| drag left / right | move the focused tile's side edge, live, as far as the fingers go | dragging the border between tiles with the mouse |
+| drag right / left | the focused tile grows / shrinks, live, by how far the fingers go | dragging the border between tiles with the mouse |
 
 Left and right are not steps but a drag. As soon as four fingers have moved a little (about 3 % of
 the trackpad) more sideways than up or down, they take hold of the focused tile's side edge (the
-edge `Fn+⌃A/D` move: its right edge, or its left one for the last column) and the edge follows them
-until you lift. The distance is proportional: the full width of the trackpad moves the edge across
-the full width of the row. It behaves exactly like dragging that border with the mouse: no tile gets
+edge `Fn+⌃A/D` move: its right edge, or its left one for the last column) until you lift. Right
+always grows the focused tile and left shrinks it, whichever side its edge is on. The change is
+proportional and gentle: the full width of the trackpad moves the edge half the width of the row. It behaves exactly like dragging that border with the mouse: no tile gets
 narrower than a tenth of the row, the edge catches on the 25/50/75 % marks as it passes them, and
 where you lift is where it stays. Fingers lifting unevenly don't move it. In `maximize` there is no
 edge, so a sideways drag does nothing. A swipe that starts up or down stays a layout swipe, however

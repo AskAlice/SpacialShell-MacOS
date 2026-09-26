@@ -157,19 +157,30 @@ public enum Resize {
     }
 
     /// #162: the four-finger drag's gain — how far the edge moves, as a fraction of the tiling
-    /// rect's width, per unit of normalized trackpad travel. 1 is proportional: the full trackpad
-    /// width drags the edge across the full row. The one knob to tune.
-    public static let swipeGain = 1.0
+    /// rect's width, per unit of normalized trackpad travel. 0.5: the full trackpad width moves the
+    /// edge half the row, so the size changes gently with distance (the user, 2026-09-26: "slowly
+    /// increase the width"). The one knob to tune.
+    public static let swipeGain = 0.5
 
     /// #162: the line a four-finger drag moves for tile `index`, the same edge a resize key moves
     /// (the trailing one, else the leading one), or nil when the tile has none sideways (maximize,
     /// a full-width row).
-    public static func swipeLine(_ page: Page, index: Int) -> Int? { edge(page, index: index, axis: .width)?.line }
+    /// `trailing` says which side of the tile it is: the trailing edge grows the tile rightward, the
+    /// leading one (the last column's) leftward.
+    public static func swipeLine(_ page: Page, index: Int) -> (line: Int, trailing: Bool)? {
+        edge(page, index: index, axis: .width).map { (line: $0.line, trailing: $0.trailing) }
+    }
 
     /// #162: where a four-finger drag puts the edge that started at unit position `start`, after
     /// `travel` (normalized trackpad x): it follows the fingers, `swipeGain` to one. What happens
     /// there is a mouse drag's, `drag`: the same detents, the same floor.
-    public static func swiped(from start: Double, travel: Double) -> Double { start + travel * swipeGain }
+    /// Focus-relative, not edge-follows-fingers (the user, 2026-09-26: left/right felt inverted on
+    /// the last column): swiping **right grows the focused tile** and left shrinks it, whichever
+    /// side its edge is on. For a trailing edge that is the fingers' way; for a leading one, the
+    /// opposite.
+    public static func swiped(from start: Double, travel: Double, trailing: Bool = true) -> Double {
+        start + travel * swipeGain * (trailing ? 1 : -1)
+    }
 
     /// A shared edge between two framed tiles, which the mouse can drag: the gap between them,
     /// in the same global top-left coordinates as the frames.
