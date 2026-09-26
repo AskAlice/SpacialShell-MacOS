@@ -15,3 +15,12 @@ raycast/raycast-env.d.ts
 
 # Playwright MCP session artefacts (page snapshots, logs, downloads — once a private key)
 .playwright-mcp/
+
+# Signing material and machine-local signing config never enter the repo.
+*.cer
+*.p8
+*.p12
+*.pem
+*.mobileprovision
+*.provisionprofile
+Scripts/sign-identity

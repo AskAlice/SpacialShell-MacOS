@@ -49,7 +49,7 @@ PINNED=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' Scripts/sign-identity 2>/dev/nu
 if [ -n "${SPACIAL_SIGN_IDENTITY:-}" ]; then
     SIGN="$SPACIAL_SIGN_IDENTITY"
 elif [ -n "$PINNED" ] && security find-identity -p codesigning 2>/dev/null | grep -qi "$PINNED"; then
-    # Pinned in the repo (Scripts/sign-identity): this Mac has two Developer ID certificates, and
+    # Pinned locally (Scripts/sign-identity, gitignored): this Mac has two Developer ID certificates, and
     # picking the wrong one silently invalidates the Accessibility grant. Only honoured when the
     # certificate is actually present, so a fresh clone elsewhere still falls through to the search.
     SIGN="$PINNED"

@@ -44,7 +44,7 @@ is an .app.
   **Fix this once and it stops happening.** TCC keys the grant to the *designated
   requirement*, so a stable one survives rebuilds where an ad-hoc one cannot. `bundle.sh`
   takes the best identity available, in order: `SPACIAL_SIGN_IDENTITY`, then the hash
-  pinned in `Scripts/sign-identity` (when that certificate is present on this Mac), then
+  pinned in the gitignored `Scripts/sign-identity` (when that certificate is present on this Mac), then
   **Developer ID Application**, then **Apple Development**, then a self-signed
   `SpacialShell Dev`, then ad-hoc with a warning.
 

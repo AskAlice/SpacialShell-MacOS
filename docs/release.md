@@ -44,8 +44,8 @@ certificates, and a DMG signed by the other would not keep the Accessibility gra
 here.
 
 1. `security find-identity -v -p codesigning` and find the pinned SHA-1
-   (`<sign-identity SHA-1>`).
-2. Keychain Access → login → My Certificates → **Developer ID Application: Alice Knag (<TEAM_ID>)**
+   (the hash in your local `Scripts/sign-identity`).
+2. Keychain Access → login → My Certificates → **Developer ID Application: <your name> (<TEAM_ID>)**
    with that SHA-1 (select it, ⌘I, check "SHA-1" under Fingerprints). Expand it to confirm the
    private key is underneath.
 3. Right-click the certificate → Export… → format **Personal Information Exchange (.p12)** → save as
