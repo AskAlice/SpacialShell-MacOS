@@ -23,6 +23,9 @@ struct Story {
     /// the untruncated ideal, so LayoutLint's must-fit check cannot tell the two apart; this says
     /// which one it is. The escape check still runs, so real clipping is still caught.
     var truncates: Bool = false
+    /// The view focuses a text field as it appears (the overview's search field, from `onAppear`).
+    /// SwiftUI applies that some passes later, so the harness waits for it before snapshotting (#159).
+    var awaitsFocus: Bool = false
 }
 
 /// An `NSMenu` drawn as the system draws it — section headers, separators, a check on the current
@@ -98,14 +101,24 @@ enum Stories {
     /// A stand-in for a captured window: a landscape swatch, so the miniature has an aspect
     /// ratio the card has to letterbox like a real screenshot.
     static func shot(_ color: NSColor) -> NSImage {
-        let image = NSImage(size: NSSize(width: 320, height: 200))
-        image.lockFocus()
-        color.setFill()
-        NSRect(x: 0, y: 0, width: 320, height: 200).fill()
-        NSColor.white.withAlphaComponent(0.35).setFill()
-        NSRect(x: 0, y: 170, width: 320, height: 30).fill()
-        image.unlockFocus()
-        return image
+        NSImage(cgImage: capture(color), size: NSSize(width: 320, height: 200))
+    }
+    /// `shot`'s pixels: a 320 × 200 pt window captured at a fixed 2×, as ScreenCaptureKit hands one
+    /// over on a Retina display (#159). `NSImage.lockFocus` drew at the main screen's backing
+    /// scale: 640 × 400 px on a Retina Mac, 320 × 200 on a 1× display. Only the first is past
+    /// `WindowThumbnails.longSide`, so `rail-hover-cached` went through the downscale on one
+    /// machine and skipped it on another. The CTM hint pins the pixel count. Colours are drawn as
+    /// before, so every other hover story renders byte-for-byte as it did.
+    static func capture(_ color: NSColor) -> CGImage {
+        let image = NSImage(size: NSSize(width: 320, height: 200), flipped: false) { rect in
+            color.setFill()
+            rect.fill()
+            NSColor.white.withAlphaComponent(0.35).setFill()
+            NSRect(x: 0, y: 170, width: 320, height: 30).fill()
+            return true
+        }
+        var rect = NSRect(x: 0, y: 0, width: 320, height: 200)
+        return image.cgImage(forProposedRect: &rect, context: nil, hints: [.ctm: AffineTransform(scale: 2)])!
     }
 
     static func rail(_ items: [WorkspaceRailItem], tray: [SpacialShellProtocol.WindowRef] = []) -> ScreenShellState {
@@ -198,9 +211,9 @@ enum Stories {
     static var all: [Story] {
         var out: [Story] = []
         func add(_ name: String, _ size: CGSize?, _ v: some View,
-                 knownOverflow: Bool = false, truncates: Bool = false) {
+                 knownOverflow: Bool = false, truncates: Bool = false, awaitsFocus: Bool = false) {
             out.append(Story(name: name, size: size, view: AnyView(v),
-                             knownOverflow: knownOverflow, truncates: truncates))
+                             knownOverflow: knownOverflow, truncates: truncates, awaitsFocus: awaitsFocus))
         }
         let send: (Command) -> Void = { _ in }
 
@@ -296,8 +309,7 @@ enum Stories {
         // #90: the first frame of a hover — thumbnails from the cache, at the cache's downscaled
         // size, and the icon placeholder only for the window the shell has never seen.
         func cached(_ color: NSColor) -> NSImage? {
-            shot(color).cgImage(forProposedRect: nil, context: nil, hints: nil)
-                .flatMap(WindowThumbnails.downscale).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
+            WindowThumbnails.downscale(capture(color)).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
         }
         add("rail-hover-cached", nil, RailHoverCard(
             title: "Code (1)", subtitle: "3 windows · coding",
@@ -555,9 +567,11 @@ enum Stories {
                             icon: swatch([.systemTeal, .systemGreen, .systemOrange, .systemRed, .systemPurple, .systemBrown][i]))
         }
         add("overview-results", CGSize(width: 640, height: 440),
-            OverviewView(windows: windows, apps: apps, onSelectWindow: { _ in }, onLaunchApp: { _ in }))
+            OverviewView(windows: windows, apps: apps, onSelectWindow: { _ in }, onLaunchApp: { _ in }),
+            awaitsFocus: true)
         add("overview-empty", CGSize(width: 640, height: 440),
-            OverviewView(windows: [], apps: [], onSelectWindow: { _ in }, onLaunchApp: { _ in }))
+            OverviewView(windows: [], apps: [], onSelectWindow: { _ in }, onLaunchApp: { _ in }),
+            awaitsFocus: true)
 
         // Cheat sheet (fitting size — the panel sizes itself)
         add("cheatsheet-fn", nil,

@@ -119,7 +119,12 @@ is image-snapshotted (references under `__Snapshots__/`, committed; `SNAPSHOT_RE
 text, content escaping its container, or content that wants more space than the panel has —
 the wrap/truncate/line-height class of regressions a pixel diff alone can hide. Stories flagged
 `knownOverflow` model conditions the design hasn't built handling for yet (tab "+N" badge, rail
-overflow) and run under `withKnownIssue`. macOS-only; new UI states get a story with their PR,
+overflow) and run under `withKnownIssue`. Before its snapshot, each story is spun on the run loop
+until five passes in a row render identically (#159), not for a fixed time. So a scroll into view
+is in the picture however loaded the machine is. A story whose view focuses a field as it appears
+(the overview) is marked `awaitsFocus`, and it also waits until that field holds focus. A story that
+never stops changing fails as "never settled", so give it fixed inputs (`reduceMotion: true`, a
+fixed `elapsed`, fixture images at a fixed pixel size). macOS-only; new UI states get a story with their PR,
 and the recorded stills feed the PR-media rule in `AGENTS.md`.
 
 The items below need a human, a real display arrangement, and things a test suite cannot simulate
