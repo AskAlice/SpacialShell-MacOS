@@ -27,6 +27,7 @@ tab-sizing = "fit"                # or "equal"
 launcher-url = "raycast://"
 show-panels = true
 empty-cheatsheet = true           # dimmed cheat sheet behind an empty workspace
+rail-autohide = false             # hide the rail like the Dock; windows take its width
 crowd-threshold = 8               # an app arriving at launch with more windows gets its own workspace
 category-order = ["web", "terminal", "coding", "media", "utilities"]   # [] turns routing off
 max-workspaces = 12               # routing never grows a display past this many rows
@@ -69,6 +70,7 @@ title-regex = "^Picture in Picture$"
 | `launcher-url` | string | `"raycast://"` | URL opened by the rail search glyph. If nothing handles it, the built-in overview opens instead. |
 | `show-panels` | boolean | `true` | When `false`, panels are not drawn and windows are not inset for them. |
 | `empty-cheatsheet` | boolean | `true` | When the focused display's active workspace has no windows, the key-binding cheat sheet (the one holding the bare modifier shows) sits dimmed at the bottom of that screen, behind everything and click-through. It goes as soon as a window arrives or focus moves to another display. Also a toggle in the settings window. |
+| `rail-autohide` | boolean | `false` | The rail hides off its screen edge (`rail-side`) like the Dock, and windows tile into its width. Resting the pointer at that edge for a moment slides it back in **over** the windows (nothing re-tiles); it slides away again shortly after the pointer leaves it, but stays while its hover card or a drag from it is open. It never takes focus. With Reduce Motion it appears and goes instantly. The tab bar is unaffected and spans the full width. Also a toggle in the settings window's Appearance pane. |
 | `crowd-threshold` | integer | `8` | An app arriving **at launch** with *more* windows than this, and no remembered placement, gets a workspace of its own on the display most of its windows are on, instead of piling into the active workspace. See [Where windows land at launch](#where-windows-land-at-launch). |
 | `category-order` | list of categories | `["web", "terminal", "coding", "media", "utilities"]` | Where an app's windows go: one row per listed category on each display, shared by every app of that category and kept at the top of the stack in this order. For these apps this beats the remembered workspace. Apps of any other category, or of none, get a row each below them. `[]` turns this off. Category names are the `app-categories` values. Also in the settings window's Workspaces pane. See [Where windows land](#where-windows-land-at-launch). |
 | `max-workspaces` | integer | `12` | Category routing never grows a display past this many rows (the empty row at the bottom does not count). Past it, a new app joins the last row. Also in the settings window's Workspaces pane (1–30). |

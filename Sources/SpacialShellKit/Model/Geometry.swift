@@ -18,9 +18,11 @@ public struct ShellInsets: Sendable, Equatable {
     public init(config: Config, hidden: Bool) {
         if hidden || !config.showPanels { top = 0; left = 0; right = 0; bottom = 0; return }
         top = CGFloat(config.panelHeight); bottom = 0
+        // #96: an auto-hiding rail is an overlay when it shows, so it never takes tiling width.
+        let rail = config.railAutohide ? 0 : CGFloat(config.panelWidth)
         switch config.railSide {
-        case .left:  left = CGFloat(config.panelWidth); right = 0
-        case .right: left = 0; right = CGFloat(config.panelWidth)
+        case .left:  left = rail; right = 0
+        case .right: left = 0; right = rail
         }
     }
     public func apply(to rect: CGRect) -> CGRect {

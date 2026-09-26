@@ -106,7 +106,7 @@ struct SettingsView: View {
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, and switch motion.")
+            header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, switch motion, and whether the rail hides.")
             row("Panel colour", overridden: overrides.panelColor != nil) {
                 HStack(spacing: 8) {
                     ColorPicker("", selection: colorBinding).labelsHidden()
@@ -122,6 +122,9 @@ struct SettingsView: View {
             row("Empty cheat sheet", overridden: overrides.emptyCheatsheet != nil) {
                 Toggle("", isOn: binding(\.emptyCheatsheet, default: file.emptyCheatsheet)).labelsHidden()
             } reset: { overrides.emptyCheatsheet = nil }
+            row("Auto-hide rail", overridden: overrides.railAutohide != nil) {
+                Toggle("", isOn: binding(\.railAutohide, default: file.railAutohide)).labelsHidden()
+            } reset: { overrides.railAutohide = nil }
         }
     }
 
