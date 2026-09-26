@@ -108,6 +108,9 @@ public protocol WindowBackend: Sendable {
     /// if ⌘H put it away. The shell never hides windows itself; this only undoes what the user or
     /// the app did, so that a tab click can deliver the window it names.
     func unhide(_ ref: WindowRef) async -> Result<Void, BackendError>
+    /// #128: open the app with this bundle id (or bring it forward if it runs) — a placeholder
+    /// tab's click. Its window arrives by the ordinary snapshot path; nothing here waits for it.
+    func launch(bundleID: String) async -> Result<Void, BackendError>
     /// #107: where the pointer is, in the same global top-left coordinates as window frames; nil
     /// when it cannot be read.
     func pointerLocation() async -> CGPoint?

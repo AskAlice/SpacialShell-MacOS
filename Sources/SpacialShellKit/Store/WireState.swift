@@ -24,6 +24,8 @@ public struct WireState: Codable, Equatable, Sendable {
         public var isOffSpace: Bool
         public var isParked: Bool
         public var frame: [Double]?      // x, y, w, h — the last frame the backend observed
+        /// #128: set (true) only on a placeholder tab, whose pid is negative and owns no process.
+        public var isPlaceholder: Bool? = nil
     }
     public struct WorkspaceDTO: Codable, Equatable, Sendable {
         public var id: UUID
@@ -79,14 +81,15 @@ public struct WireState: Codable, Equatable, Sendable {
                     WorkspaceDTO(id: ws.id, name: ws.name, symbol: ws.symbol, layout: ws.layout.rawValue,
                                  pinned: ws.pinned, isActive: i == s.activeIndex, windowCount: ws.windows.count,
                                  windows: ws.windows.map { w in
-                                     WindowDTO(id: w.id, pid: w.pid, bundleID: bundleIDs[w],
+                                     WindowDTO(id: w.id, pid: w.pid, bundleID: world.placeholders[w]?.bundleID ?? bundleIDs[w],
                                                isFocused: world.focus.window == w,
                                                isFloating: ws.floating.contains(w),
                                                isHidden: world.hidden.contains(w),
                                                isFullscreen: world.fullscreen.contains(w),
                                                isOffSpace: world.offSpace.contains(w),
                                                isParked: parked.contains(w),
-                                               frame: observed[w].map { [$0.minX, $0.minY, $0.width, $0.height] })
+                                               frame: observed[w].map { [$0.minX, $0.minY, $0.width, $0.height] },
+                                               isPlaceholder: w.isPlaceholder ? true : nil)
                                  })
                 })
         }

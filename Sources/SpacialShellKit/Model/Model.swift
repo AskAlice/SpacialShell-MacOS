@@ -96,6 +96,10 @@ public struct World: Codable, Equatable, Sendable {
     /// On another native Space (#55): same deal as `fullscreen` — keeps its slot and its tab, but
     /// no frame write can show it, so layout skips it and it is never framed or parked.
     public var offSpace: Set<WindowRef> = []
+    /// #128: the placeholder tabs, by the ref each holds in its row (`WindowRef.isPlaceholder`).
+    /// A key here is in exactly one workspace's `windows`, never focused, never an anchor, never
+    /// tiled — see `Placeholder`.
+    public var placeholders: [WindowRef: Placeholder] = [:]
     public var parents: [WindowRef: WindowRef] // dialog → owner
     public var defaultLayout: LayoutID
     /// Zen mode (M2 design ruling): true hides the shell panels and gives their edges back to the

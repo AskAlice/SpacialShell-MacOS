@@ -53,6 +53,8 @@ public enum CommandRunner {
             let ref = w.root(of: moved)
             guard let from = w.location(of: ref) else { return false }
             guard from.screen != dest.screen || from.index != dest.index else { return false }
+            // #128: a placeholder moves like a tab dropped there — focus has nothing to follow.
+            let follow = follow && !ref.isPlaceholder
             let source = w.screens[from.screen]!.workspaces[from.index]
             let group = [ref] + source.windows.filter { $0 != ref && w.root(of: $0) == ref }
             var rest = source; rest.windows.removeAll { group.dropFirst().contains($0) }
@@ -62,7 +64,7 @@ public enum CommandRunner {
             let at = position ?? w.screens[dest.screen]!.workspaces[dest.index].windows.count
             w.screens[dest.screen]!.workspaces[dest.index].windows.insert(contentsOf: group, at: at)
             w.screens[dest.screen]!.workspaces[dest.index].floating.formUnion(group.filter(source.floating.contains))
-            w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
+            if !ref.isPlaceholder { w.screens[dest.screen]!.workspaces[dest.index].anchor = ref }
             if follow {
                 w.rememberActive(on: dest.screen, before: dest.index)
                 w.screens[dest.screen]!.activeIndex = dest.index
@@ -150,7 +152,8 @@ public enum CommandRunner {
             // same promise a tab click keeps (#48). Walking only the visible windows meant a tab
             // you could click was one the keyboard stepped straight over.
             // #134: the tabs, which a sheet is not; from a sheet, its owner's neighbours.
-            let row = w.tabs(in: screen.active)
+            // #128: placeholder tabs are stepped over — they have no window to land on.
+            let row = w.tabs(in: screen.active).filter { !$0.isPlaceholder }
             guard !row.isEmpty else { return noop("no windows in this workspace") }
             let i = w.focus.window.flatMap { row.firstIndex(of: w.root(of: $0)) } ?? 0
             let j = dir == .right ? (i + 1) % row.count : (i - 1 + row.count) % row.count
@@ -331,6 +334,17 @@ public enum CommandRunner {
         case .focusWindowRef(let r):
             if w.ephemeral.contains(r) { w.focus.window = r; return (w, [.focus(r)]) }
             guard let loc = w.location(of: r) else { return fail(.unknownWindow(r)) }
+            // #128: a placeholder tab is a promise too — clicking it opens its app, whose window
+            // then fills the slot. Its row is shown (a click from the overview or a hover card
+            // may name one elsewhere); focus stays on a real window, as ever.
+            if let p = w.placeholders[r] {
+                w.placeholders[r]?.launching = true
+                if w.focus.screen != loc.screen { w.focus = Focus(screen: loc.screen, window: nil) }
+                if w.screens[loc.screen]!.activeIndex != loc.index { leaveFullscreen(on: loc.screen) }
+                activateAndLand(loc.index, on: loc.screen)
+                effects.append(.launch(p.bundleID)); effects.append(.relayout)
+                return (w, effects)
+            }
             // Decision 2026-09-15 (#48): a tab is a promise. Clicking one delivers its window, so a
             // minimized or app-hidden window is brought back instead of the click doing nothing —
             // a visible control that silently no-ops was the bug. `hidden` is cleared here so focus
@@ -349,6 +363,13 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .closeWindowRef(let r):
+            // #128: closing a placeholder forgets its slot; there is no window to ask.
+            if r.isPlaceholder {
+                guard w.placeholders[r] != nil else { return fail(.unknownWindow(r)) }
+                w.remove(r)
+                effects.append(.relayout)
+                return (w, effects)
+            }
             effects.append(.close(r))
 
         case .recoverWindow(let r):
@@ -361,7 +382,7 @@ public enum CommandRunner {
         case .dropWindow(let ref, let target):
             guard let from = w.location(of: ref) else { return fail(.unknownWindow(ref)) }
             guard let to = w.location(of: target) else { return fail(.unknownWindow(target)) }
-            guard ref != target,
+            guard ref != target, !ref.isPlaceholder, !target.isPlaceholder,
                   !w.screens[from.screen]!.workspaces[from.index].floating.contains(ref),
                   !w.screens[to.screen]!.workspaces[to.index].floating.contains(target) else { return noop("only two tiled windows swap") }
             if from == to {
@@ -495,6 +516,11 @@ public enum CommandRunner {
             let row = w.tabs(in: screen.active)
             guard !row.isEmpty else { return (w, []) }
             let r = row[min(max(n, 1), row.count) - 1]
+            // #128: tab N as drawn; a placeholder there is clicked, which opens its app.
+            if r.isPlaceholder {
+                return apply(.focusWindowRef(r), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
+                             categoryOrder: categoryOrder, why: &why)
+            }
             if w.hidden.contains(r) { w.hidden.remove(r); effects.append(.unhide(r)) }
             setFocus(r); effects.append(.relayout)
 
@@ -506,6 +532,7 @@ public enum CommandRunner {
 
         case .toggleFloatRef(let r):
             guard let loc = w.location(of: r) else { return fail(.unknownWindow(r)) }
+            guard !r.isPlaceholder else { return noop("a placeholder has no window to float") }
             w.setFloating(r, !w.screens[loc.screen]!.workspaces[loc.index].floating.contains(r))
             w.normalize()
             effects.append(.relayout)

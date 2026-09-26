@@ -30,12 +30,12 @@ extension World {
     }
     public func screenContaining(_ w: WindowRef) -> DisplayID? { location(of: w)?.screen }
     /// Windows the layout engine positions: not floating, not hidden, not fullscreen, not on
-    /// another Space.
+    /// another Space, and not a placeholder (#128) — a placeholder has no window to position.
     public func tiled(in ws: Workspace) -> [WindowRef] {
-        ws.windows.filter { !ws.floating.contains($0) && !hidden.contains($0) && !fullscreen.contains($0) && !offSpace.contains($0) }
+        ws.windows.filter { !$0.isPlaceholder && !ws.floating.contains($0) && !hidden.contains($0) && !fullscreen.contains($0) && !offSpace.contains($0) }
     }
-    /// Windows reachable by left/right navigation: not hidden.
-    public func visible(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !hidden.contains($0) } }
+    /// Windows focus can land on: not hidden, and not a placeholder (#128).
+    public func visible(in ws: Workspace) -> [WindowRef] { ws.windows.filter { !$0.isPlaceholder && !hidden.contains($0) } }
 
     /// #134 (M3c): the window `w` is attached to — its AX owner, when `w` is a floating child (a
     /// sheet, an attached dialog) in its owner's own row. Such a window is part of the owner's
@@ -52,6 +52,7 @@ extension World {
         return r
     }
     /// The row as the tab bar draws it and the keys walk it: every window but attached ones.
+    /// Placeholders (#128) are tabs and are included; the keys step over them, `focusTab` clicks them.
     public func tabs(in ws: Workspace) -> [WindowRef] {
         ws.windows.filter { w in !(parents[w].map { Self.isAttached(w, parent: $0, in: ws) } ?? false) }
     }
@@ -204,6 +205,7 @@ extension World {
     public mutating func remove(_ w: WindowRef) {
         let owner = self.owner(of: w)
         ephemeral.remove(w); ignored.remove(w); hidden.remove(w); fullscreen.remove(w); offSpace.remove(w); parents[w] = nil
+        placeholders[w] = nil   // #128: removing a placeholder forgets its slot
         parents = parents.filter { $0.value != w }
         if let loc = location(of: w) {
             var ws = screens[loc.screen]!.workspaces[loc.index]
@@ -322,7 +324,7 @@ extension World {
             s.activeIndex = kept.firstIndex { $0.id == activeId } ?? min(s.activeIndex, kept.count - 1)
             if let p = s.previous, !kept.contains(where: { $0.id == p }) { s.previous = nil }   // #106
             for i in kept.indices {
-                if let a = kept[i].anchor, !kept[i].windows.contains(a) { s.workspaces[i].anchor = nil }
+                if let a = kept[i].anchor, !kept[i].windows.contains(a) || a.isPlaceholder { s.workspaces[i].anchor = nil }
                 if s.workspaces[i].anchor == nil { s.workspaces[i].anchor = tiled(in: s.workspaces[i]).first }
             }
             screens[id] = s

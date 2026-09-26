@@ -1206,7 +1206,7 @@ extension Snapshot {
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
     case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x), .setFullscreen(let x, _), .unhide(let x): return x == r
-    case .warpPointer: return false
+    case .warpPointer, .launch: return false
     }
 }
 actor ChangeBox { var value: World?; func set(_ w: World) { value = w }

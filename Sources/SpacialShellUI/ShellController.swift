@@ -75,6 +75,7 @@ public final class ShellController: NSObject {
     public func update(world: World, snapshot: ShellSnapshot) {
         self.world = world
         titles = snapshot.titles
+        appMeta.note(placeholders: world.placeholders)   // #128: icons for apps that are not running
         WindowThumbnails.shared.retain(world.allWindowIDs)   // #90: a closed window's thumbnail goes with it
         ThumbnailRefresher.shared.update(world: world, railShown: config.showPanels && !world.zen)   // #142
         render()

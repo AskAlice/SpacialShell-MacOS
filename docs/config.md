@@ -184,8 +184,13 @@ refused with exit 1, unlike the config file, which keeps it.
 
 ## Where windows land at launch
 
-A window seen for the first time goes to the first of these that applies (#13, #74):
+A window seen for the first time goes to the first of these that applies (#13, #74, #128):
 
+0. **A placeholder's slot**, if its app has a placeholder tab waiting (#128): every window saved
+   in `state.json` comes back as a placeholder in its row, and a window of that app takes one —
+   the one with the same title, else the one you clicked to open it, else the first in rail
+   order. It lands exactly there: same row, same position, floating if it was. Dialogs and popups
+   never take a slot.
 1. **Its category's row**, for an app whose category (resolved as in
    [Why `app-categories` exists](#why-app-categories-exists)) is in `category-order`, on the
    display the window is on. All apps of that category share the row. App type beats memory
@@ -442,7 +447,10 @@ hand-editable, and pays for it in discoverability.
 
 Separately from config, `~/Library/Application Support/SpacialShell/state.json` holds the pinned
 workspace shells (name, symbol, layout, id, and any sizes you gave its layouts by resizing, #113)
-per screen, written debounced on every model change.
+per screen, and each row's tabs in order — every window's app (bundle id), its last title and
+whether it floats (#128) — so they come back as placeholder tabs after a relaunch. Titles are
+the only window content it holds, and it never leaves the machine. Written debounced on every
+model change. A `state.json` from before #128 has no tabs and loads as it always did.
 It is machine-owned — not meant for hand editing — and is not covered by this reference.
 `persist-state = false` turns it off (see the table above).
 

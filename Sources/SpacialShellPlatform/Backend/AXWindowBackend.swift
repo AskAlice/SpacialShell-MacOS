@@ -437,6 +437,26 @@ public final class AXWindowBackend: WindowBackend {
         await registry.get(ref.pid)?.unhide(ref.id) ?? .failure(.notFound)
     }
 
+    /// #128: a placeholder tab was clicked. `openApplication` launches the app, or activates it if
+    /// it is already running — which sends the reopen event, so an app with no windows opens one.
+    /// Either way the new window reaches the store as an ordinary snapshot, and matching puts it in
+    /// the placeholder's slot. `.notFound` when no installed app has the bundle id.
+    public nonisolated func launch(bundleID: String) async -> Result<Void, BackendError> {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            Self.log.notice("launch \(bundleID, privacy: .public): no app with that bundle id")
+            return .failure(.notFound)
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        do {
+            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: config)
+            return .success(())
+        } catch {
+            Self.log.notice("launch \(bundleID, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+            return .failure(.notFound)
+        }
+    }
+
     /// #107. A fresh null-source event reads the current pointer in global top-left coordinates —
     /// the same space as AX frames and `DisplayInfo`.
     public nonisolated func pointerLocation() async -> CGPoint? { CGEvent(source: nil)?.location }

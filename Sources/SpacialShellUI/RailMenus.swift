@@ -77,9 +77,15 @@ enum RailMenu {
     static func tab(_ tab: WindowTabItem, rail: [WorkspaceRailItem], metaFor: (Int32) -> AppMeta,
                     send: @escaping (Command) -> Void) -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false   // `isEnabled` below is the truth, not target/action validation
         let ref = tab.ref
+        // #128: a placeholder's menu opens its app first; "Close" forgets the slot. It has no
+        // window to float, so Float/Tile is shown but disabled — the menu keeps one shape.
+        if tab.isPlaceholder { menu.addItem(ActionMenuItem("Open") { send(.focusWindowRef(ref)) }) }
         menu.addItem(ActionMenuItem("Close") { send(.closeWindowRef(ref)) })
-        menu.addItem(ActionMenuItem(tab.isFloating ? "Tile" : "Float") { send(.toggleFloatRef(ref)) })
+        let float = ActionMenuItem(tab.isFloating ? "Tile" : "Float") { send(.toggleFloatRef(ref)) }
+        float.isEnabled = !tab.isPlaceholder
+        menu.addItem(float)
 
         let move = NSMenu()
         for item in rail where !item.isActive {

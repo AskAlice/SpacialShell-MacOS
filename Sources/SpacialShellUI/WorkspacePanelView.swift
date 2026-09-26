@@ -190,8 +190,17 @@ struct WorkspacePanelView: View {
                 RoundedRectangle(cornerRadius: 1).fill(Color.accentColor).frame(height: 2).padding(.horizontal, 6)
             }
         }
+        // #128: a placeholder is outlined, dashed, where a window's tab is filled — a slot waiting
+        // for its window, not a window put away (which is only dimmed).
+        .overlay {
+            if tab.isPlaceholder {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    .foregroundStyle(.tertiary)
+            }
+        }
         .foregroundStyle(tab.isFocused ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-        .opacity(tab.isHidden ? 0.45 : 1)
+        .opacity(tab.isHidden || tab.isPlaceholder ? 0.45 : 1)
         // `fit` leaves the tab at its content width, so one tab sits against the left edge
         // instead of stretching across the bar. `equal` lets every tab claim 1/n and centre.
         .frame(minWidth: minWidth(tab), maxWidth: sizing == .equal ? .infinity : nil)
@@ -208,7 +217,7 @@ struct WorkspacePanelView: View {
         }
         // #116: the whole title, however the tab truncates or hides it. The system tooltip keeps
         // its own delay; the rail's hover card (#6) is a separate surface and waits for nothing.
-        .help(titled ? "\(meta.name) — \(tab.title)" : meta.name)
+        .help((titled ? "\(meta.name) — \(tab.title)" : meta.name) + (tab.isPlaceholder ? " · Click to open" : ""))
         // Drag the tab to send its window somewhere: onto a rail row to move it to that
         // workspace, or onto another tab to land just before it — a reorder in its own row, a
         // move when that tab is in another row (#32).

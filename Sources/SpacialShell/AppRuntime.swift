@@ -513,11 +513,13 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             guard !Task.isCancelled else { return }
             let placements = await self?.store?.currentPlacements() ?? [:]
             let movedApps = await self?.store?.currentMovedApps() ?? []
+            let tables = await self?.store?.currentWindowTables() ?? (bundleIDs: [:], titles: [:])
             // #139: checked again here, on the main actor like `resetState`, so a reset or a switch
             // to off during the awaits above cannot be followed by one last write.
             guard !Task.isCancelled, self?.persistence.writes == true else { return }
             do {
-                try PersistedState(world: world, placements: placements, movedApps: movedApps).save(to: Paths.stateFile)
+                try PersistedState(world: world, placements: placements, movedApps: movedApps,
+                                   bundleIDs: tables.bundleIDs, titles: tables.titles).save(to: Paths.stateFile)
             } catch {
                 self?.log.error("state save failed: \(String(describing: error), privacy: .public)")
             }
@@ -692,12 +694,14 @@ final class TerminationGate: @unchecked Sendable {
 
     private func saveFinalState(_ e: TerminationExport) {
         do {
-            var state = PersistedState(world: e.world, placements: e.placements, movedApps: e.movedApps)
+            var state = PersistedState(world: e.world, placements: e.placements, movedApps: e.movedApps,
+                                       bundleIDs: e.bundleIDs, titles: e.titles)
             // The fallback export (store timed out) carries no placement memory; the debounced
             // save left a good one on disk moments ago, so keep that rather than forget where
-            // every app lived.
+            // every app lived — and, with no app per window, the rows' tabs too (#128).
             if state.placements.isEmpty, let saved = (try? PersistedState.load(from: Paths.stateFile)) ?? nil {
                 state.placements = saved.placements; state.movedApps = saved.movedApps
+                if e.bundleIDs.isEmpty { state.keepWindows(from: saved) }
             }
             try state.save(to: Paths.stateFile)
         } catch {
@@ -722,8 +726,9 @@ final class TerminationGate: @unchecked Sendable {
             Self.log.error("no fallback world or no displays; windows are left where they are")
             return nil
         }
-        let placed = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) })
-        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed, placements: [:], movedApps: [])
+        let placed = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }.filter { !$0.isPlaceholder })
+        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed, placements: [:], movedApps: [],
+                bundleIDs: [:], titles: [:])
     }
 
     /// `DisplayTopology.current()` is `@MainActor`. On the main thread we are already there; from
@@ -775,7 +780,8 @@ final class TerminationGate: @unchecked Sendable {
 /// What `WorldStore.exportForTermination()` hands back.
 private typealias TerminationExport = (
     world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect],
-    parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>
+    parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>,
+    bundleIDs: [WindowRef: String], titles: [WindowRef: String]
 )
 
 /// A one-shot handoff out of a `Task` into a semaphore-blocked thread.

@@ -143,6 +143,7 @@ deliberately). Binding assignments from the spec:
 | Wants attention (#126) | not a symbol: `AttentionDot`, a 7 pt `systemRed` circle ringed in the window background — top-right of a rail tile (opposite the count), on a tab icon's corner, or beside the title when the tab has no icon |
 | Native-fullscreen tab | `arrow.up.left.and.arrow.down.right` |
 | On-another-Space tab | `macwindow.on.rectangle` (not drawn on hidden tabs, which read as dimmed, nor on fullscreen ones, whose marker already says "own Space") |
+| Placeholder tab (#128) | no glyph: the app icon and saved title, dimmed like a hidden tab, inside a 1 pt dashed (3/2) outline at the tab's radius in `.tertiary` — outlined where a window's tab is filled |
 
 Window tabs and overview cells use real app icons via `AppMetaCache`
 (`NSRunningApplication(processIdentifier:).icon`), cached per pid. Exporting icons from Figma is

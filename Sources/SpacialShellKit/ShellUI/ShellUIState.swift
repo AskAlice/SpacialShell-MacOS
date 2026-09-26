@@ -55,11 +55,15 @@ public struct WindowTabItem: Identifiable, Equatable, Sendable {
     /// #126 (G35): this window's app is asking for attention. The Dock speaks per app, so every
     /// window of it is marked.
     public let wantsAttention: Bool
+    /// #128: a saved window whose app has not brought it back — drawn dimmed with a dashed outline,
+    /// app icon and the saved title; a click opens the app, closing forgets it. `ref.pid` is the
+    /// placeholder pid (`WindowRef.placeholderPid`), which `AppMetaCache` resolves by bundle id.
+    public let isPlaceholder: Bool
     public init(ref: WindowRef, isFocused: Bool, isFloating: Bool, isHidden: Bool, isFullscreen: Bool = false,
-                isOffSpace: Bool = false, title: String = "", wantsAttention: Bool = false) {
+                isOffSpace: Bool = false, title: String = "", wantsAttention: Bool = false, isPlaceholder: Bool = false) {
         self.ref = ref; self.isFocused = isFocused; self.isFloating = isFloating; self.isHidden = isHidden
         self.isFullscreen = isFullscreen; self.isOffSpace = isOffSpace; self.title = title
-        self.wantsAttention = wantsAttention
+        self.wantsAttention = wantsAttention; self.isPlaceholder = isPlaceholder
     }
 }
 
@@ -156,7 +160,10 @@ public struct ScreenShellState: Equatable, Sendable {
 
     /// Scrolling the tab bar: the tab beside the focused one, hidden tabs included (#71). With no
     /// focused tab on this bar, forward starts at the first tab and back at the last.
+    /// Placeholder tabs (#128) are stepped over, as Fn+A/D steps over them: a scroll must not
+    /// launch apps on its way past.
     public func tabScroll(_ step: Int) -> Command? {
+        let tabs = tabs.filter { !$0.isPlaceholder }
         guard !tabs.isEmpty, step != 0 else { return nil }
         let n = tabs.count
         let j = tabs.firstIndex(where: \.isFocused).map { (($0 + step) % n + n) % n } ?? (step > 0 ? 0 : n - 1)
@@ -211,8 +218,9 @@ public enum ShellUI {
                 isHidden: world.hidden.contains(w),
                 isFullscreen: world.fullscreen.contains(w),
                 isOffSpace: world.offSpace.contains(w),
-                title: titles[w] ?? "",
-                wantsAttention: attention.contains(w.pid))
+                title: world.placeholders[w]?.title ?? titles[w] ?? "",
+                wantsAttention: attention.contains(w.pid),
+                isPlaceholder: world.placeholders[w] != nil)
         }
         return ScreenShellState(
             display: display,

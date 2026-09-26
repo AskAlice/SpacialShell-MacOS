@@ -195,11 +195,14 @@ public actor WorldStore {
     /// `parked` is what the restore actually acts on. §7.4 is about not stranding windows in a
     /// parking corner, and only parked windows are in one — a tiled window is already somewhere
     /// the user can reach, and centring it on the way out just scrambles their screen.
-    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>) {
-        (world, displays, observed, stranded, parked, placements, movedApps)
+    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>, bundleIDs: [WindowRef: String], titles: [WindowRef: String]) {
+        (world, displays, observed, stranded, parked, placements, movedApps, bundleIDs, titles)
     }
     /// The placement memory to persist — see `PersistedState.placements`.
     public func currentPlacements() -> [String: UUID] { placements }
+    /// #128: each live window's app and title — what `PersistedState` saves of a window so it can
+    /// come back as a placeholder in its slot.
+    public func currentWindowTables() -> (bundleIDs: [WindowRef: String], titles: [WindowRef: String]) { (bundleIDs, titles) }
     /// See `PersistedState.movedApps`.
     public func currentMovedApps() -> Set<String> { movedApps }
     /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
@@ -299,6 +302,9 @@ public actor WorldStore {
             // #48: the model already calls it visible, so make that true before the reconciler
             // places it — otherwise the frame lands on a window macOS still has put away.
             case .unhide(let r): _ = await backend.unhide(r)
+            case .launch(let bundle):
+                Self.log.notice("launch \(bundle, privacy: .public) for a placeholder")
+                _ = await backend.launch(bundleID: bundle)
             case .focus, .relayout: break
             }
         }
@@ -446,6 +452,7 @@ public actor WorldStore {
         let crowds = crowdedApps(s)
         let systemCategories = Dictionary(s.apps.map { ($0.pid, $0.systemCategory) }, uniquingKeysWith: { a, _ in a })
         appNames = Dictionary(s.apps.compactMap { a in a.name.map { (a.pid, $0) } }, uniquingKeysWith: { a, _ in a })
+        let fills = placeholderFills(s)
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
@@ -463,7 +470,16 @@ public actor WorldStore {
                 revive(w.ref, frame: w.frame, reason: "changed")
             }
             let known = world.location(of: w.ref) != nil || world.ephemeral.contains(w.ref) || world.ignored.contains(w.ref)
-            if !known {
+            if !known, let p = fills[w.ref], let loc = world.location(of: p) {
+                // #128: it is the window a placeholder was waiting for — it takes that slot, ahead
+                // of every rung of the ladder below. Its row becomes the app's placement, as any
+                // landing does.
+                let kind = config.kindOverride(bundleID: w.bundleID, title: w.title, standard: w.isStandard) ?? w.kind
+                if let b = w.bundleID { placements[b] = world.screens[loc.screen]!.workspaces[loc.index].id }
+                world.fill(p, with: w.ref, kind: kind)
+                adopted += 1
+                Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) into placeholder \(p.id, privacy: .public)")
+            } else if !known {
                 let kind = config.kindOverride(bundleID: w.bundleID, title: w.title, standard: w.isStandard) ?? w.kind
                 // #13's ladder, with #74's category routing: its category's row on the display it
                 // is on (app type beats memory), else the app's remembered workspace if it still
@@ -502,7 +518,10 @@ public actor WorldStore {
             world.setOnActiveSpace(w.ref, w.onActiveSpace)
         }
         if !s.loginwindowFrontmost {
-            let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }).union(world.ephemeral).union(world.ignored)
+            // #128: placeholders are never in a snapshot — they have no window — so they are not
+            // candidates for vanishing; only closing one (or a match) removes it.
+            let all = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) }.filter { !$0.isPlaceholder })
+                .union(world.ephemeral).union(world.ignored)
             for gone in all.subtracting(present) {
                 vanished += 1
                 Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
@@ -527,6 +546,20 @@ public actor WorldStore {
         }
         applyNativeFocus(s.focused)
         return (adopted, vanished)
+    }
+
+    /// #128: which placeholder each window this snapshot shows for the first time fills. Only a
+    /// window `adopt` would file on its own is a candidate — tileable, no parent, with a bundle id:
+    /// a dialog belongs with its owner and a popup in no row, so neither may take a slot.
+    private func placeholderFills(_ s: Snapshot) -> [WindowRef: WindowRef] {
+        guard !world.placeholders.isEmpty else { return [:] }
+        let arrivals: [PlaceholderMatch.Arrival] = s.windows.compactMap { w in
+            guard let b = w.bundleID, w.parent == nil, world.location(of: w.ref) == nil,
+                  !world.ephemeral.contains(w.ref), !world.ignored.contains(w.ref) else { return nil }
+            let kind = config.kindOverride(bundleID: b, title: w.title, standard: w.isStandard) ?? w.kind
+            return kind == .tile || kind == .float ? PlaceholderMatch.Arrival(ref: w.ref, bundleID: b, title: w.title) : nil
+        }
+        return PlaceholderMatch.match(arrivals, in: world)
     }
 
     /// #13 rung 2: bundle id → display, for each app making its first appearance at launch with

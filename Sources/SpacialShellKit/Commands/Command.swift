@@ -49,9 +49,9 @@ public enum Command: Sendable, Hashable {
     // verbs above are relative to the focused screen; a panel click or IPC call names its target
     // outright — the rail on a second screen must work without moving focus there first.
     case focusWorkspaceID(UUID)            // rail click; workspace by id, wherever it lives
-    case focusWindowRef(WindowRef)         // tab click / overview selection
+    case focusWindowRef(WindowRef)         // tab click / overview selection; on a placeholder, launches its app (#128)
     case setWorkspaceLayout(UUID, LayoutID)  // layout switcher; targets that workspace directly
-    case closeWindowRef(WindowRef)         // tab close button, tab menu, middle-click (#127)
+    case closeWindowRef(WindowRef)         // tab close button, tab menu, middle-click (#127); a placeholder is forgotten (#128)
     /// #127: the tab menu's Float/Tile — `toggleFloat` for a named window, focused or not. Focus
     /// and the active rows stay put.
     case toggleFloatRef(WindowRef)
@@ -157,5 +157,8 @@ public enum Effect: Sendable, Equatable {
     /// minimized or app-hidden one is brought back rather than ignored. The backend clears
     /// `AXMinimized` and unhides the app; the reconciler then places it by its row's layout.
     case unhide(WindowRef)
+    /// #128: a placeholder tab was clicked — open its app (by bundle id). The window it opens fills
+    /// the placeholder when it appears (`PlaceholderMatch`); nothing else waits for it.
+    case launch(String)
     case relayout
 }

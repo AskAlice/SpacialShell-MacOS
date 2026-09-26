@@ -43,16 +43,20 @@ public struct ShellSnapshot: Codable, Sendable, Equatable {
         public var isVisibleUnderLayout: Bool
         public var isFloating: Bool
         public var isHidden: Bool
+        /// #128: a placeholder tab — a saved window whose app has not brought it back yet. Its
+        /// `pid` is negative and belongs to no process; `bundleID` and `title` are the saved ones.
+        /// Absent (nil) on every real window, so the row's JSON is unchanged for them.
+        public var isPlaceholder: Bool?
 
         public init(
             window: WindowRef, pid: Int32, workspaceId: UUID?, title: String, appName: String,
             bundleID: String?, isFocused: Bool, isVisibleUnderLayout: Bool, isFloating: Bool,
-            isHidden: Bool
+            isHidden: Bool, isPlaceholder: Bool? = nil
         ) {
             self.window = window; self.pid = pid; self.workspaceId = workspaceId
             self.title = title; self.appName = appName; self.bundleID = bundleID
             self.isFocused = isFocused; self.isVisibleUnderLayout = isVisibleUnderLayout
-            self.isFloating = isFloating; self.isHidden = isHidden
+            self.isFloating = isFloating; self.isHidden = isHidden; self.isPlaceholder = isPlaceholder
         }
     }
 

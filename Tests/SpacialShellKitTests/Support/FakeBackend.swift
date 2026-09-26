@@ -3,7 +3,7 @@ import Foundation
 
 /// In-memory backend: records writes, lets tests push events, applies writes to its own frames.
 actor FakeBackend: WindowBackend {
-    enum Call: Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint), raise(WindowRef), close(WindowRef), setFullscreen(WindowRef, Bool), unhide(WindowRef), warpPointer(CGPoint) }
+    enum Call: Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint), raise(WindowRef), close(WindowRef), setFullscreen(WindowRef, Bool), unhide(WindowRef), warpPointer(CGPoint), launch(String) }
     var calls: [Call] = []
     var frames: [WindowRef: CGRect] = [:]
     var snapshot: Snapshot
@@ -56,6 +56,7 @@ actor FakeBackend: WindowBackend {
 
     /// #107: where the pointer is; a warp moves it. nil = unknown, as a backend that cannot read it.
     var pointer: CGPoint?
+    func launch(bundleID: String) -> Result<Void, BackendError> { calls.append(.launch(bundleID)); return .success(()) }
     func pointerLocation() -> CGPoint? { pointer }
     func warpPointer(to p: CGPoint) { calls.append(.warpPointer(p)); pointer = p }
     func setPointer(_ p: CGPoint?) { pointer = p }

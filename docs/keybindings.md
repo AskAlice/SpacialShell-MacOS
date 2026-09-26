@@ -70,7 +70,8 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Arrow aliases: focus / move | `⌃⌥←→↑↓` / `⌃⌥⇧←→↑↓` | same | — |
 
 † "Left/right" walks every *visible* window of the active workspace, floating ones included, and
-wraps at the ends; minimized / hidden windows are skipped and ephemeral "visitor" windows (System
+wraps at the ends; minimized / hidden windows are skipped, and so are placeholder tabs (#128 —
+saved windows whose app has not brought them back), and ephemeral "visitor" windows (System
 Settings, Calculator by default) are in no row at all. Under the *maximize* layout this behaves
 exactly like switching tabs — the newly focused window fills the screen and the previous one is
 parked. Under *split* (#114) a view of N consecutive windows is shown (2 by default); moving
@@ -97,7 +98,16 @@ Semantics worth knowing:
   wrap). The `[`/`]` aliases still step through the displays in left-to-right order, wrapping.
 - `Fn+⌥N` focuses the Nth tab of the active workspace as the tab bar draws it, minimized tabs
   included (landing on one brings it back, like clicking it). N past the last tab focuses the last;
-  `Fn+⌥0` focuses the first. On an empty workspace it does nothing.
+  `Fn+⌥0` focuses the first. On an empty workspace it does nothing. On a placeholder tab (#128) it
+  does what a click does: opens the app, whose window then takes that tab's place.
+- **Placeholder tabs** (#128): after a relaunch every window you had comes back as a tab in its
+  place — dimmed, with a dashed outline, the app's icon and the window's last title — until its
+  app opens a window again, which takes that exact slot (same row, same position, floating if it
+  was). Clicking one (or choosing Open from its right-click menu) opens the app; closing one
+  (middle-click, or Close in the menu) forgets the slot. Placeholders take no tile and are never
+  focused, so they never hide a live window; they drag between tabs and onto rail rows like any
+  tab. Matching goes by the app's bundle id, then the same title, then the tab you clicked, then
+  the order the tabs were in.
 - Move window left/right at the end of the row (or as the only tab) carries the window to the
   neighbouring screen in that direction, landing at the near end of its active row (moving right
   lands leftmost, moving left lands rightmost), keeping its floating flag; focus follows. On the

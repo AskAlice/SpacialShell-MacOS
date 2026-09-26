@@ -67,11 +67,12 @@ public struct ThumbnailRefresh: Sendable {
     /// in every workspace row. Parked windows (an inactive workspace's, in a corner sliver) are
     /// included — the window server still lists them on screen, and `desktopIndependentWindow`
     /// captures their full content. Minimized, app-hidden, off-Space and fullscreen windows are
-    /// not: none is in the on-screen listing a capture resolves through.
+    /// not: none is in the on-screen listing a capture resolves through. Nor is a placeholder
+    /// (#128), which has no window at all.
     public static func candidates(in world: World) -> [WindowRef] {
         let skip = world.hidden.union(world.offSpace).union(world.fullscreen)
         return world.screens.keys.sorted().flatMap { display in
-            world.screens[display]!.workspaces.flatMap(\.windows).filter { !skip.contains($0) }
+            world.screens[display]!.workspaces.flatMap(\.windows).filter { !skip.contains($0) && !$0.isPlaceholder }
         }
     }
 }

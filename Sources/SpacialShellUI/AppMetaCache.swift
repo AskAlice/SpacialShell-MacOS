@@ -1,5 +1,6 @@
 import AppKit
 import SpacialShellKit
+import SpacialShellProtocol
 
 /// What the shell draws for an app that the model cannot know: resolved from a window's pid.
 struct AppMeta {
@@ -29,8 +30,22 @@ public final class AppMetaCache {
         cache.removeAll()
     }
 
+    /// #128: placeholder pid → bundle id. A placeholder has no process to ask, so its icon and
+    /// name come from the installed app with that bundle id instead.
+    private var placeholderBundles: [Int32: String] = [:]
+
+    /// #128: the placeholders the world holds now. A placeholder pid is derived from its bundle id,
+    /// so an entry never changes meaning; new ones are simply added.
+    public func note(placeholders: [SpacialShellProtocol.WindowRef: Placeholder]) {
+        for (ref, p) in placeholders where placeholderBundles[ref.pid] != p.bundleID {
+            placeholderBundles[ref.pid] = p.bundleID
+            cache[ref.pid] = nil
+        }
+    }
+
     func meta(for pid: Int32) -> AppMeta {
         if let m = cache[pid] { return m }
+        if pid < 0 { return placeholderMeta(pid) }
         let app = NSRunningApplication(processIdentifier: pid)
         let bundleID = app?.bundleIdentifier
         let m = AppMeta(
@@ -41,6 +56,25 @@ public final class AppMetaCache {
                                              systemCategory: Self.systemCategory(of: app),
                                              overrides: overrides))
         cache[pid] = m
+        return m
+    }
+
+    /// #128: an app that is not running, by bundle id: the installed app's name and icon, or —
+    /// uninstalled since it was saved — the bundle id's last component and no icon.
+    private func placeholderMeta(_ pid: Int32) -> AppMeta {
+        let bundleID = placeholderBundles[pid]
+        let url = bundleID.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
+        let bundle = url.flatMap(Bundle.init(url:))
+        let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? url?.deletingPathExtension().lastPathComponent
+            ?? bundleID?.split(separator: ".").last.map(String.init) ?? "App"
+        let m = AppMeta(name: name, icon: url.map { NSWorkspace.shared.icon(forFile: $0.path) }, bundleID: bundleID,
+                        category: AppCategories.category(
+                            bundleID: bundleID,
+                            systemCategory: bundle?.object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String,
+                            overrides: overrides))
+        if bundleID != nil { cache[pid] = m }
         return m
     }
 

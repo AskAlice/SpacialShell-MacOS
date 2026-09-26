@@ -1,6 +1,18 @@
 import Foundation
 
 public struct PersistedState: Codable, Equatable, Sendable {
+    /// #128: one tab of a row, as it survives a relaunch — the app and the window's last title,
+    /// which is all that outlives the process (a `WindowRef` does not). Restored as a placeholder
+    /// in its slot until a live window of the app takes it (`PlaceholderMatch`).
+    public struct SavedWindow: Codable, Equatable, Sendable {
+        public var bundleID: String
+        public var title: String
+        /// Written only when true, like every optional here.
+        public var floating: Bool?
+        public init(bundleID: String, title: String, floating: Bool? = nil) {
+            self.bundleID = bundleID; self.title = title; self.floating = floating
+        }
+    }
     public struct WorkspaceState: Codable, Equatable, Sendable {
         public var id: UUID; public var name: String; public var symbol: String; public var layout: LayoutID; public var pinned: Bool
         /// #74's row marker. Optional, so a state file from before it decodes as nil.
@@ -10,6 +22,9 @@ public struct PersistedState: Codable, Equatable, Sendable {
         public var portions: [String: Portions]?
         /// #114: split's column count; nil (not written) at the default, so older files decode.
         public var splitColumns: Int?
+        /// #128: the row's tabs, in order — live windows and placeholders alike. Nil (not written)
+        /// for a row with none, so older files decode and a file with no windows is unchanged.
+        public var windows: [SavedWindow]?
     }
     public struct ScreenState: Codable, Equatable, Sendable {
         public var workspaces: [WorkspaceState]; public var activeIndex: Int
@@ -34,11 +49,23 @@ public struct PersistedState: Codable, Equatable, Sendable {
     /// routing for them. `decodeIfPresent ?? []`, like `placements`.
     public var movedApps: Set<String> = []
 
-    public init(world: World, placements: [String: UUID] = [:], movedApps: Set<String> = []) {
+    /// `bundleIDs` and `titles` are the store's side tables (#128): a live window is saved only
+    /// if its app is known; a placeholder carries its own.
+    public init(world: World, placements: [String: UUID] = [:], movedApps: Set<String> = [],
+                bundleIDs: [WindowRef: String] = [:], titles: [WindowRef: String] = [:]) {
+        func saved(_ ws: Workspace) -> [SavedWindow]? {
+            let rows = ws.windows.compactMap { w -> SavedWindow? in
+                let floating: Bool? = ws.floating.contains(w) ? true : nil
+                if let p = world.placeholders[w] { return SavedWindow(bundleID: p.bundleID, title: p.title, floating: floating) }
+                return bundleIDs[w].map { SavedWindow(bundleID: $0, title: titles[w] ?? "", floating: floating) }
+            }
+            return rows.isEmpty ? nil : rows
+        }
         screens = world.screens.mapValues { s in
             ScreenState(workspaces: s.workspaces.map { WorkspaceState(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: $0.pinned, category: $0.category,
                                                           portions: $0.portions.isEmpty ? nil : $0.portions,
-                                                          splitColumns: $0.splitColumns == SplitView.defaultColumns ? nil : $0.splitColumns) },
+                                                          splitColumns: $0.splitColumns == SplitView.defaultColumns ? nil : $0.splitColumns,
+                                                          windows: saved($0)) },
                         activeIndex: s.activeIndex)
         }
         zen = world.zen
@@ -91,12 +118,19 @@ public struct PersistedState: Codable, Equatable, Sendable {
     ///
     /// `order` is `Config.categoryOrder`: category rows go back to the top in that order (#74,
     /// `World.sortCategoryRows`), undoing any drag of one last session.
+    ///
+    /// #128: every saved tab comes back as a placeholder in its slot, so a row that held windows
+    /// is kept even when no placement names it — its placeholders hold it open, and `reserved` is
+    /// moot. A live window that turns up takes its slot (`PlaceholderMatch`); one that never does
+    /// stays a placeholder until the user closes it.
     public func restore(into world: World, main: DisplayID? = nil, order: [AppCategory] = []) -> World {
         var w = world
         w.zen = zen
         let wanted = Set(placements.values)
+        let slots = Dictionary(screens.values.flatMap(\.workspaces).compactMap { ws in ws.windows.map { (ws.id, $0) } },
+                               uniquingKeysWith: { a, _ in a })
         func kept(_ ss: ScreenState) -> [Workspace] {
-            ss.workspaces.filter { $0.pinned || wanted.contains($0.id) }.map {
+            ss.workspaces.filter { $0.pinned || wanted.contains($0.id) || slots[$0.id] != nil }.map {
                 Workspace(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout,
                           pinned: $0.pinned, reserved: wanted.contains($0.id), category: $0.category,
                           portions: $0.portions ?? [:], splitColumns: $0.splitColumns ?? SplitView.defaultColumns)
@@ -115,16 +149,31 @@ public struct PersistedState: Codable, Equatable, Sendable {
         let gone = screens.keys.filter { w.screens[$0] == nil }.sorted()
         if let m = main.flatMap({ w.screens[$0] == nil ? nil : $0 }) ?? w.screenOrder.first, var s = w.screens[m], !gone.isEmpty {
             let names = Set(s.workspaces.filter(\.pinned).map(\.name))
-            let moved = gone.flatMap { kept(screens[$0]!) }.filter { wanted.contains($0.id) || !names.contains($0.name) }
+            let moved = gone.flatMap { kept(screens[$0]!) }.filter { wanted.contains($0.id) || slots[$0.id] != nil || !names.contains($0.name) }
             let trailing = s.workspaces.last.map { $0.isEmpty && !$0.pinned && !$0.reserved } ?? false
             let at = trailing ? s.workspaces.count - 1 : s.workspaces.count
             s.workspaces.insert(contentsOf: moved, at: at)
             if s.activeIndex >= at { s.activeIndex += moved.count }
             w.screens[m] = s
         }
+        for (id, saved) in slots {
+            for s in saved { w.addPlaceholder(Placeholder(bundleID: s.bundleID, title: s.title), floating: s.floating == true, to: id) }
+        }
         w.sortCategoryRows(order)
         w.normalize()
         return w
+    }
+
+    /// The degraded termination path (#128): a world exported without the store's side tables
+    /// cannot name its live windows' apps, so each row keeps the tabs the last good save gave it
+    /// rather than coming back without them.
+    public mutating func keepWindows(from saved: PersistedState) {
+        let before = Dictionary(saved.screens.values.flatMap(\.workspaces).map { ($0.id, $0.windows) }, uniquingKeysWith: { a, _ in a })
+        for (d, ss) in screens {
+            for i in ss.workspaces.indices where ss.workspaces[i].windows == nil {
+                screens[d]!.workspaces[i].windows = before[ss.workspaces[i].id] ?? nil
+            }
+        }
     }
 
     public static func load(from url: URL) throws -> PersistedState? {

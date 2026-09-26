@@ -52,7 +52,7 @@ public enum Reconciler {
     /// for a taller title bar.
     static let titleBarClampTolerance: CGFloat = 40
 
-    /// Spec §5, §7.4, §8. Ignored windows are absent from the result.
+    /// Spec §5, §7.4, §8. Ignored windows and placeholders (#128) are absent from the result.
     public static func desired(world: World, displays: [DisplayInfo], config: LayoutConfig,
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
                                parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
@@ -76,6 +76,8 @@ public enum Reconciler {
                 let focusedIndex = ws.anchor.flatMap { tiled.firstIndex(of: $0) } ?? 0
                 let frames = active ? LayoutEngine.frames(config.layouts.resolve(ws.layout).def, count: tiled.count, focused: focusedIndex, in: rect, gap: config.gap, portions: ws.portions, split: ws.split(in: tiled)) : []
                 for w in ws.windows {
+                    // #128: a placeholder has no window — nothing to frame, park or leave alone.
+                    if w.isPlaceholder { continue }
                     if suspended.contains(w) { out[w] = .untouched; continue }
                     // macOS owns a fullscreen window's frame and Space: never frame it, never park it.
                     // Same for one on another Space (#55) — a write there lands where nobody can see.

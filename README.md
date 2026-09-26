@@ -103,7 +103,8 @@ drawn from the model, with the camera sliding between rows as you move.
   and `category-order` gives each category its own row, so a new browser window lands with the
   other browsers.
 - **Placement memory.** Windows go back to their workspace and display across restarts (displays
-  matched by UUID), and nothing is ever left invisible: every window the shell lists is one click
+  matched by UUID) — into their own tab slot: a window whose app has not reopened it waits as a
+  placeholder tab that opens the app when clicked — and nothing is ever left invisible: every window the shell lists is one click
   away, and parked windows are recovered after a crash.
 
 ## Interface and layouts

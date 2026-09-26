@@ -51,6 +51,7 @@ struct MenuPreview: View {
                         }
                     }
                     .padding(.horizontal, 8).frame(height: 22)
+                    .opacity(item.isEnabled ? 1 : 0.4)
                 }
             }
         }
@@ -74,6 +75,8 @@ enum Stories {
     }
 
     static let meta: (Int32) -> AppMeta = { pid in
+        // #128: a placeholder's pid is negative; the stories use -n for app n.
+        let pid = abs(pid)
         let names: [Int32: String] = [
             1: "Safari", 2: "Notes", 3: "Terminal", 4: "Mail",
             5: "A Very Long Application Name That Must Truncate", 6: "X",
@@ -177,6 +180,11 @@ enum Stories {
                       v: "SpatialView.swift — spacial-shell", t1: "~/code/spacial-shell — zsh", t2: "~/Downloads — zsh",
                       chat: "#general", n1: "Shopping list", n2: "Ideas"]
         return SpatialView.state(for: d, in: world, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
+    }
+    /// #128: a placeholder tab for app `pid` — a negative pid, as `WindowRef.placeholderPid` gives.
+    static func placeholder(_ pid: Int32, window: Int = 0, title: String = "") -> WindowTabItem {
+        WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: -pid),
+                      isFocused: false, isFloating: false, isHidden: false, title: title, isPlaceholder: true)
     }
 
     static let railGeometry = CGSize(width: 48, height: 800)
@@ -428,6 +436,16 @@ enum Stories {
         add("bar-fullscreen", barGeometry, WorkspacePanelView(
             state: tabs([tab(3, focused: true), tab(1, fullscreen: true), tab(4)]),
             metaFor: meta, sizing: .fit, send: send))
+        // #128: placeholders — saved windows whose apps have not brought them back — among live
+        // tabs: dashed and dimmed, with the saved title or (none saved) the app's name. Beside a
+        // minimized tab, the state it must not be mistaken for.
+        add("bar-placeholders", barGeometry, WorkspacePanelView(
+            state: tabs([tab(1, focused: true, title: "Pull requests · AskAlice/SpacialShell-MacOS"),
+                         placeholder(3, title: "~/code/spacial-shell — zsh"),
+                         tab(2, hidden: true, title: "Groceries"),
+                         placeholder(4, title: "Re: Quarterly planning"),
+                         placeholder(6)]),
+            metaFor: meta, sizing: .fit, send: send))
         // #55: on another Space, beside the two states it must not be mistaken for.
         add("bar-off-space", barGeometry, WorkspacePanelView(
             state: tabs([tab(3, focused: true), tab(1, offSpace: true), tab(2, hidden: true), tab(4, fullscreen: true)]),
@@ -487,6 +505,11 @@ enum Stories {
         ], metaFor: meta, send: send)
         add("tab-menu", nil, MenuPreview(menu: tabMenu))
         add("tab-menu-move", nil, MenuPreview(menu: tabMenu.items[3].submenu!))
+        // #128: a placeholder's menu leads with Open; it has no window to float.
+        add("tab-menu-placeholder", nil, MenuPreview(menu: RailMenu.tab(placeholder(3, title: "~/code — zsh"), rail: [
+            railItem(0, name: "Workspace", symbol: "globe", count: 2, active: true),
+            railItem(1, name: "Workspace", symbol: "plus", count: 0, trailing: true),
+        ], metaFor: meta, send: send)))
         // The editor, at the walkthrough's step 6; an existing drawn layout (Delete); a built-in
         // (read-only, Duplicate to edit).
         add("layout-editor", LayoutEditorView.size, LayoutEditorView(mode: .edit(codeThree)))

@@ -13,10 +13,12 @@ extension ShellSnapshot {
         let byID = Dictionary(displays.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let insets = ShellInsets(config: config, hidden: world.zen)
         func row(_ w: WindowRef, workspace: UUID?, visible: Bool, floating: Bool) -> WindowRow {
-            WindowRow(window: w, pid: w.pid, workspaceId: workspace, title: titles[w] ?? "",
-                      appName: appNames[w.pid] ?? "", bundleID: bundleIDs[w],
-                      isFocused: world.focus.window == w, isVisibleUnderLayout: visible,
-                      isFloating: floating, isHidden: world.hidden.contains(w))
+            let p = world.placeholders[w]   // #128: a placeholder carries its own app and title
+            return WindowRow(window: w, pid: w.pid, workspaceId: workspace, title: p?.title ?? titles[w] ?? "",
+                             appName: appNames[w.pid] ?? "", bundleID: p?.bundleID ?? bundleIDs[w],
+                             isFocused: world.focus.window == w, isVisibleUnderLayout: visible,
+                             isFloating: floating, isHidden: world.hidden.contains(w),
+                             isPlaceholder: p == nil ? nil : true)
         }
         // A visitor has no workspace: it is listed on its owner's screen, else the focused one.
         let owners = Dictionary(world.screenOrder.flatMap { d in

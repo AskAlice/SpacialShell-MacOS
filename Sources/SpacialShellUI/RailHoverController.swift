@@ -55,9 +55,12 @@ final class RailHoverController {
 
         let apps = distinctApps(item, metaFor: metaFor)
         let thumbs = WindowThumbnails.shared
+        // #128: a placeholder has no window to picture — and its id is its own, so a thumbnail
+        // cached under the same number belongs to some real window. It shows its app's icon.
         let items = item.windows.map { ref in
             let meta = metaFor(ref.pid)
-            return WindowPreviewItem(ref: ref, name: meta.name, icon: meta.icon, image: thumbs.image(for: ref.id))
+            return WindowPreviewItem(ref: ref, name: meta.name, icon: meta.icon,
+                                     image: ref.isPlaceholder ? nil : thumbs.image(for: ref.id))
         }
         let card = content(for: item, items: items)
         render(title: title(item), subtitle: subtitle(item, apps: apps), content: card)
@@ -65,7 +68,7 @@ final class RailHoverController {
         window.orderFrontRegardless()
 
         guard case .previews = card else { return }
-        let stale = items.prefix(RailHoverCard.maxPreviews).map(\.ref).filter { thumbs.isStale($0.id) }
+        let stale = items.prefix(RailHoverCard.maxPreviews).map(\.ref).filter { !$0.isPlaceholder && thumbs.isStale($0.id) }
         guard !stale.isEmpty else { return }
         captureTask = Task { [weak self] in
             try? await Task.sleep(for: Self.hoverDelay)
@@ -76,7 +79,7 @@ final class RailHoverController {
             await thumbs.add(Array(images), taken: taken)
             guard !Task.isCancelled, let self, self.shown == item.id else { return }
             var filled = items
-            for i in filled.indices { filled[i].image = thumbs.image(for: filled[i].ref.id) }
+            for i in filled.indices where !filled[i].ref.isPlaceholder { filled[i].image = thumbs.image(for: filled[i].ref.id) }
             self.render(title: self.title(item), subtitle: self.subtitle(item, apps: apps),
                         content: .previews(filled))
         }

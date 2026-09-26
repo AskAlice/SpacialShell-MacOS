@@ -25,6 +25,16 @@ extension World {
             }
         }
         for w in ephemeral where ignored.contains(w) { v.append("\(w) both ephemeral and ignored") }
+        // #128: a placeholder is a tab and nothing else — placed, and never anything a window is.
+        for (p, _) in placeholders {
+            if !p.isPlaceholder { v.append("\(p) is a placeholder with a window's pid") }
+            if seen[p] == nil { v.append("placeholder \(p) not placed") }
+            if hidden.contains(p) || fullscreen.contains(p) || offSpace.contains(p) || ephemeral.contains(p) || ignored.contains(p) {
+                v.append("placeholder \(p) carries window state")
+            }
+        }
+        for (w, at) in seen where w.isPlaceholder && placeholders[w] == nil { v.append("\(w) in \(at) is a placeholder ref with no placeholder") }
+        for s in screens.values { for ws in s.workspaces where ws.anchor?.isPlaceholder == true { v.append("placeholder \(ws.anchor!) is an anchor") } }
         for w in hidden where seen[w] == nil { v.append("\(w) hidden but not placed") }
         for w in fullscreen where seen[w] == nil { v.append("\(w) fullscreen but not placed") }
         for w in offSpace where seen[w] == nil { v.append("\(w) off-Space but not placed") }
@@ -35,6 +45,7 @@ extension World {
         for w in fullscreen where hidden.contains(w) { v.append("\(w) both fullscreen and hidden") }
         guard let fs = screens[focus.screen] else { v.append("focus.screen \(focus.screen) unknown"); return v }
         if let w = focus.window {
+            if w.isPlaceholder { v.append("focus \(w) is a placeholder") }
             if !fs.active.windows.contains(w) && !ephemeral.contains(w) { v.append("focus \(w) not in active workspace of \(focus.screen) nor ephemeral") }
             if hidden.contains(w) { v.append("focus \(w) is hidden") }
         }
