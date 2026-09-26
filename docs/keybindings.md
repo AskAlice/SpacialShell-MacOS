@@ -241,14 +241,32 @@ axis, clearly more along that axis than the other; a diagonal does nothing. Lift
 swipe again. `gesture-fingers` picks 3, 4 or 5 fingers, and `gestures = false` turns swipes off
 (see [config](config.md)). Both toggles are also in the settings window's General pane.
 
-**Set macOS's own three-finger gestures to four fingers.** SpacialShell can watch trackpad
-gestures but, through public API, not take them away from macOS, so a three-finger swipe that
-macOS also uses switches Space or opens Mission Control as well. In System Settings → Trackpad →
-More Gestures, set **Mission Control**, **App Exposé** and **Swipe between full-screen apps** to four
-fingers (or off); if "Swipe between pages" uses three fingers, change that too. Three-finger drag
-(Accessibility → Pointer Control → Trackpad Options) turns three-finger movement into a drag and
-also conflicts. While a conflicting setting is on, a warning under the rail cog says which to change;
-it clears the next time you leave System Settings with it fixed.
+Swiping with **four** fingers changes the layout, one step per swipe (`gesture-layout`, on by
+default; *Layout swipes* in the General pane):
+
+| Four-finger swipe | Runs | Same as |
+|---|---|---|
+| up | `cycle-layout` | `Fn+Space` |
+| down | `cycle-layout-reverse` | `Fn+⇧Space` |
+| right | `grow-width` | `Fn+⌃D` |
+| left | `shrink-width` | `Fn+⌃A` |
+
+Right and left move the focused tile's edge the way the fingers go (the same 5 % steps and snaps
+as the keys); in `maximize` there is no edge, so they do nothing. `gesture-invert` doesn't apply
+here. Three- and four-finger swipes are told apart per gesture: fingers usually land one at a
+time, so a swipe counts as the most fingers it had down, and lifting a four-finger swipe through
+three never fires a three-finger one. With `gesture-fingers = 4`, four fingers navigate and layout
+swipes are off.
+
+**Turn off macOS's own gestures on the fingers SpacialShell uses.** SpacialShell can watch trackpad
+gestures but, through public API, not take them away from macOS, so a swipe that macOS also uses
+switches Space or opens Mission Control as well. In System Settings → Trackpad → More Gestures,
+turn **Mission Control**, **App Exposé** and **Swipe between full-screen applications** off, or
+set them to four fingers if you turn `gesture-layout` off (moving them to four fingers while layout
+swipes are on only moves the clash); if "Swipe between pages" uses three fingers, change that too.
+Three-finger drag (Accessibility → Pointer Control → Trackpad Options) turns three-finger movement
+into a drag and also conflicts. While a conflicting setting is on, a warning under the rail cog says
+which to change; it clears the next time you leave System Settings with it fixed.
 
 ## Conflicts and edge cases
 

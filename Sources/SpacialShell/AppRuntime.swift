@@ -324,14 +324,15 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
 
         // #141: trackpad swipes are Fn+W/A/S/D by another route — the same `route`, the same
-        // commands, so the slide animation and command outcomes are the hotkeys' own. Only
-        // installed while `gestures` is on; `push` turns it on and off on config changes.
-        let gestures = TrackpadGestures { direction in
+        // commands, so the slide animation and command outcomes are the hotkeys' own. #160: four
+        // fingers are Fn+Space/⇧Space/⌃D/⌃A the same way. Only installed while `gestures` is on;
+        // `push` turns it on and off on config changes.
+        let gestures = TrackpadGestures { command in
             guard !gate.isTerminating else { return }   // the tap is already stopped; so is this
             backend.noteHumanInput()
-            route(SwipeRecognizer.command(for: direction))
+            route(command)
         }
-        gestures.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
+        gestures.update(enabled: config.gestures, bindings: SwipeBindings(config: config))
         self.gestures = gestures
 
         // #138: after the socket and the tap, so its alert queues behind theirs, errors first.
@@ -491,7 +492,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             log.notice("ax-timeout-ms / refresh-interval-ms changed; those take effect at the next launch")
         }
         tap?.update(table: KeyBindings.table(for: config))
-        gestures?.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
+        gestures?.update(enabled: config.gestures, bindings: SwipeBindings(config: config))
         pointerFocus?.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
         shell?.update(config: config)
         attention?.update(config: config)

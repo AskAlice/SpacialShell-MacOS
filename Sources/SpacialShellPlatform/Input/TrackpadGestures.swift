@@ -15,7 +15,7 @@ import os
 /// also sees the events aimed at this app (the rail, the tab bar), which a global monitor never does.
 ///
 /// **It only watches.** Listen-only: the tap cannot modify or consume an event, so macOS's own
-/// three-finger gestures still fire alongside ours; `checkSystemGestures` reads the trackpad
+/// three- and four-finger gestures still fire alongside ours; `checkSystemGestures` reads the trackpad
 /// preferences and lists a Problem when they overlap.
 ///
 /// **Threading.** The tap's source is on the main run loop and every method runs on the main
@@ -23,6 +23,9 @@ import os
 /// only delays recognition, never the trackpad. Per event: one `NSEvent(cgEvent:)`, a handful of
 /// touches, a few arithmetic operations (`SwipeRecognizer`). `onSwipe` must only hand the command
 /// off, as `HotkeyTap.onCommand` does.
+///
+/// **What a swipe runs** is `SwipeBindings`' (Kit): three fingers navigate like Fn+W/A/S/D and,
+/// with `gesture-layout` (#160), four fingers cycle the layout and resize the focused tile.
 ///
 /// `SPACIAL_LOG_GESTURES=1` logs every frame (finger count, centroid) and every recognized swipe —
 /// the instrument for the checks in `docs/platform-notes.md`.
@@ -32,28 +35,30 @@ public final class TrackpadGestures {
     /// Where the trackpad settings are changed; leaving it is when a fix may have happened.
     private nonisolated static let systemSettingsBundleID = "com.apple.systempreferences"
 
-    private let onSwipe: @Sendable (Direction) -> Void
+    private let onSwipe: @Sendable (Command) -> Void
     private let problems: ProblemCenter
     private let logFrames: Bool
-    private var recognizer = SwipeRecognizer()
+    private var bindings = SwipeBindings()
+    private var recognizer = SwipeRecognizer(fingers: SwipeBindings().fingerCounts)
     private var enabled = false
     private var tapPort: CFMachPort?
     private var source: CFRunLoopSource?
     private var observers: [any NSObjectProtocol] = []
     private var lastFingers = 0
 
-    public init(problems: ProblemCenter = .shared, onSwipe: @escaping @Sendable (Direction) -> Void) {
+    /// `onSwipe` gets the command a recognized swipe runs, to route exactly as a hotkey's.
+    public init(problems: ProblemCenter = .shared, onSwipe: @escaping @Sendable (Command) -> Void) {
         self.problems = problems
         self.onSwipe = onSwipe
         self.logFrames = ProcessInfo.processInfo.environment["SPACIAL_LOG_GESTURES"] == "1"
     }
 
     /// Boot and every config change. Installs or removes the tap as `enabled` says, and re-checks
-    /// macOS's own gestures (the finger count decides whether they conflict).
-    public func update(enabled: Bool, fingers: Int, invert: Bool) {
-        if fingers != recognizer.fingers || invert != recognizer.invert {
-            recognizer.fingers = fingers
-            recognizer.invert = invert
+    /// macOS's own gestures (the finger counts decide whether they conflict).
+    public func update(enabled: Bool, bindings: SwipeBindings) {
+        if bindings != self.bindings {
+            self.bindings = bindings
+            recognizer.fingers = bindings.fingerCounts
             recognizer.reset()
         }
         if enabled != self.enabled {
@@ -104,7 +109,7 @@ public final class TrackpadGestures {
                 MainActor.assumeIsolated { self?.reenable() }
             },
         ]
-        Self.log.info("trackpad swipes on: \(self.recognizer.fingers) fingers, invert=\(self.recognizer.invert)")
+        Self.log.info("trackpad swipes on: navigation \(self.bindings.navigationFingers) fingers, invert=\(self.bindings.invert), layout \(self.bindings.layoutFingers.map { "\($0) fingers" } ?? "off", privacy: .public)")
     }
 
     private func uninstall() {
@@ -134,9 +139,13 @@ public final class TrackpadGestures {
             Self.log.info("gesture frame fingers=\(frame.fingers) centroid=(\(frame.x, format: .fixed(precision: 3)), \(frame.y, format: .fixed(precision: 3)))")
         }
         lastFingers = frame.fingers
-        guard let direction = recognizer.feed(frame) else { return }
-        if logFrames { Self.log.info("swipe recognized: \(String(describing: direction), privacy: .public)") }
-        onSwipe(direction)
+        guard let swipe = recognizer.feed(frame) else { return }
+        let command = bindings.command(for: swipe)
+        if logFrames {
+            Self.log.info("swipe recognized: \(swipe.fingers) fingers \(String(describing: swipe.direction), privacy: .public) -> \(command.map { String(describing: $0) } ?? "nothing", privacy: .public)")
+        }
+        guard let command else { return }
+        onSwipe(command)
     }
 
     /// The fingers on the trackpad now: touches that have not ended or been cancelled, and are not
@@ -149,11 +158,11 @@ public final class TrackpadGestures {
 
     // MARK: - macOS's own gestures
 
-    /// Lists or clears the conflict Problem. Cheap (two preference domains, three keys each), so it
+    /// Lists or clears the conflict Problem. Cheap (two preference domains, five keys each), so it
     /// runs on every config change and whenever System Settings is left.
     public func checkSystemGestures() {
         let system = Self.readSystemGestures()
-        if let problem = system.conflict(gestures: enabled, fingers: recognizer.fingers) {
+        if let problem = system.conflict(gestures: enabled, fingers: bindings.navigationFingers, layout: bindings.layout) {
             problems.report(problem)
         } else {
             problems.clear(Problem.Key.gestureConflict)

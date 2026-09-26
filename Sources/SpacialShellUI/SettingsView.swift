@@ -119,6 +119,13 @@ struct SettingsView: View {
                     .help("Swipe with \(file.gestureFingers) fingers to move between windows (left, right) and workspaces (up, down), like Fn+W/A/S/D")
             } reset: { overrides.gestures = nil }
 
+            // #160: four fingers; off while swipes are, and when navigation itself takes four.
+            row("Layout swipes", overridden: overrides.gestureLayout != nil) {
+                Toggle("", isOn: binding(\.gestureLayout, default: file.gestureLayout)).labelsHidden()
+                    .disabled(!(overrides.gestures ?? file.gestures) || file.gestureFingers == SwipeBindings.layoutFingerCount)
+                    .help("Swipe with four fingers up or down to cycle the layout (Fn+Space, Fn+⇧Space), right or left to make the focused tile wider or narrower (Fn+⌃D, Fn+⌃A)")
+            } reset: { overrides.gestureLayout = nil }
+
             row("Invert swipes", overridden: overrides.gestureInvert != nil) {
                 Toggle("", isOn: binding(\.gestureInvert, default: file.gestureInvert)).labelsHidden()
                     .help("Off: content follows your fingers, as with natural scrolling (swipe left for the next window). On: swipe the way the keys point (swipe left for Fn+A)")

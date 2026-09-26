@@ -133,6 +133,20 @@ import Foundation
         #expect(w.invariantViolations().isEmpty)
     }
 
+    /// #160: in maximize a resize (Fn+⌃A/D, or a four-finger swipe left/right) does nothing, and
+    /// says why rather than claiming a limit.
+    @Test func maximizeResizeIsANoopWithAReason() {
+        for grow in [true, false] {
+            let out = CommandRunner.run(.resizeWindow(.width, grow: grow), on: world(.maximize))
+            #expect(out.report == .noop("the focused tile has no edge to move sideways in this layout"))
+            #expect(out.effects.isEmpty && out.world.screens["D1"]!.active.portions.isEmpty)
+        }
+        // A real limit keeps its own reason.
+        var w = world()
+        for _ in 0..<20 { w = CommandRunner.apply(.resizeWindow(.width, grow: false), to: w).0 }
+        #expect(CommandRunner.run(.resizeWindow(.width, grow: false), on: w).report == .noop("already at the limit"))
+    }
+
     @Test func theChordsFollowThePreset() {
         var cfg = Config()
         let fn = KeyBindings.table(for: cfg)
@@ -169,8 +183,8 @@ import Foundation
                          visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 675), isMain: true)
     final class Box: @unchecked Sendable { var borders: [CGRect?] = [] }
 
-    func make(_ box: Box) async -> (WorldStore, FakeBackend) {
-        var cfg = Config(); cfg.showPanels = false; cfg.categoryOrder = []; cfg.defaultLayout = .split
+    func make(_ box: Box, layout: LayoutID = .split) async -> (WorldStore, FakeBackend) {
+        var cfg = Config(); cfg.showPanels = false; cfg.categoryOrder = []; cfg.defaultLayout = layout
         func win(_ r: WindowRef) -> WindowSnapshot {
             WindowSnapshot(ref: r, frame: CGRect(x: 0, y: 0, width: 300, height: 200), title: "t", bundleID: "com.x",
                            kind: .tile, parent: nil, isMinimized: false, isFullscreen: false)
@@ -208,5 +222,19 @@ import Foundation
         #expect(abs(await be.frames[a]!.width - (0.55 * 992 - 8)) < 1)
         await store.run(.balance)
         #expect(abs(await be.frames[a]!.width - (0.5 * 992 - 8)) < 1)
+    }
+
+    /// #160: a four-finger swipe left or right in maximize, through the store as the swipe's route
+    /// runs it: a no-op with its reason, and nothing moves.
+    @Test func aFourFingerSwipeInMaximizeIsANoop() async {
+        let (store, be) = await make(Box(), layout: .maximize)
+        let before = await be.frames[a]
+        let bindings = SwipeBindings()
+        for motion in [Direction.right, .left] {
+            let command = bindings.command(for: Swipe(fingers: 4, direction: motion))!
+            #expect(await store.run(command) == .noop("the focused tile has no edge to move sideways in this layout"))
+        }
+        #expect(await store.world.screens["D1"]!.active.portions.isEmpty)
+        #expect(await be.frames[a] == before)
     }
 }

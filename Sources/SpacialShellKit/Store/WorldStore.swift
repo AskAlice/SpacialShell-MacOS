@@ -261,7 +261,7 @@ public actor WorldStore {
             guard let (id, page, i) = world.resizePage(layouts: layouts, in: rect, gap: config.gap) else { return .noop("nothing to resize") }
             let (next, moved) = Resize.step(page, world.screens[world.focus.screen]?.active.portions[page.key],
                                             index: i, axis: axis, grow: grow)
-            guard moved else { return .noop("already at the limit") }
+            guard moved else { return .noop(Resize.stuck(page, index: i, axis: axis)) }
             command = .setPortions(id, key: page.key, next)
         }
         let issued = now()

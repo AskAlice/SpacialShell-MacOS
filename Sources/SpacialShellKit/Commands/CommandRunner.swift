@@ -406,10 +406,10 @@ public enum CommandRunner {
         case .resizeWindow(let axis, let grow):
             // #113. Without geometry the page is the one the model sees (no #54 floor); the store
             // turns the key press into `setPortions` against the real tiling rect first.
-            guard let (id, page, i) = w.resizePage(layouts: layouts) else { return (w, []) }
+            guard let (id, page, i) = w.resizePage(layouts: layouts) else { return noop("nothing to resize") }
             let current = screen.active.portions[page.key]
             let (next, moved) = Resize.step(page, current, index: i, axis: axis, grow: grow)
-            guard moved else { return (w, []) }
+            guard moved else { return noop(Resize.stuck(page, index: i, axis: axis)) }
             return apply(.setPortions(id, key: page.key, next), to: w, layouts: layouts)
 
         case .balance:

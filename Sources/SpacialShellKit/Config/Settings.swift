@@ -30,6 +30,8 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     /// #141. `gesture-fingers` stays the file's: it is a one-time choice, made alongside System Settings.
     public var gestures: Bool?
     public var gestureInvert: Bool?
+    /// #160.
+    public var gestureLayout: Bool?
     /// #135. `focus-follows-mouse-delay-ms` stays the file's, like `gesture-fingers`.
     public var focusFollowsMouse: Bool?
     /// #139.
@@ -85,6 +87,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         workspaceWrap = try c.decodeIfPresent(Bool.self, forKey: .workspaceWrap)
         gestures = try c.decodeIfPresent(Bool.self, forKey: .gestures)
         gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert)
+        gestureLayout = try c.decodeIfPresent(Bool.self, forKey: .gestureLayout)
         focusFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .focusFollowsMouse)
         persistState = try c.decodeIfPresent(Bool.self, forKey: .persistState)
         keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides)
@@ -153,6 +156,7 @@ public enum Settings {
         if let v = overrides.workspaceWrap { c.workspaceWrap = v }
         if let v = overrides.gestures { c.gestures = v }
         if let v = overrides.gestureInvert { c.gestureInvert = v }
+        if let v = overrides.gestureLayout { c.gestureLayout = v }
         if let v = overrides.focusFollowsMouse { c.focusFollowsMouse = v }
         if let v = overrides.persistState { c.persistState = v }
         if let v = overrides.categoryOrder { c.categoryOrder = v }

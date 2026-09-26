@@ -120,12 +120,8 @@ public enum Resize {
     /// (nil = back to natural) and whether anything moved; `moved` is false for a tile with no
     /// interior edge on that axis (maximize, a full-width row).
     public static func step(_ page: Page, _ p: Portions?, index: Int, axis: ResizeAxis, grow: Bool) -> (portions: Portions?, moved: Bool) {
-        guard page.zones.indices.contains(index), let z = page.zones[index] else { return (p, false) }
-        let (lead, trail) = axis == .width ? (z.x, z.x + z.w) : (z.y, z.y + z.h)
-        let line: Int, sign: Double
-        if let i = page.index(of: trail, axis) { line = i; sign = grow ? 1 : -1 }
-        else if let i = page.index(of: lead, axis) { line = i; sign = grow ? -1 : 1 }
-        else { return (p, false) }
+        guard let (line, trailing) = edge(page, index: index, axis: axis) else { return (p, false) }
+        let sign: Double = grow == trailing ? 1 : -1
         let cur = page.positions(p, axis)[line]
         var to = cur + sign * step
         // The detent nearest the start that the step crosses (a step landing on one counts).
@@ -133,6 +129,25 @@ public enum Resize {
         if let s = sign > 0 ? crossed.min() : crossed.max() { to = s }
         let next = page.moving(p, axis, line: line, to: to)
         return (next, abs(page.positions(next, axis)[line] - cur) > eps)
+    }
+
+    /// The line a step moves for tile `index` along `axis`, and whether it is the tile's trailing
+    /// edge; nil when the tile has no interior edge that way.
+    private static func edge(_ page: Page, index: Int, axis: ResizeAxis) -> (line: Int, trailing: Bool)? {
+        guard page.zones.indices.contains(index), let z = page.zones[index] else { return nil }
+        let (lead, trail) = axis == .width ? (z.x, z.x + z.w) : (z.y, z.y + z.h)
+        if let i = page.index(of: trail, axis) { return (i, true) }
+        if let i = page.index(of: lead, axis) { return (i, false) }
+        return nil
+    }
+
+    /// #109, #160: why a step that moved nothing did nothing — the tile has no edge along `axis`
+    /// (every tile in maximize, a full-width row), or its edge is already at the limit. A resize
+    /// key and a four-finger swipe report it as the no-op's reason.
+    public static func stuck(_ page: Page, index: Int, axis: ResizeAxis) -> String {
+        edge(page, index: index, axis: axis) == nil
+            ? "the focused tile has no edge to move \(axis == .width ? "sideways" : "up or down") in this layout"
+            : "already at the limit"
     }
 
     /// A mouse drag of line `line` to unit position `u`: snapped onto a detent within `snapRadius`.

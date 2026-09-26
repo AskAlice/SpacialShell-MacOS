@@ -180,6 +180,10 @@ public struct Config: Codable, Equatable, Sendable {
     public var gestureFingers: Int = 3
     /// #141: swipe the way the keys point instead (swipe left runs Fn+A, swipe up Fn+W).
     public var gestureInvert: Bool = false
+    /// #160: four-finger swipes change the layout — up/down cycle it, right/left widen/narrow the
+    /// focused tile. Only while `gestures` is on, and off when `gesture-fingers` is 4 (navigation
+    /// keeps its fingers). See `SwipeBindings`.
+    public var gestureLayout: Bool = true
     public static let gestureFingerRange = 3...5
     /// #135 (G28): resting the pointer on another tiled window focuses it, as a click on its tab
     /// would. Opt-in (#24): off, focus moves only by click, key, swipe or command.
@@ -242,7 +246,7 @@ public struct Config: Codable, Equatable, Sendable {
         case railIconStyle = "rail-icon-style", categoryColors = "category-colors", dockAttention = "dock-attention"
         case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
              workspaceWrap = "workspace-wrap"
-        case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert"
+        case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert", gestureLayout = "gesture-layout"
         case focusFollowsMouse = "focus-follows-mouse", focusFollowsMouseDelayMs = "focus-follows-mouse-delay-ms"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
         case otherWindowManagers = "other-window-managers", persistState = "persist-state"
@@ -293,6 +297,7 @@ public struct Config: Codable, Equatable, Sendable {
         let fingers = try c.decodeIfPresent(Int.self, forKey: .gestureFingers) ?? 3
         gestureFingers = min(Config.gestureFingerRange.upperBound, max(Config.gestureFingerRange.lowerBound, fingers))
         gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert) ?? false
+        gestureLayout = try c.decodeIfPresent(Bool.self, forKey: .gestureLayout) ?? true
         focusFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .focusFollowsMouse) ?? false
         // Clamped like `gesture-fingers`: a 0 or a 10000 is a typo, not a reason to reject the file.
         focusFollowsMouseDelayMs = FocusFollowsMouse.clamp(
@@ -390,6 +395,7 @@ public struct Config: Codable, Equatable, Sendable {
         gestures = \(gestures)
         gesture-fingers = \(gestureFingers)
         gesture-invert = \(gestureInvert)
+        gesture-layout = \(gestureLayout)
         focus-follows-mouse = \(focusFollowsMouse)
         focus-follows-mouse-delay-ms = \(focusFollowsMouseDelayMs)
         layout-bar = [\(layoutBar.map { q($0.rawValue) }.joined(separator: ", "))]

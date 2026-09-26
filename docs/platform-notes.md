@@ -95,7 +95,7 @@ What that establishes:
   swipes. To check: run `SPACIAL_LOG_GESTURES=1 Scripts/dev.sh`, then watch the log
   (`/usr/bin/log stream --predicate 'subsystem == "sh.emu.SpacialShell" && category == "gestures"' --info`).
   Every frame shows its finger count and centroid, and each recognized swipe logs
-  `swipe recognized: <direction>`. Record, for a few swipes in each direction, whether exactly one
+  `swipe recognized: <n> fingers <direction> -> <command>` (the direction the fingers moved). Record, for a few swipes in each direction, whether exactly one
   step happened.
 - **A Magic Trackpad.** Only the built-in trackpad was measured.
 

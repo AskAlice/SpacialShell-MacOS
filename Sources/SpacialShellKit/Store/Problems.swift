@@ -33,7 +33,7 @@ extension Problem {
         public static let hotkeys = "hotkeys"
         public static let controlSocket = "control-socket"
         public static let telemetry = "telemetry"
-        /// #141: macOS also uses three fingers, so a swipe does two things at once.
+        /// #141, #160: macOS also uses three (or four) fingers, so a swipe does two things at once.
         public static let gestureConflict = "gestures.system-conflict"
         /// Followed by the app's bundle id (or `pid:<n>`): one entry per app, not per window.
         public static let axWritePrefix = "ax-write:"
@@ -64,19 +64,35 @@ extension Problem {
     public static func telemetryFailing(host: String) -> Problem {
         Problem(key: Key.telemetry, severity: .warning, message: "Traces aren't reaching \(host). See the telemetry log for why.")
     }
-    /// #141. A warning: the swipes work, but macOS's own gesture fires with them, because a global
-    /// monitor can only watch. `swipes`: Mission Control or full-screen swipes are on three fingers.
-    /// `drag`: three-finger drag is on.
-    public static func gestureConflict(swipes: Bool, drag: Bool) -> Problem {
+    /// #141, #160. A warning: the swipes work, but macOS's own gesture fires with them, because the
+    /// tap can only watch. `swipes`: Mission Control or full-screen swipes are on three fingers.
+    /// `drag`: three-finger drag is on. `fourFingerHorizontal`/`fourFingerVertical`: "Swipe between
+    /// full-screen applications" or Mission Control is on four fingers while SpacialShell uses four.
+    /// `layoutSwipes`: four fingers are `gesture-layout`'s, so they are no place to move macOS's
+    /// three-finger gestures to, and turning `gesture-layout` off is a fix too.
+    public static func gestureConflict(swipes: Bool, drag: Bool, fourFingerHorizontal: Bool = false,
+                                       fourFingerVertical: Bool = false, layoutSwipes: Bool = false) -> Problem {
+        var counts: [String] = []
+        if swipes || drag { counts.append("three") }
+        if fourFingerHorizontal || fourFingerVertical { counts.append("four") }
         var fixes: [String] = []
         if swipes {
-            fixes.append("set Mission Control and \"Swipe between full-screen apps\" to four fingers in System Settings → Trackpad → More Gestures")
+            fixes.append(layoutSwipes
+                ? "turn off Mission Control and \"Swipe between full-screen apps\" on three fingers in System Settings → Trackpad → More Gestures (not four fingers: SpacialShell's layout swipes use those)"
+                : "set Mission Control and \"Swipe between full-screen apps\" to four fingers in System Settings → Trackpad → More Gestures")
         }
         if drag {
             fixes.append("turn off three-finger drag in System Settings → Accessibility → Pointer Control → Trackpad Options")
         }
+        if fourFingerHorizontal || fourFingerVertical {
+            var settings: [String] = []
+            if fourFingerHorizontal { settings.append("\"Swipe between full-screen applications\"") }
+            if fourFingerVertical { settings.append("Mission Control and App Exposé") }
+            fixes.append("turn off \(settings.joined(separator: " and ")) on four fingers in System Settings → Trackpad → More Gestures"
+                         + (layoutSwipes ? " (or set gesture-layout = false)" : ""))
+        }
         return Problem(key: Key.gestureConflict, severity: .warning,
-                       message: "macOS also uses three fingers on the trackpad, so each swipe does two things. To keep only SpacialShell's, \(fixes.joined(separator: ", and ")).")
+                       message: "macOS also uses \(counts.joined(separator: " and ")) fingers on the trackpad, so each swipe does two things. To keep only SpacialShell's, \(fixes.joined(separator: ", and ")).")
     }
     public static func axWriteFailing(app: String) -> Problem {
         Problem(key: Key.axWritePrefix + app, severity: .warning,
