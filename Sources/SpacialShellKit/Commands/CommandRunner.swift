@@ -383,7 +383,55 @@ public enum CommandRunner {
             w.setFloating(f, !screen.active.floating.contains(f))
             w.normalize()
             effects.append(.relayout)
+
+        // M3 B3, the rail's menus (#111, #112).
+        case .setWorkspaceCategory(let id, let category):
+            // The trailing "+" is the way down, not a workspace with an identity.
+            guard let loc = w.location(ofWorkspace: id), !w.isTrailingEmpty(loc) else { return (w, []) }
+            for i in w.screens[loc.screen]!.workspaces.indices {
+                if i == loc.index { w.screens[loc.screen]!.workspaces[i].category = category }
+                else if category != nil, w.screens[loc.screen]!.workspaces[i].category == category {
+                    w.screens[loc.screen]!.workspaces[i].category = nil
+                }
+            }
+            effects.append(.relayout)
+
+        case .setWorkspaceSymbol(let id, let symbol):
+            guard let loc = w.location(ofWorkspace: id), !w.isTrailingEmpty(loc) else { return (w, []) }
+            w.screens[loc.screen]!.workspaces[loc.index].symbol = symbol
+            effects.append(.relayout)
+
+        case .removeWorkspace(let id):
+            guard let loc = w.location(ofWorkspace: id), !w.isTrailingEmpty(loc) else { return (w, []) }
+            var s = w.screens[loc.screen]!
+            // Never out of range: a row that is not the trailing empty always has one below it.
+            let into = loc.index > 0 ? loc.index - 1 : loc.index + 1
+            let gone = s.workspaces[loc.index]
+            let wasActive = loc.index == s.activeIndex
+            let keep = wasActive ? s.workspaces[into].id : s.active.id
+            s.workspaces[into].windows += gone.windows
+            s.workspaces[into].floating.formUnion(gone.floating)
+            if wasActive, let a = gone.anchor { s.workspaces[into].anchor = a }
+            s.workspaces.remove(at: loc.index)
+            s.activeIndex = s.workspaces.firstIndex { $0.id == keep }!
+            w.screens[loc.screen] = s
+            // Focus follows the windows: the focused one is still focused, now in the merged row;
+            // with none, normalize() lands on the merged row's anchor, the removed row's.
+            w.normalize()
+            if wasActive, w.focus.screen == loc.screen, let f = w.focus.window { effects.append(.focus(f)) }
+            effects.append(.relayout)
+
+        case .reloadConfig, .showAbout, .quit:
+            break   // app-layer (#111), like `.openSettings`
         }
         return (w, effects)
+    }
+}
+
+extension World {
+    /// #112: the trailing "+" row (invariant 4), which the rail menus' verbs refuse.
+    func isTrailingEmpty(_ loc: (screen: DisplayID, index: Int)) -> Bool {
+        guard let rows = screens[loc.screen]?.workspaces else { return false }
+        return loc.index == rows.count - 1 && rows[loc.index].isEmpty && !rows[loc.index].pinned
     }
 }

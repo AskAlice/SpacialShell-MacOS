@@ -44,6 +44,11 @@ struct MenuPreview: View {
                         if let image = item.image { Image(nsImage: image).renderingMode(.template).frame(width: 18) }
                         else { Color.clear.frame(width: 18, height: 1) }
                         Text(item.title).font(.system(size: 13))
+                        if item.hasSubmenu {
+                            Spacer(minLength: 8)
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(.horizontal, 8).frame(height: 22)
                 }
@@ -375,6 +380,18 @@ enum Stories {
         add("layout-menu", nil, MenuPreview(menu: LayoutMenu.make(
             tabs([tab(1, focused: true)], layout: "code-3", layouts: customLayouts(bar: ["code-3"])),
             send: send, editLayouts: {})))
+        // #111: the rail's app menu (no clock, #24 P4). #112: a tile's right-click menu, and its
+        // "Set category" and "Set symbol" submenus — a row routing made for web, checked.
+        add("rail-app-menu", nil, MenuPreview(menu: RailMenu.app(send: send)))
+        let webRow = WorkspaceRailItem(id: UUID(), index: 0, name: "Workspace", symbol: "globe", windowCount: 2,
+                                       windows: [], isActive: true, isPinned: false, isTrailingEmpty: false,
+                                       category: .web, layout: .split)
+        let workspaceMenu = RailMenu.workspace(webRow, layouts: tabs([]).layouts,
+                                               categories: Config.defaultCategoryOrder, send: send)
+        add("rail-workspace-menu", nil, MenuPreview(menu: workspaceMenu))
+        add("rail-workspace-menu-category", nil, MenuPreview(menu: workspaceMenu.items[0].submenu!))
+        add("rail-workspace-menu-symbol", nil, MenuPreview(menu: workspaceMenu.items[1].submenu!))
+        add("rail-workspace-menu-layout", nil, MenuPreview(menu: workspaceMenu.items[2].submenu!))
         // The editor, at the walkthrough's step 6; an existing drawn layout (Delete); a built-in
         // (read-only, Duplicate to edit).
         add("layout-editor", LayoutEditorView.size, LayoutEditorView(mode: .edit(codeThree)))

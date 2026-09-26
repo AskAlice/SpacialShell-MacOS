@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import SpacialShellProtocol
 
 /// Pure derivation of what the shell panels draw, one value per screen. The app layer renders it
 /// and never looks inside `World` itself; anything the panels need that is not spatial (app names,
@@ -18,12 +19,19 @@ public struct WorkspaceRailItem: Identifiable, Equatable, Sendable {
     public let isActive: Bool
     public let isPinned: Bool
     public let isTrailingEmpty: Bool // the always-there way down (invariant 4); drawn as "+"
+    /// #112 (G1): the row's own category — routing's (#74) or the user's "Set category". Set, it is
+    /// the workspace's identity and wins over the one derived from its apps.
+    public let category: AppCategory?
+    /// This row's layout as stored, for the workspace menu's "Set layout" check.
+    public let layout: LayoutID
     public init(id: UUID, index: Int, name: String, symbol: String, windowCount: Int,
-                windows: [WindowRef] = [], isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool) {
+                windows: [WindowRef] = [], isActive: Bool, isPinned: Bool, isTrailingEmpty: Bool,
+                category: AppCategory? = nil, layout: LayoutID = .maximize) {
         self.id = id; self.index = index; self.name = name; self.symbol = symbol
         self.windowCount = windowCount; self.windows = windows
         self.isActive = isActive; self.isPinned = isPinned
         self.isTrailingEmpty = isTrailingEmpty
+        self.category = category; self.layout = layout
     }
 }
 
@@ -177,7 +185,8 @@ public enum ShellUI {
                 windows: ws.windows,
                 isActive: i == screen.activeIndex,
                 isPinned: ws.pinned,
-                isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned)
+                isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned,
+                category: ws.category, layout: ws.layout)
         }
         let active = screen.active
         let tabs = active.windows.map { w in

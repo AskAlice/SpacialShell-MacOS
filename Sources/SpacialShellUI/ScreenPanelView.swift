@@ -30,6 +30,8 @@ struct ScreenPanelView: View {
     /// #109: what the shell cannot do right now. Non-empty badges the cog, and hovering it lists them.
     var problems: [Problem] = []
     var onHoverProblems: (Bool, CGRect) -> Void = { _, _ in }
+    /// #112: `category-order`, which the workspace menu's "Set category" lists first.
+    var categories: [AppCategory] = Config.defaultCategoryOrder
 
     /// Which row the pointer is currently over mid-drag. Purely presentational — the drop itself
     /// re-enters through `Command` like every other interaction. Settable for the stories.
@@ -92,6 +94,18 @@ struct ScreenPanelView: View {
                 .onHover { inside in
                     onHoverTile(item, inside, tileFrames[item.id] ?? .zero)
                 }
+                // #112: right-click is the workspace menu; middle-click removes it (W13), per the
+                // `removeWorkspace` ruling (its windows merge into a neighbour). Not on "+".
+                .overlay {
+                    if !item.isTrailingEmpty {
+                        RailClickCatcher(
+                            onRight: {
+                                RailMenu.workspace(item, layouts: state.layouts, categories: categories, send: send)
+                                    .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+                            },
+                            onMiddle: { send(.removeWorkspace(item.id)) })
+                    }
+                }
                 .modifier(Reorderable(item: item) { reordering = item.id })
                 // Dropping a tab here sends its window to this workspace without following it
                 // (#95): the rail highlight and focus stay put. The trailing "+" row is not
@@ -131,6 +145,20 @@ struct ScreenPanelView: View {
                     })
                     .onHover { onHoverTray($0, trayFrame) }
             }
+
+            // #111: the app menu — Zen, reload, settings, about, quit. No clock (#24 P4).
+            Button {
+                RailMenu.app(send: send).popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+            } label: {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                    .foregroundStyle(.secondary)
+                    .contentShape(Rectangle())
+            }
+            .panelButton()
+            .help("SpacialShell")
 
             do {
                 // Every display: reaching for settings should not mean finding the right monitor.

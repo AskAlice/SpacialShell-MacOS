@@ -156,7 +156,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // comes next. App-layer surfaces route to their controllers; everything else is a model
         // command for the store. Without this, a panel's `.toggleOverview` (the search glyph's
         // no-launcher fallback) would reach the store, where it is deliberately a no-op.
-        let route: @Sendable (Command) -> Void = { command in
+        let route: @Sendable (Command) -> Void = { [weak self] command in
             switch command {
             case .toggleOverview:
                 Task { @MainActor in overview.toggle() }
@@ -164,6 +164,19 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { @MainActor in settings.toggle() }
             case .editLayout, .setDefaultLayout, .showLayoutOnBar:
                 Task { @MainActor in layouts.handle(command) }
+            // #111: the rail's app menu.
+            case .reloadConfig:
+                Task { @MainActor in self?.reloadConfig() }
+            case .showAbout:
+                Task { @MainActor in
+                    // An LSUIElement app's About panel only comes forward if the app is active.
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.orderFrontStandardAboutPanel(nil)
+                }
+            case .quit:
+                // Spec §7.4 and the M2 ruling: through the gate, never `NSApp.terminate` — the same
+                // path, on the same queue, as SIGTERM, so every parked window is put back first.
+                TerminationGate.queue.async { gate.run(onMainThread: false); exit(0) }
             default:
                 Task { await store.run(command) }
             }

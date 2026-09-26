@@ -71,12 +71,32 @@ public enum Command: Sendable, Hashable {
     case setDefaultLayout(LayoutID)
     case showLayoutOnBar(LayoutID, Bool)
 
+    // M3 B3, the rail's menus (#111, #112).
+    /// #112, G1: a workspace's category is its identity (#24 P2), so this is B3's "rename". Nil
+    /// clears it. The row becomes the one category routing (#74) sends that category's apps to on
+    /// its display, taking the category off any other row there — one row per category per
+    /// display. It is not re-sorted now: like a dragged row (#75), it holds its place for the
+    /// session, and the next launch's `sortCategoryRows` puts it where the order says.
+    case setWorkspaceCategory(UUID, AppCategory?)
+    /// #112: the tile's glyph (an SF Symbol name), from the menu's fixed list.
+    case setWorkspaceSymbol(UUID, String)
+    /// #112, the M2 `removeWorkspace` ruling: refused on the trailing empty row; allowed on the
+    /// active one and on pinned ones. Its windows merge into the row above (below, if it is the
+    /// first), and when it was the active row, that row becomes active and focus follows them.
+    case removeWorkspace(UUID)
+    /// #111: the rail's app menu. App-layer: `AppRuntime` reloads config.toml, shows the About
+    /// panel, or quits through the termination gate (spec §7.4) — never `NSApp.terminate`.
+    case reloadConfig
+    case showAbout
+    case quit
+
     /// Commands the app layer handles (overview, settings, the layout surfaces) — no-ops in the
     /// model. Every command source, the hotkey tap and the control socket alike, routes these to
     /// their controllers instead of the store (#88).
     public var isAppLayer: Bool {
         switch self {
         case .toggleOverview, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
+        case .reloadConfig, .showAbout, .quit: true   // #111
         default: false
         }
     }

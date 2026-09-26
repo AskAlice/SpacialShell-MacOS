@@ -75,6 +75,13 @@ import SpacialShellKit
         #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
     }
 
+    /// #112: likewise every glyph the workspace menu's "Set symbol" offers.
+    @Test func everyWorkspaceMenuSymbolExists() {
+        let missing = RailMenu.symbols.map(\.name)
+            .filter { NSImage(systemSymbolName: $0, accessibilityDescription: nil) == nil }
+        #expect(missing.isEmpty, "missing SF Symbols: \(missing)")
+    }
+
     @Test func cheatSheetWrapsToFitItsArea() {
         let groups = CheatSheetController.grouped(CheatSheet.rows(for: Config()))
         #expect(CheatSheetView.fitting(groups, in: 4000).view.rows == 1)

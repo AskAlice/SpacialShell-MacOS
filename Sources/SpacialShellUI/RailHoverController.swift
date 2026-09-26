@@ -199,7 +199,8 @@ final class RailHoverController {
     private func subtitle(_ item: WorkspaceRailItem, apps: [AppMeta]) -> String? {
         if item.isTrailingEmpty { return nil }
         let count = item.windowCount == 1 ? "1 window" : "\(item.windowCount) windows"
-        guard let label = AppCategories.summarise(apps.map(\.category))?.label else { return count }
+        // #112: a category the row carries (set by the user or by routing) is its identity.
+        guard let label = (item.category ?? AppCategories.summarise(apps.map(\.category)))?.label else { return count }
         return "\(count) · \(label)"
     }
 
