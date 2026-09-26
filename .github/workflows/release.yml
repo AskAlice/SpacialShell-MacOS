@@ -24,6 +24,7 @@ jobs:
       HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_P12 != '' && secrets.DEVELOPER_ID_P12_PASSWORD != '' }}
       HAS_ASC_KEY: ${{ secrets.ASC_KEY_P8 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' }}
       HAS_SPARKLE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
+      HAS_TAP_KEY: ${{ secrets.TAP_DEPLOY_KEY != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,6 +116,29 @@ jobs:
           [ "$HAS_SPARKLE_KEY" = "true" ] || echo "::warning::SPARKLE_ED_PRIVATE_KEY not set: no appcast, installed copies will not see this release."
           gh release create "$GITHUB_REF_NAME" build/SpacialShell-*.dmg $(ls build/appcast.xml 2>/dev/null) \
             --generate-notes --title "$GITHUB_REF_NAME"
+
+      # #153: bump the Homebrew cask as soon as the release exists, rather than waiting for the
+      # tap's hourly check (which GitHub disables after 60 idle days). Only notarised DMGs go to
+      # the cask. TAP_DEPLOY_KEY is a write deploy key on AskAlice/homebrew-tools alone.
+      - name: Bump the Homebrew cask
+        if: github.ref_type == 'tag' && env.HAS_DEVELOPER_ID == 'true' && env.HAS_TAP_KEY == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_DEPLOY_KEY: ${{ secrets.TAP_DEPLOY_KEY }}
+        run: |
+          key="$RUNNER_TEMP/tap-key"; (umask 077; printf '%s\n' "$TAP_DEPLOY_KEY" > "$key")
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone -q --depth 1 git@github.com:AskAlice/homebrew-tools.git "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          GITHUB_OUTPUT="$RUNNER_TEMP/tap-out" .github/scripts/update-spacialshell.sh
+          if grep -qx 'changed=true' "$RUNNER_TEMP/tap-out"; then
+            version=$(sed -n 's/^version=//p' "$RUNNER_TEMP/tap-out")
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -qam "spacialshell $version"
+            git push -q origin HEAD
+            echo "Cask bumped to $version"
+          fi
+          rm -f "$key"
 
       - name: Delete the signing keychain
         if: always() && env.HAS_DEVELOPER_ID == 'true'
