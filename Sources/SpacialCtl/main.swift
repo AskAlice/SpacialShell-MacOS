@@ -13,6 +13,8 @@ usage: spacialctl [--socket PATH] <subcommand>
                        fails (unknown workspace, no focused window, ...) exits 1
   set-layout <id> [--workspace <uuid>]
                        set a workspace's layout (default: the focused one); unknown ids exit 1
+  subscribe            stream events, one JSON object per line: a `shell` snapshot first, then
+                       only changes (workspace-activated, focus-changed, window-adopted, ...)
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -23,6 +25,7 @@ let request: IPCRequest
 switch args.first {
 case "version": request = IPCRequest(id: 1, cmd: "version")
 case "state": request = IPCRequest(id: 1, cmd: "state")
+case "subscribe": request = IPCRequest(id: 1, cmd: "subscribe")
 // #109: extra words are passed through, so `run switch 42` is the daemon's clear "unknown command".
 case "run" where args.count >= 2:
     request = IPCRequest(id: 1, cmd: "run", args: ["command": .string(args.dropFirst().joined(separator: " "))])
@@ -57,7 +60,9 @@ guard connected == 0 else { die("SpacialShell is not running (\(socketPath))", c
 guard let line = try? IPCCodec.line(request) else { die("encode failed", code: 2) }
 _ = line.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
 
-var framer = LineFramer()
+// The 64 KB request cap guards the server; a reply or a `shell` baseline with many titled windows
+// can be larger, and this end trusts the shell.
+var framer = LineFramer(maxLineBytes: 16 << 20)
 var responseLine: Data?
 var buf = [UInt8](repeating: 0, count: 8192)
 while responseLine == nil {
@@ -65,6 +70,19 @@ while responseLine == nil {
     guard n > 0 else { die("connection closed", code: 3) }
     guard case .lines(let lines) = framer.push(Data(buf[0..<n])) else { die("response too large", code: 3) }
     responseLine = lines.first
+    // #117: after the ok reply every line is an `IPCEvent`, printed verbatim and flushed so a
+    // piped consumer (`| jq`) sees each as it lands. EOF means the shell quit or dropped us.
+    if request.cmd == "subscribe", let first = lines.first {
+        guard (try? IPCCodec.decoder.decode(IPCResponse.self, from: first))?.ok == true else { break }
+        var pending = Array(lines.dropFirst())
+        while true {
+            for line in pending { print(String(decoding: line, as: UTF8.self)); fflush(stdout) }
+            let n = read(fd, &buf, buf.count)
+            guard n > 0 else { die("connection closed", code: 3) }
+            guard case .lines(let more) = framer.push(Data(buf[0..<n])) else { die("event too large", code: 3) }
+            pending = more
+        }
+    }
 }
 close(fd)
 

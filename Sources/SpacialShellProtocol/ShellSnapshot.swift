@@ -1,8 +1,8 @@
 import Foundation
 
 // M2 T8 / M3 B2 (#110): `WorldStore` publishes this to the UI with every world (built in Kit's
-// `ShellSnapshot+World.swift`). IPC still answers `state` with the v1 `WireState`; the push channel
-// is #117.
+// `ShellSnapshot+World.swift`). IPC still answers `state` with the v1 `WireState`; `subscribe`
+// (#117) sends this once as its baseline, then `ShellEvents` deltas.
 
 /// The one wire shape published to the UI, the IPC subscribers, and the state-saver — spec
 /// "Snapshot" decision: rows for **all** workspaces on a screen (not just the active one),

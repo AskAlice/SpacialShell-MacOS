@@ -45,7 +45,7 @@ public struct WireState: Codable, Equatable, Sendable {
     }
     /// Additive changes only, so `v` stays 2 (#9 added `layouts` and its capability).
     public var v: Int = 2
-    public static let capabilities = ["run", "state", "version", "window-rows", "layouts", "problems"]
+    public static let capabilities = ["run", "state", "version", "window-rows", "layouts", "problems", "subscribe"]
     public var capabilities: [String] = WireState.capabilities
     public var screens: [ScreenDTO]
     /// The catalogue, built-ins first. Bar membership is UI-only and not sent.

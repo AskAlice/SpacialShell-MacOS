@@ -102,6 +102,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         ) { [weak self] world, snapshot in
             gate.note(world: world)
             Task { @MainActor in
+                self?.ipc?.publish(snapshot)   // #117: returns at once; the diff runs on the IPC queue
                 self?.scheduleSave(world)
                 self?.shell?.update(world: world, snapshot: snapshot)
                 self?.overview?.update(world: world, snapshot: snapshot)
@@ -210,6 +211,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         do {
             try ipc.start()
             self.ipc = ipc
+            // #117: the first publishes happened before the socket existed; seed the diff base.
+            ipc.publish(await store.shellSnapshot())
             termination.arm(ipc: ipc)
         } catch {
             log.error("control socket failed (\(String(describing: error), privacy: .public)); spacialctl is inactive")

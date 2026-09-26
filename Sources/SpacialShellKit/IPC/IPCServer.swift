@@ -6,8 +6,14 @@ import os
 
 /// v0 control socket: one NDJSON `IPCRequest` per line, one `IPCResponse` back, over a unix
 /// socket at `IPCProtocol.defaultSocketPath()` (0600). Enough for `spacialctl` and Raycast.
-/// ponytail: blocking write(2), unconditional stale unlink, no subscribe/back-pressure —
-/// replaced by the full M2 IPCServer (SnapshotHub, NWListener) when Tasks 9–13 land.
+/// ponytail: blocking write(2) for replies, unconditional stale unlink — replaced by the full M2
+/// IPCServer (SnapshotHub, NWListener) when Tasks 9–13 land.
+///
+/// #117: `subscribe` turns a connection into an event stream — an ok reply, one `shell` baseline
+/// event (the full snapshot), then only the typed deltas `ShellEvents.diff` finds per publish.
+/// Back-pressure: subscriber sockets are non-blocking with a large send buffer; a write that would
+/// block or lands short drops the subscriber (deltas cannot be coalesced, and a torn line is
+/// useless). It reconnects and gets a fresh baseline. The store only ever enqueues.
 public final class IPCServer: @unchecked Sendable {
     private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "ipc")
     private let path: String
@@ -16,10 +22,16 @@ public final class IPCServer: @unchecked Sendable {
     private var listenFD: Int32 = -1
     private var acceptSource: (any DispatchSourceRead)?
     private var readers: [Int32: (source: any DispatchSourceRead, framer: LineFramer)] = [:]
+    private var subscribers: Set<Int32> = []
+    /// The last snapshot `publish` accepted: the next diff's base and a new subscriber's baseline.
+    private var lastSnapshot: ShellSnapshot?
+    /// Kernel buffer per subscriber — the whole queue a slow client gets before it is dropped.
+    private let subscriberSendBuffer: Int32
 
-    public init(path: String = IPCProtocol.defaultSocketPath(),
+    public init(path: String = IPCProtocol.defaultSocketPath(), subscriberSendBuffer: Int32 = 1 << 20,
          handle: @escaping @Sendable (IPCRequest) async -> IPCResponse) {
         self.path = path
+        self.subscriberSendBuffer = subscriberSendBuffer
         self.handle = handle
     }
 
@@ -58,6 +70,7 @@ public final class IPCServer: @unchecked Sendable {
             acceptSource?.cancel(); acceptSource = nil
             for (fd, r) in readers { r.source.cancel(); close(fd) }
             readers = [:]
+            subscribers = []
             if listenFD >= 0 { close(listenFD); listenFD = -1 }
             unlink(path)
         }
@@ -91,6 +104,7 @@ public final class IPCServer: @unchecked Sendable {
         guard case .lines(let lines) = outcome else { return dropConnection(fd) }
         for line in lines {
             let request = try? IPCCodec.decoder.decode(IPCRequest.self, from: line)
+            if let request, request.cmd == "subscribe" { subscribe(fd, id: request.id); continue }
             Task { [handle] in
                 // #83: one root span per request. `cmd` is one of a handful of verbs; the args
                 // (a command name at most) are not recorded.
@@ -108,11 +122,55 @@ public final class IPCServer: @unchecked Sendable {
         guard let data = try? IPCCodec.line(response) else { return }
         queue.async {
             guard self.readers[fd] != nil else { return }
+            if self.subscribers.contains(fd) { return self.writeOrDrop(data, to: fd) }
             _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
         }
     }
 
     private func dropConnection(_ fd: Int32) {
+        subscribers.remove(fd)
         readers.removeValue(forKey: fd)?.source.cancel()
+    }
+
+    // MARK: subscribe (#117)
+
+    /// Called with every snapshot the store publishes; returns at once. Stale or repeated
+    /// generations are ignored, so a late hop cannot rewind the diff base.
+    public func publish(_ snapshot: ShellSnapshot) {
+        queue.async {
+            if let last = self.lastSnapshot, snapshot.generation <= last.generation { return }
+            let previous = self.lastSnapshot
+            self.lastSnapshot = snapshot
+            guard let previous, !self.subscribers.isEmpty else { return }
+            var data = Data()
+            for event in ShellEvents.diff(from: previous, to: snapshot) {
+                if let line = try? IPCCodec.line(event) { data.append(line) }
+            }
+            guard !data.isEmpty else { return }
+            for fd in self.subscribers { self.writeOrDrop(data, to: fd) }
+        }
+    }
+
+    private func subscribe(_ fd: Int32, id: Int) {
+        let span = Telemetry.tracer().spanBuilder(spanName: "ipc.request").setNoParent().startSpan()
+        span.setAttribute(key: "ipc.cmd", value: "subscribe")
+        defer { span.end() }
+        guard readers[fd] != nil, !subscribers.contains(fd) else { return }
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        var size = subscriberSendBuffer
+        _ = setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &size, socklen_t(MemoryLayout.size(ofValue: size)))
+        subscribers.insert(fd)
+        var data = (try? IPCCodec.line(IPCResponse.ok(id: id))) ?? Data()
+        if let last = lastSnapshot, let line = try? IPCCodec.line(ShellEvents.baseline(last)) { data.append(line) }
+        writeOrDrop(data, to: fd)
+    }
+
+    /// Never blocks: the fd is non-blocking, and anything short of the whole buffer drops the client.
+    private func writeOrDrop(_ data: Data, to fd: Int32) {
+        let n = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        if n != data.count {
+            Self.log.info("ipc subscriber dropped (slow or gone)")
+            dropConnection(fd)
+        }
     }
 }
