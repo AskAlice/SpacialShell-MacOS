@@ -112,8 +112,10 @@ windows as columns — 2 by default, 2–6 per workspace from the layout popover
 rest stack in the right half), `grid` (a roughly-square grid, row-major, last row widened to fill),
 `ratio` (material-shell's dwindle: each window takes 0.618 of the space the windows before it left,
 cutting across and down in turn, so the first window is the largest and the last takes what
-remains; resize a workspace's shares with `Fn+⌃`/border drag). `ratio` is not on the default
-`layout-bar`: add it there, or switch it on in the layout popover.
+remains; resize a workspace's shares with `Fn+⌃`/border drag). All six are on the default
+`layout-bar`, and `Fn+Space` cycles them in that order: maximize → split → column → half → grid →
+ratio (`ratio` joined the default ring on 2026-09-26, #123). Take any of them off in `layout-bar`
+or the layout popover.
 
 On a display taller than wide (portrait), the built-ins turn to the long axis: `split` and `column`
 stack their windows as rows, `half` gives the top half to one window and lays the rest side by
@@ -147,7 +149,7 @@ Besides the six built-ins, a layout can be a fixed list of zones (#9). Zones are
 `0…1`, origin top-left — and their order is the order windows fill them:
 
 ```toml
-layout-bar = ["maximize", "split", "column", "code-3"]   # what Fn+Space cycles; default the five before ratio, at most 8
+layout-bar = ["maximize", "split", "column", "code-3"]   # what Fn+Space cycles; default all six built-ins, at most 8
 
 [[layout]]
 id = "code-3"

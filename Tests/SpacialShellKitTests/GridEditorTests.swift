@@ -219,14 +219,17 @@ import SpacialShellProtocol
 
     @Test func theBarToggleWritesTheWholeBarAndStopsAtEight() {
         var o = SettingsOverrides()
-        let five = LayoutCatalogue.builtins.bar
-        let off = o.setLayout(.grid, onBar: false, current: five)
-        #expect(off && o.layoutBar == [.maximize, .split, .column, .half])
+        let six = LayoutCatalogue.builtins.bar
+        let off = o.setLayout(.grid, onBar: false, current: six)
+        #expect(off && o.layoutBar == [.maximize, .split, .column, .half, .ratio])
         let again = o.setLayout(.maximize, onBar: true, current: o.layoutBar!)   // already there: unchanged
-        #expect(again && o.layoutBar == [.maximize, .split, .column, .half])
-        let eight: [LayoutID] = five + ["a", "b", "c"]
+        #expect(again && o.layoutBar == [.maximize, .split, .column, .half, .ratio])
+        let eight: [LayoutID] = six + ["a", "b"]
+        #expect(eight.count == 8, "the ninth has to be refused at the cap, not before it")
+        let eighth = o.setLayout("b", onBar: true, current: Array(eight.dropLast()))
+        #expect(eighth && o.layoutBar == eight, "seven takes an eighth")
         let ninth = o.setLayout("d", onBar: true, current: eight)
-        #expect(!ninth && o.layoutBar == [.maximize, .split, .column, .half])
+        #expect(!ninth && o.layoutBar == eight)
     }
 
     // MARK: - delete

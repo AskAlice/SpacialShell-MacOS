@@ -2,7 +2,7 @@ import Foundation
 
 public enum CommandRunner {
     /// `layouts` gives the layout ids meaning: what `cycleLayout` rings through and how many
-    /// windows a layout shows (#9). Defaults to the five built-ins.
+    /// windows a layout shows (#9). Defaults to the built-ins.
     /// `displays` (#118): the real display frames the directional display commands resolve
     /// against; without them those commands are no-ops. `workspaceWrap` (#120): `workspace-wrap`.
     /// `categoryOrder` (#136): `category-order`, where a workspace moved to another display lands.

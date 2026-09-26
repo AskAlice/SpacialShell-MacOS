@@ -43,6 +43,7 @@ import Foundation
     }
     @Test func layoutNextCycles() {
         #expect(LayoutCatalogue.builtins.next(after: .maximize) == .split)
-        #expect(LayoutCatalogue.builtins.next(after: .grid) == .maximize)
+        #expect(LayoutCatalogue.builtins.next(after: .grid) == .ratio)
+        #expect(LayoutCatalogue.builtins.next(after: .ratio) == .maximize)
     }
 }

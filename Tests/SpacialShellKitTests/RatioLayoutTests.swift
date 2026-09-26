@@ -80,9 +80,12 @@ import SpacialShellProtocol
         #expect(LayoutID.ratio.rawValue == "ratio")
         let def = try #require(LayoutCatalogue.builtins[.ratio])
         #expect(def.isBuiltin && def.symbol != nil)
-        #expect(!LayoutCatalogue.builtins.bar.contains(.ratio), "the default ring is unchanged")
+        #expect(LayoutCatalogue.builtins.bar.last == .ratio, "#123, 2026-09-26: on the default ring, after grid")
+        #expect(LayoutCatalogue.builtins.next(after: .grid) == .ratio)
         var c = Config(); c.layoutBar = [.maximize, .ratio]
-        #expect(LayoutCatalogue(config: c).next(after: .maximize) == .ratio, "and it can go on the bar")
+        #expect(LayoutCatalogue(config: c).next(after: .maximize) == .ratio, "and a custom bar can carry it")
+        c.layoutBar = [.maximize, .grid]
+        #expect(LayoutCatalogue(config: c).next(after: .grid) == .maximize, "or leave it off")
         #expect(KeyBindings.command(named: "set-layout-ratio") == .setLayout(.ratio))
         #expect(try Config.parse(toml: #"default-layout = "ratio""#).defaultLayout == .ratio)
         // Duplicating it in the editor starts from a drawn dwindle.

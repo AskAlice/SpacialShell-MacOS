@@ -169,12 +169,14 @@ import SpacialShellProtocol
     @Test func theDefaultCatalogueIsTheBuiltinsInCycleOrder() {
         let cat = LayoutCatalogue.builtins
         #expect(cat.all.map(\.id) == [.maximize, .split, .column, .half, .grid, .ratio])
-        #expect(cat.bar == [.maximize, .split, .column, .half, .grid], "#123: ratio is not on the default bar")
+        #expect(cat.bar == [.maximize, .split, .column, .half, .grid, .ratio], "#123, 2026-09-26: ratio joins the ring, sixth")
         #expect(cat.all.map(\.name) == BuiltinLayout.allCases.map { $0.rawValue.capitalized })   // what the Hint printed
         #expect(cat.all.map(\.body) == BuiltinLayout.allCases.map { .builtin($0) })
         let ids = cat.bar
         for (i, id) in ids.enumerated() { #expect(cat.next(after: id) == ids[(i + 1) % ids.count]) }
-        #expect(cat.next(after: .ratio) == .maximize, "from off the bar, its start")
+        #expect(cat.next(after: .ratio) == .maximize, "the ring closes after ratio")
+        var c = Config(); c.layoutBar = [.split, .column]
+        #expect(LayoutCatalogue(config: c).next(after: .ratio) == .split, "from off the bar, its start")
     }
 
     @Test func unknownIdsFallBackThroughDefaultThenMaximize() {

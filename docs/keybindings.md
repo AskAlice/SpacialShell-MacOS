@@ -51,7 +51,7 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 | Close focused window (app keeps running) | `Fn+Q` | `⌃⌥Q` | Super+Q |
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` | Super+Shift+A / D |
 | Move window to workspace above / below | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` | Super+Shift+W / S |
-| Cycle layout round the layout bar (default: maximize → split → column → half → grid) | `Fn+Space` | `⌃⌥Space` | Super+Space |
+| Cycle layout round the layout bar (default: maximize → split → column → half → grid → ratio) | `Fn+Space` | `⌃⌥Space` | Super+Space |
 | Cycle layout backwards | `Fn+⇧Space` | `⌃⌥⇧Space` | — |
 | Set a specific layout (`set-layout-grid`, `set-layout-<saved id>`) | unbound | unbound | — |
 | Split: one column more / fewer (`split-columns-more` / `split-columns-fewer`) | unbound | unbound | — |

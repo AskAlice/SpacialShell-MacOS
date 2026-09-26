@@ -166,9 +166,14 @@ import Testing
 
     @Test func cycleLayoutReverseRingsTheBarBackwards() {
         var w = base()
+        // The whole default ring, backwards from maximize and round to it again (#123: ratio is sixth).
+        for id: LayoutID in [.ratio, .grid, .half, .column, .split, .maximize] {
+            (w, _) = run(w, .cycleLayoutReverse); #expect(w.screens["D1"]!.active.layout == id)
+        }
+        (w, _) = run(w, .cycleLayoutReverse); #expect(w.screens["D1"]!.active.layout == .ratio)
         (w, _) = run(w, .cycleLayoutReverse); #expect(w.screens["D1"]!.active.layout == .grid)
-        (w, _) = run(w, .cycleLayoutReverse); #expect(w.screens["D1"]!.active.layout == .half)
-        (w, _) = run(w, .cycleLayout); #expect(w.screens["D1"]!.active.layout == .grid)
+        (w, _) = run(w, .cycleLayout); #expect(w.screens["D1"]!.active.layout == .ratio)
+        (w, _) = run(w, .cycleLayout); #expect(w.screens["D1"]!.active.layout == .maximize)
     }
 
     @Test func previousFromOutsideTheBarIsItsEnd() {
