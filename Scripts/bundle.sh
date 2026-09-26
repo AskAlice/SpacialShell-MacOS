@@ -14,6 +14,11 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 if [ -n "${SPACIAL_VERSION:-}" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SPACIAL_VERSION" \
         -c "Set :CFBundleVersion $SPACIAL_VERSION" "$APP/Contents/Info.plist"
+elif [ -z "${SPACIAL_UPDATES:-}" ]; then
+    # A dev bundle keeps the plist's 0.1.0, so its updater would offer to replace it with the
+    # latest release. Without SUPublicEDKey the app never starts Sparkle (Updates.swift);
+    # SPACIAL_UPDATES=1 keeps the key, to try the updater from a dev build.
+    /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "$APP/Contents/Info.plist" 2>/dev/null || true
 fi
 # #58: Sparkle is a binary framework SwiftPM leaves next to the executable. An app looks for
 # frameworks in Contents/Frameworks, so copy it there and give the executable that rpath.

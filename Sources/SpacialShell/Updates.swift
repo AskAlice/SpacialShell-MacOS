@@ -10,7 +10,7 @@ import Sparkle
 @MainActor
 enum Updates {
     /// `nil` when running loose (`Scripts/dev.sh` — there is no bundle to replace) or when
-    /// Info.plist has no `SUPublicEDKey` yet (`Scripts/sparkle-keys.sh` adds it). Without a key
+    /// Info.plist has no `SUPublicEDKey` (dev bundles drop it; see `Scripts/bundle.sh`). Without a key
     /// Sparkle refuses to start and says so in an alert — at every login, for a window manager.
     static func makeController() -> SPUStandardUpdaterController? {
         guard Bundle.main.bundleURL.pathExtension == "app",

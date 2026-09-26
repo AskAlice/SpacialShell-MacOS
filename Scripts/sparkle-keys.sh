@@ -20,14 +20,23 @@ BIN=.build/artifacts/sparkle/Sparkle/bin
 "$BIN/generate_keys" >/dev/null
 PUB=$("$BIN/generate_keys" -p)
 PLIST=Resources/Info.plist
-/usr/libexec/PlistBuddy -c "Set :SUPublicEDKey $PUB" "$PLIST" 2>/dev/null \
-    || /usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string $PUB" "$PLIST"
+# Edited as text, not with PlistBuddy, which re-sorts every key in the file.
+if grep -q '<key>SUPublicEDKey</key>' "$PLIST"; then
+    awk -v pub="$PUB" 'f { sub(/<string>.*<\/string>/, "<string>" pub "</string>"); f = 0 }
+                       /<key>SUPublicEDKey<\/key>/ { f = 1 } { print }' "$PLIST" > "$PLIST.tmp"
+else
+    awk -v pub="$PUB" '/^<\/dict>/ { print "\t<key>SUPublicEDKey</key>"; print "\t<string>" pub "</string>" }
+                       { print }' "$PLIST" > "$PLIST.tmp"
+fi
+mv "$PLIST.tmp" "$PLIST"
+plutil -lint "$PLIST" >/dev/null
 echo "sparkle-keys.sh: SUPublicEDKey = $PUB (in $PLIST — commit it; it is public)"
 
 if [ "${1:-}" = "--upload-secret" ]; then
-    TMP=$(mktemp -d)
-    trap 'rm -rf "$TMP"' EXIT
-    "$BIN/generate_keys" -x "$TMP/key"
-    gh secret set SPARKLE_ED_PRIVATE_KEY < "$TMP/key"
+    # The export exists only for the length of the upload: owner-only, and overwritten on removal.
+    TMP=$(umask 077; mktemp -d)
+    trap 'rm -P "$TMP/key" 2>/dev/null || true; rm -rf "$TMP"' EXIT
+    "$BIN/generate_keys" -x "$TMP/key" >/dev/null
+    gh secret set SPARKLE_ED_PRIVATE_KEY --repo AskAlice/SpacialShell-MacOS < "$TMP/key"
     echo "sparkle-keys.sh: stored the private key as the SPARKLE_ED_PRIVATE_KEY secret"
 fi

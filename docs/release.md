@@ -100,7 +100,15 @@ Developer ID"), and says `notarisation skipped: no credentials`; it exits non-ze
 
 ### The Sparkle key
 
-Once, on this Mac:
+Done (2026-09-26, #58). The keypair lives in the login keychain of the maintainer's Mac, the public
+half is `SUPublicEDKey` in `Resources/Info.plist`, and the private half is the
+`SPARKLE_ED_PRIVATE_KEY` secret. Public key:
+
+```
+gVEXSYsbwK1VxXKWNyO024bD7E7iuOGJ4w2zgGx/rjA=
+```
+
+To redo it (a new Mac, a rotated key), on the Mac holding the key:
 
 ```sh
 Scripts/sparkle-keys.sh --upload-secret
@@ -110,29 +118,30 @@ It creates the EdDSA keypair in the login keychain with Sparkle's `generate_keys
 already there), writes the **public** key into `Resources/Info.plist` as `SUPublicEDKey` — commit
 that change — and pipes the **private** key straight into the `SPARKLE_ED_PRIVATE_KEY` secret.
 Drop `--upload-secret` to only do the first two. The private key is never printed or written into
-the repo. Back up the keychain item "Private key for signing Sparkle updates": lose it and every
-installed copy is stranded on its current version.
+the repo; the export it uploads from is an owner-only temp file, overwritten and removed at once.
+Back up the keychain item "Private key for signing Sparkle updates" (account `ed25519`): lose it and
+every installed copy is stranded on its current version. Rotating it strands them too, since each
+copy trusts only the key it shipped with.
 
 The app only starts its updater when it is running as an `.app` **and** Info.plist carries
-`SUPublicEDKey`, so until the script has run, builds behave exactly as before and the settings
-window shows no "Check for Updates…" button.
+`SUPublicEDKey`. Releases up to v0.2.1 were built without it, so they never check for updates:
+those installs need one manual update (`brew upgrade --cask spacialshell`, or the DMG) onto a
+release that carries the key, and self-update from then on. Dev bundles (`bundle.sh` without a
+version, e.g. the pre-commit install) drop the key so they never offer to replace themselves with a
+release; `SPACIAL_UPDATES=1 Scripts/bundle.sh` keeps it, to try the updater locally.
 
 ## Cutting a release
 
 1. Close the milestone on GitHub. `milestone-release.yml` tags the next minor version and starts
    `release.yml`. (Or push a tag yourself for a patch, or run Release by hand on a tag.)
 2. Watch Actions → Release. Its warnings say what was skipped for lack of a secret.
-3. The release gets `SpacialShell-X.Y.Z.dmg` and, with the Sparkle key, `appcast.xml`. Installed
+3. The release gets `SpacialShell-X.Y.Z.dmg` and, with the Sparkle key, `appcast.xml` (one item,
+   the DMG, with its `sparkle:edSignature`; the step fails if the signature is missing). Installed
    copies read `https://github.com/AskAlice/SpacialShell-MacOS/releases/latest/download/appcast.xml`
    once a day, or on "Check for Updates…" in Settings → General.
 
 ## Known limits
 
-- **The repository is private, so auto-update cannot reach it yet.** Release assets of a private
-  repo need an authenticated request, and Sparkle makes anonymous ones: the appcast and the DMG
-  both 404 for it. Updates work once releases are public — make the repo public, or publish the
-  release assets to a public repo (e.g. `AskAlice/SpacialShell-releases`) and point `SUFeedURL`
-  and `--download-url-prefix` in `release.yml` there.
 - Unverified until a real update runs: that the Accessibility grant survives Sparkle replacing the
   bundle (it should — the designated requirement keys on the team ID), and that the relaunch
   restores parked windows (it goes through `applicationWillTerminate`, like a quit).

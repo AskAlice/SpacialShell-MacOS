@@ -107,6 +107,10 @@ jobs:
             --ed-key-file - \
             --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" \
             build/appcast
+          # Sparkle refuses an update whose enclosure has no EdDSA signature, so a missing one
+          # would ship a feed no installed copy can use. Fail here instead.
+          grep -q 'sparkle:edSignature=' build/appcast/appcast.xml \
+            || { echo "::error::appcast.xml has no sparkle:edSignature"; cat build/appcast/appcast.xml; exit 1; }
           cp build/appcast/appcast.xml build/appcast.xml
 
       - name: GitHub Release

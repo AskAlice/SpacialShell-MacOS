@@ -24,5 +24,7 @@
 	<string>https://github.com/AskAlice/SpacialShell-MacOS/releases/latest/download/appcast.xml</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUPublicEDKey</key>
+	<string>gVEXSYsbwK1VxXKWNyO024bD7E7iuOGJ4w2zgGx/rjA=</string>
 </dict>
 </plist>
