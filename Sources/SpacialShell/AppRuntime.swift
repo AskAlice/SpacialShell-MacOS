@@ -39,6 +39,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var store: WorldStore?
     private var tap: HotkeyTap?
     private var gestures: TrackpadGestures?
+    private var pointerFocus: PointerFocus?
     private var shell: ShellController?
     private var overview: OverviewController?
     private var settingsWindow: SettingsWindowController?
@@ -103,6 +104,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             onDropTarget: { frame in Task { @MainActor in dropIndicator.show(frame) } },
             // #113: the border between tiles under the pointer, or being dragged.
             onBorder: { frame in Task { @MainActor in borderIndicator.show(frame) } },
+            // #135: what the pointer can focus, for focus-follows-mouse.
+            onPointerTargets: { [weak self] targets in Task { @MainActor in self?.pointerFocus?.update(targets: targets) } },
         ) { [weak self] world, snapshot in
             gate.note(world: world)
             Task { @MainActor in
@@ -243,6 +246,18 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // `onFlags` never consumes events: holding the bare modifier shows the cheat sheet.
         let cheatSheet = CheatSheetController(config: config)
         self.cheatSheet = cheatSheet
+        // #135: focus follows the mouse, opt-in. A completed dwell is a click on that window's tab:
+        // the same `route`, the same `.focusWindowRef`. Made before the hotkey tap so a key press
+        // can cancel a pending dwell; installed only while `focus-follows-mouse` is on.
+        let pointerFocus = PointerFocus { ref in
+            guard !gate.isTerminating else { return }
+            backend.noteHumanInput()
+            route(.focusWindowRef(ref))
+        }
+        pointerFocus.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
+        self.pointerFocus = pointerFocus
+        // The store has published already; later publishes arrive through `onPointerTargets`.
+        pointerFocus.update(targets: await store.pointerTargets())
         let tap = HotkeyTap(
             table: KeyBindings.table(for: config),
             onCommand: { command in
@@ -254,7 +269,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 span.end()
             },
             onFlags: { flags in Task { @MainActor in cheatSheet.flagsChanged(flags) } },
-            onKeyDown: { backend.noteHumanInput() },
+            onKeyDown: {
+                backend.noteHumanInput()
+                Task { @MainActor in pointerFocus.cancel() }   // #135: the keyboard has the floor
+            },
         )
         self.tap = tap
         termination.arm(tap: tap)
@@ -407,6 +425,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
         tap?.update(table: KeyBindings.table(for: config))
         gestures?.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
+        pointerFocus?.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
         shell?.update(config: config)
         cheatSheet?.update(config: config)
         layouts?.update(config: config, overrides: overrides)

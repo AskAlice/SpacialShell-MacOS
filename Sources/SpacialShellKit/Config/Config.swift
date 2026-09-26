@@ -163,6 +163,12 @@ public struct Config: Codable, Equatable, Sendable {
     /// #141: swipe the way the keys point instead (swipe left runs Fn+A, swipe up Fn+W).
     public var gestureInvert: Bool = false
     public static let gestureFingerRange = 3...5
+    /// #135 (G28): resting the pointer on another tiled window focuses it, as a click on its tab
+    /// would. Opt-in (#24): off, focus moves only by click, key, swipe or command.
+    public var focusFollowsMouse: Bool = false
+    /// #135: how long the pointer has to rest on a window before it takes focus. Clamped to
+    /// `FocusFollowsMouse.delayRangeMs`.
+    public var focusFollowsMouseDelayMs: Int = FocusFollowsMouse.defaultDelayMs
     /// Both panels' material tint and how opaque they are. "system" means the stock vibrancy
     /// material; a hex colour replaces it. One pair for both surfaces — split them only if the
     /// rail and bar ever need to differ.
@@ -216,6 +222,7 @@ public struct Config: Codable, Equatable, Sendable {
         case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
              workspaceWrap = "workspace-wrap"
         case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert"
+        case focusFollowsMouse = "focus-follows-mouse", focusFollowsMouseDelayMs = "focus-follows-mouse-delay-ms"
         case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
         case layouts = "layout", layoutBar = "layout-bar"
         case telemetry
@@ -249,6 +256,10 @@ public struct Config: Codable, Equatable, Sendable {
         let fingers = try c.decodeIfPresent(Int.self, forKey: .gestureFingers) ?? 3
         gestureFingers = min(Config.gestureFingerRange.upperBound, max(Config.gestureFingerRange.lowerBound, fingers))
         gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert) ?? false
+        focusFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .focusFollowsMouse) ?? false
+        // Clamped like `gesture-fingers`: a 0 or a 10000 is a typo, not a reason to reject the file.
+        focusFollowsMouseDelayMs = FocusFollowsMouse.clamp(
+            try c.decodeIfPresent(Int.self, forKey: .focusFollowsMouseDelayMs) ?? FocusFollowsMouse.defaultDelayMs)
         if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
             guard let n = HexColor.normalize(raw) else {
                 throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
@@ -335,6 +346,8 @@ public struct Config: Codable, Equatable, Sendable {
         gestures = \(gestures)
         gesture-fingers = \(gestureFingers)
         gesture-invert = \(gestureInvert)
+        focus-follows-mouse = \(focusFollowsMouse)
+        focus-follows-mouse-delay-ms = \(focusFollowsMouseDelayMs)
         layout-bar = [\(layoutBar.map { q($0.rawValue) }.joined(separator: ", "))]
 
         """

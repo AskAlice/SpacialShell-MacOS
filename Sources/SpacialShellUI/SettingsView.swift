@@ -85,6 +85,12 @@ struct SettingsView: View {
                 Toggle("", isOn: binding(\.pointerWarp, default: file.pointerWarp)).labelsHidden()
             } reset: { overrides.pointerWarp = nil }
 
+            // #135: opt-in; `focus-follows-mouse-delay-ms` is file-only.
+            row("Focus follows mouse", overridden: overrides.focusFollowsMouse != nil) {
+                Toggle("", isOn: binding(\.focusFollowsMouse, default: file.focusFollowsMouse)).labelsHidden()
+                    .help("Rest the pointer on another tiled window for \(file.focusFollowsMouseDelayMs) ms to focus it, as a click on its tab would")
+            } reset: { overrides.focusFollowsMouse = nil }
+
             row("Wrap workspaces", overridden: overrides.workspaceWrap != nil) {
                 Toggle("", isOn: binding(\.workspaceWrap, default: file.workspaceWrap)).labelsHidden()
                     .help("Fn+W on the first workspace goes to the last one, and Fn+S on the last back to the first")

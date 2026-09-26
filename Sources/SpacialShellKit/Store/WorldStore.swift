@@ -143,6 +143,9 @@ public actor WorldStore {
     private var hovered: CGRect?
     /// #113: the hovered or grabbed border's highlight (top-left global); nil hides it.
     private let onBorder: @Sendable (CGRect?) -> Void
+    /// #135: what the pointer can focus, for focus-follows-mouse; sent on publish when it changed.
+    private let onPointerTargets: @Sendable (PointerTargets) -> Void
+    private var lastTargets: PointerTargets?
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
                 placements: [String: UUID] = [:], movedApps: Set<String> = [],
@@ -151,9 +154,11 @@ public actor WorldStore {
                 tracerProvider: (any TracerProvider)? = nil,
                 onDropTarget: @escaping @Sendable (CGRect?) -> Void = { _ in },
                 onBorder: @escaping @Sendable (CGRect?) -> Void = { _ in },
+                onPointerTargets: @escaping @Sendable (PointerTargets) -> Void = { _ in },
                 onChange: @escaping @Sendable (World, ShellSnapshot) -> Void) {
         self.onDropTarget = onDropTarget
         self.onBorder = onBorder
+        self.onPointerTargets = onPointerTargets
         self.now = now
         self.tracerProvider = tracerProvider
         self.animator = animator
@@ -203,6 +208,9 @@ public actor WorldStore {
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
 
+    /// #135: the pull side of `onPointerTargets`, for a watcher that starts after the first publish.
+    public func pointerTargets() -> PointerTargets { lastTargets ?? .empty }
+
     /// The pull side of the feed: what the last publish would say now.
     public func shellSnapshot() -> ShellSnapshot { makeSnapshot(generation: publishGeneration) }
 
@@ -212,6 +220,9 @@ public actor WorldStore {
     }
 
     private func publish() {
+        // #135: frames can change with the world unchanged (a resize drag), so this has its own dedupe.
+        let targets = PointerTargets(world: world, shown: lastShown, observed: observed, displays: displays, config: config)
+        if targets != lastTargets { lastTargets = targets; onPointerTargets(targets) }
         let snapshot = makeSnapshot(generation: publishGeneration + 1)
         if let last = lastPublished, last.world == world, last.snapshot.isEquivalent(to: snapshot) { return }
         publishGeneration += 1
