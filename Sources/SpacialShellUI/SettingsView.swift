@@ -81,6 +81,10 @@ struct SettingsView: View {
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
             } reset: { overrides.railSide = nil }
 
+            row("Pointer follows focus", overridden: overrides.pointerWarp != nil) {
+                Toggle("", isOn: binding(\.pointerWarp, default: file.pointerWarp)).labelsHidden()
+            } reset: { overrides.pointerWarp = nil }
+
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("config.toml").font(.system(size: 12, weight: .semibold))

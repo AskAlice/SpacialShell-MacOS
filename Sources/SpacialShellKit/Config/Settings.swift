@@ -17,6 +17,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var animations: Bool?
     public var emptyCheatsheet: Bool?
     public var railAutohide: Bool?
+    public var pointerWarp: Bool?
     /// command -> chord. Merged over the file's own overrides per command rather than replacing
     /// the map wholesale, so rebinding one command in the settings window cannot silently discard
     /// a rebind the file made to a different one.
@@ -48,6 +49,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         animations = try c.decodeIfPresent(Bool.self, forKey: .animations)
         emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet)
         railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide)
+        pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp)
         keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides)
         categoryOrder = try c.decodeIfPresent([AppCategory].self, forKey: .categoryOrder)
         maxWorkspaces = try c.decodeIfPresent(Int.self, forKey: .maxWorkspaces)
@@ -105,6 +107,7 @@ public enum Settings {
         if let v = overrides.animations { c.animations = v }
         if let v = overrides.emptyCheatsheet { c.emptyCheatsheet = v }
         if let v = overrides.railAutohide { c.railAutohide = v }
+        if let v = overrides.pointerWarp { c.pointerWarp = v }
         if let v = overrides.categoryOrder { c.categoryOrder = v }
         if let v = overrides.maxWorkspaces { c.maxWorkspaces = max(1, v) }
         if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }

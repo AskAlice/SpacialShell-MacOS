@@ -414,6 +414,18 @@ public final class AXWindowBackend: WindowBackend {
         await registry.get(ref.pid)?.unhide(ref.id) ?? .failure(.notFound)
     }
 
+    /// #107. A fresh null-source event reads the current pointer in global top-left coordinates —
+    /// the same space as AX frames and `DisplayInfo`.
+    public nonisolated func pointerLocation() async -> CGPoint? { CGEvent(source: nil)?.location }
+
+    /// #107. `CGWarpMouseCursorPosition` does not post a mouse event, and afterwards macOS ignores
+    /// physical mouse movement for a moment (the local-events suppression interval); re-associating
+    /// the mouse with the cursor ends that, so the pointer never feels stuck after a warp.
+    public nonisolated func warpPointer(to point: CGPoint) async {
+        CGWarpMouseCursorPosition(point)
+        CGAssociateMouseAndMouseCursorPosition(1)
+    }
+
     // MARK: - Termination (spec §7.4)
 
     /// Never strand a window in a parking corner. Every window in `parked` is centred on its

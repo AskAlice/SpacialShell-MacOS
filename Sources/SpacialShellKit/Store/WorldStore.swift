@@ -190,6 +190,12 @@ public actor WorldStore {
             }
         }
         await reconcile(parent: span, since: issued)
+        // #107: after the reconcile, so the focused window's frame is the one it now has.
+        if config.pointerWarp, world.focus.screen != before.screen,
+           let p = PointerWarp.target(after: command, from: before.screen, world: world, frames: observed,
+                                      displays: displays, pointer: await backend.pointerLocation()) {
+            await backend.warpPointer(to: p)
+        }
         switch command {
         case .rescueWindows, .recoverWindow: await rescueBeyondReach(reason: "command")   // #73: the tray's "off every display"
         default: break
