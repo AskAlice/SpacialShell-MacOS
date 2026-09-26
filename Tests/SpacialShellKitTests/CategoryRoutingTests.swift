@@ -259,6 +259,32 @@ extension WorldStoreTests {
         #expect(await store.currentPlacements()["com.apple.Safari"] == web.id)
         #expect(w.invariantViolations().isEmpty)
     }
+    /// #98: moving a whole app is an explicit placement. Its memory moves with it, and from then on
+    /// it beats the category, so the app's next window lands where the user put the app.
+    @Test func movingAnAppOverridesItsCategory() async throws {
+        let safari = WindowRef(id: 1, pid: 1), ide = WindowRef(id: 3, pid: 3), later = WindowRef(id: 4, pid: 1)
+        let apps = [AppInfo(pid: 1, bundleID: "com.apple.Safari", isHidden: false),
+                    AppInfo(pid: 3, bundleID: "com.example.IDE", isHidden: false,
+                            systemCategory: "public.app-category.developer-tools")]
+        let s = Snapshot(displays: [d1], apps: apps,
+                         windows: [win(safari, bundle: "com.apple.Safari"), win(ide, bundle: "com.example.IDE")], focused: nil)
+        let (store, _) = await make(s, config: routing())
+        await store.run(.focusWindowRef(safari))
+        await store.run(.moveAppToWorkspace(.down))
+        let moved = await store.world.workspace(containing: safari)!
+        #expect(moved.category != .web)
+        #expect(await store.currentPlacements()["com.apple.Safari"] == moved.id)
+        #expect(await store.currentMovedApps() == ["com.apple.Safari"])
+        await store.apply(.snapshot(Snapshot(displays: [d1], apps: apps,
+                                             windows: s.windows + [win(later, bundle: "com.apple.Safari")], focused: nil)))
+        #expect(await store.world.workspace(containing: later)?.id == moved.id)
+        // Stored: the override survives a relaunch, and a file from before it loads as none.
+        let state = PersistedState(world: await store.world, placements: await store.currentPlacements(),
+                                   movedApps: await store.currentMovedApps())
+        #expect(try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state)).movedApps == ["com.apple.Safari"])
+        let old = try JSONDecoder().decode(PersistedState.self, from: Data(#"{"screens":{}}"#.utf8))
+        #expect(old.movedApps.isEmpty)
+    }
     /// A window `adopt` will not file (ephemeral here) must not leave an empty row behind.
     @Test func aWindowThatIsNotFiledCreatesNoRow() async {
         let calc = WindowRef(id: 1, pid: 1)

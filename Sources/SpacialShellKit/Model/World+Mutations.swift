@@ -224,7 +224,9 @@ extension World {
     }
 
     public mutating func activate(index: Int, on screen: DisplayID) {
-        guard var s = screens[screen], (0..<s.workspaces.count).contains(index) else { return }
+        guard (screens[screen]?.workspaces.indices)?.contains(index) == true else { return }
+        rememberActive(on: screen, before: index)
+        var s = screens[screen]!
         s.activeIndex = index
         screens[screen] = s
         if focus.screen == screen {
@@ -232,6 +234,13 @@ extension World {
             focus.window = s.active.anchor.flatMap { vis.contains($0) ? $0 : nil } ?? vis.first
         }
         normalize()
+    }
+
+    /// #106: about to make row `index` active on `screen` — remember the row being left, so Fn+N on
+    /// the new one can come back. Staying put remembers nothing.
+    mutating func rememberActive(on screen: DisplayID, before index: Int) {
+        guard let s = screens[screen], s.activeIndex != index, s.workspaces.indices.contains(s.activeIndex) else { return }
+        screens[screen]!.previous = s.active.id
     }
 
     /// Spec §7.8: unplug merges into main; replug creates an empty stack (state restore may refill it).
@@ -286,6 +295,7 @@ extension World {
             if kept.isEmpty || !kept.last!.isEmpty || kept.last!.pinned { kept.append(newWorkspace()) }
             s.workspaces = kept
             s.activeIndex = kept.firstIndex { $0.id == activeId } ?? min(s.activeIndex, kept.count - 1)
+            if let p = s.previous, !kept.contains(where: { $0.id == p }) { s.previous = nil }   // #106
             for i in kept.indices {
                 if let a = kept[i].anchor, !kept[i].windows.contains(a) { s.workspaces[i].anchor = nil }
                 if s.workspaces[i].anchor == nil { s.workspaces[i].anchor = tiled(in: s.workspaces[i]).first }

@@ -45,8 +45,12 @@ public struct Screen: Codable, Equatable, Sendable {
     public var rect: CGRect?             // nil = whole display visibleFrame
     public var workspaces: [Workspace]   // top→bottom
     public var activeIndex: Int
-    public init(display: DisplayID, rect: CGRect? = nil, workspaces: [Workspace], activeIndex: Int) {
+    /// #106: the workspace that was active here before the current one — where Fn+N on the active
+    /// workspace goes back to. Set by `World.remember`, cleared by `normalize()` once it is gone.
+    public var previous: UUID?
+    public init(display: DisplayID, rect: CGRect? = nil, workspaces: [Workspace], activeIndex: Int, previous: UUID? = nil) {
         self.display = display; self.rect = rect; self.workspaces = workspaces; self.activeIndex = activeIndex
+        self.previous = previous
     }
     public var active: Workspace {
         get { workspaces[activeIndex] }

@@ -31,6 +31,7 @@ public enum CommandRunner {
             if source.floating.contains(ref) { w.screens[dest.screen]!.workspaces[dest.index].floating.insert(ref) }
             w.screens[dest.screen]!.workspaces[dest.index].anchor = ref
             if follow {
+                w.rememberActive(on: dest.screen, before: dest.index)
                 w.screens[dest.screen]!.activeIndex = dest.index
                 w.focus = Focus(screen: dest.screen, window: ref)
             } else {
@@ -42,6 +43,43 @@ public enum CommandRunner {
             }
             w.normalize()
             return true
+        }
+
+        /// #98: every managed window of app `pid` into workspace `dest`, none of them following.
+        /// They keep their relative order (appended after what the row already holds) and, via
+        /// `move`, their floating state. The focused window goes last, so if focus has to fall to a
+        /// neighbour, no window of the app is left in its row to fall to. The destination is looked
+        /// up by id on every step: a row the app empties is reaped, and indices shift under it.
+        /// ponytail: the app is its pid, which is all the model knows; an app running several
+        /// processes moves only the one the window belongs to.
+        func moveApp(_ pid: Int32, to dest: UUID) -> Bool {
+            guard let d = w.location(ofWorkspace: dest) else { return false }
+            let there = w.screens[d.screen]!.workspaces[d.index].windows
+            let moving = w.screenOrder.flatMap { w.screens[$0]!.workspaces.flatMap(\.windows) }
+                .filter { $0.pid == pid && !there.contains($0) }
+            guard !moving.isEmpty else { return false }
+            var placed: [Int] = []   // ranks in `moving` already moved
+            for r in moving.filter({ $0 != w.focus.window }) + moving.filter({ $0 == w.focus.window }) {
+                let rank = moving.firstIndex(of: r)!
+                guard let d = w.location(ofWorkspace: dest) else { break }
+                _ = move(r, to: d, at: there.count + placed.filter { $0 < rank }.count, follow: false)
+                placed.append(rank)
+            }
+            return true
+        }
+
+        /// Fn+Shift+W/S's destination (and #98's): the row above or below the active one. Past the
+        /// top there is no row yet, so one is made — Fn+Shift+W from the first row opens a fresh
+        /// workspace above all the others, the mirror of Fn+Shift+S from the last row landing in
+        /// the trailing "+" row.
+        func keyboardTarget(_ dir: Vertical) -> Int? {
+            var target = screen.activeIndex + (dir == .down ? 1 : -1)
+            if target == -1 {
+                w.screens[sid]!.workspaces.insert(w.newWorkspace(), at: 0)
+                w.screens[sid]!.activeIndex += 1
+                target = 0
+            }
+            return w.screens[sid]!.workspaces.indices.contains(target) ? target : nil
         }
 
         /// Decision 2026-09-15 (#49): macOS shows only the fullscreen Space on the display that has
@@ -93,7 +131,13 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .focusWorkspaceIndex(let n):
-            let target = n - 1
+            var target = n - 1
+            // Decision (#24, #106): Fn+N on the workspace already active goes back to the previous
+            // one, so one chord flips between two. Nothing remembered: a no-op, as before.
+            if target == screen.activeIndex {
+                guard let p = screen.previous, let i = screen.workspaces.firstIndex(where: { $0.id == p }) else { return (w, []) }
+                target = i
+            }
             guard (0..<screen.workspaces.count).contains(target), target != screen.activeIndex else { return (w, []) }
             leaveFullscreen(on: sid)
             activateAndLand(target, on: sid)
@@ -131,19 +175,31 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .moveWindowToWorkspace(let dir):
-            guard let f = w.focus.window, screen.active.windows.contains(f) else { return (w, []) }
-            var target = screen.activeIndex + (dir == .down ? 1 : -1)
-            // Past the top there is no row yet, so make one: Fn+Shift+W from the first row opens a
-            // fresh workspace above all the others and carries the window into it — the mirror of
-            // Fn+Shift+S from the last row, which lands in the trailing "+" row.
-            if target == -1 {
-                w.screens[sid]!.workspaces.insert(w.newWorkspace(), at: 0)
-                w.screens[sid]!.activeIndex += 1
-                target = 0
-            }
-            guard (0..<w.screens[sid]!.workspaces.count).contains(target) else { return (w, []) }
-            guard move(f, to: (sid, target)) else { return (w, []) }
+            guard let f = w.focus.window, screen.active.windows.contains(f), let target = keyboardTarget(dir),
+                  move(f, to: (sid, target)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
+
+        case .moveWindowToWorkspaceIndex(let n):
+            // #105: past the last row is the trailing "+" row, which grows a new one (invariant 4).
+            guard n >= 1, let f = w.focus.window, screen.active.windows.contains(f),
+                  move(f, to: (sid, min(n, screen.workspaces.count) - 1)) else { return (w, []) }
+            effects.append(.focus(f)); effects.append(.relayout)
+
+        case .moveAppToWorkspace(let dir):
+            guard let f = w.focus.window, screen.active.windows.contains(f), let target = keyboardTarget(dir) else { return (w, []) }
+            let dest = w.screens[sid]!.workspaces[target].id
+            guard moveApp(f.pid, to: dest), let loc = w.location(ofWorkspace: dest) else { return (w, []) }
+            // Follow the focused window, as Fn+Shift+W/S does.
+            w.rememberActive(on: loc.screen, before: loc.index)
+            w.screens[loc.screen]!.activeIndex = loc.index
+            w.screens[loc.screen]!.workspaces[loc.index].anchor = f
+            w.focus = Focus(screen: loc.screen, window: f)
+            w.normalize()
+            effects = [.focus(f), .relayout]
+
+        case .moveAppRefToWorkspace(let ref, let ws):
+            guard w.location(of: ref) != nil, moveApp(ref.pid, to: ws) else { return (w, []) }
+            effects.append(.relayout)
 
         case .moveWindowRefToWorkspace(let ref, let workspace, let follow):
             // Dropping on the rail's "+" needs no special case: the trailing empty workspace is a

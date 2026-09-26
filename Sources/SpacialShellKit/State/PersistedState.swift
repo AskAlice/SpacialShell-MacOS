@@ -25,14 +25,18 @@ public struct PersistedState: Codable, Equatable, Sendable {
     /// `decodeIfPresent ?? [:]` keeps older state files loading; version stays 1 (an old build
     /// reading a new file ignores the key it does not know).
     public var placements: [String: UUID] = [:]
+    /// #98: bundle ids whose placement the user set by moving the whole app; it beats category
+    /// routing for them. `decodeIfPresent ?? []`, like `placements`.
+    public var movedApps: Set<String> = []
 
-    public init(world: World, placements: [String: UUID] = [:]) {
+    public init(world: World, placements: [String: UUID] = [:], movedApps: Set<String> = []) {
         screens = world.screens.mapValues { s in
             ScreenState(workspaces: s.workspaces.map { WorkspaceState(id: $0.id, name: $0.name, symbol: $0.symbol, layout: $0.layout, pinned: $0.pinned, category: $0.category) },
                         activeIndex: s.activeIndex)
         }
         zen = world.zen
         self.placements = placements
+        self.movedApps = movedApps
     }
 
     /// The placement memory a world implies right now. Apps with no windows contribute nothing —
@@ -47,13 +51,22 @@ public struct PersistedState: Codable, Equatable, Sendable {
         return p
     }
 
-    enum CodingKeys: String, CodingKey { case version, screens, zen, placements }
+    enum CodingKeys: String, CodingKey { case version, screens, zen, placements, movedApps }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         version = try c.decodeIfPresent(Int.self, forKey: .version) ?? 1
         screens = try c.decode([DisplayID: ScreenState].self, forKey: .screens)
         zen = try c.decodeIfPresent(Bool.self, forKey: .zen) ?? false
         placements = try c.decodeIfPresent([String: UUID].self, forKey: .placements) ?? [:]
+        movedApps = try c.decodeIfPresent(Set<String>.self, forKey: .movedApps) ?? []
+    }
+    /// Written only when there is one, so a state file with no whole-app move is byte-for-byte
+    /// what it was before #98.
+    public func encode(to e: Encoder) throws {
+        var c = e.container(keyedBy: CodingKeys.self)
+        try c.encode(version, forKey: .version); try c.encode(screens, forKey: .screens)
+        try c.encode(zen, forKey: .zen); try c.encode(placements, forKey: .placements)
+        if !movedApps.isEmpty { try c.encode(movedApps.sorted(), forKey: .movedApps) }
     }
 
     /// Re-creates, empty, the workspaces on screens the state knows that are either pinned or

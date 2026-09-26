@@ -115,7 +115,7 @@ struct WorkspacePanelView: View {
             .overlay(alignment: .leading) { caret(visible: dropSlot == .endOfRow) }
             .dropDestination(for: DraggedWindow.self) { items, _ in
                 guard let dropped = items.first else { return false }
-                send(state.endOfRowDrop(dropped.ref))
+                send(appDrop(dropped.ref) ?? state.endOfRowDrop(dropped.ref))
                 return true
             } isTargeted: { over in
                 dropSlot = over ? .endOfRow : nil
@@ -187,11 +187,17 @@ struct WorkspacePanelView: View {
         .overlay(alignment: .leading) { caret(visible: dropSlot == .before(tab.ref)) }
         .dropDestination(for: DraggedWindow.self) { items, _ in
             guard let dropped = items.first else { return false }
-            send(.moveWindowRefBefore(dropped.ref, tab.ref))
+            send(appDrop(dropped.ref) ?? .moveWindowRefBefore(dropped.ref, tab.ref))
             return true
         } isTargeted: { over in
             dropSlot = over ? .before(tab.ref) : nil
         }
+    }
+
+    /// #98: Option held on the drop moves the window's whole app to this bar's workspace (appended,
+    /// not before the tab aimed at). Nil without Option: an ordinary tab drop.
+    private func appDrop(_ ref: SpacialShellProtocol.WindowRef) -> Command? {
+        NSEvent.modifierFlags.contains(.option) ? state.appDrop(ref) : nil
     }
 
     /// Where the dragged tab would land. An insertion caret rather than a highlight on the target

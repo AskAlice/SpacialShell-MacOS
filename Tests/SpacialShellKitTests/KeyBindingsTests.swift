@@ -28,6 +28,20 @@ import Testing
         #expect(t[KeyBindings.parse("ctrl-alt-w")!] == .focusWorkspace(.up))
         #expect(t[KeyBindings.parse("fn-w")!] == nil)
         #expect(t[KeyBindings.parse("ctrl-alt-x")!] == .toggleFloat)
+        #expect(t[KeyBindings.parse("ctrl-alt-shift-1")!] == .moveWindowToWorkspaceIndex(1))
+        // ⌥ is already in the prefix, so the whole-app chord would collide with ⌃⌥⇧W: unbound here.
+        #expect(t[KeyBindings.parse("ctrl-alt-shift-w")!] == .moveWindowToWorkspace(.up))
+        #expect(!t.values.contains(.moveAppToWorkspace(.up)))
+    }
+    /// #105 and #98 on the grammar: +Shift moves the window, +Shift+Option the whole app.
+    @Test func moveToWorkspaceNAndMoveAppChords() throws {
+        let t = KeyBindings.table(for: try Config.parse(toml: ""))
+        #expect(t[KeyBindings.parse("fn-shift-1")!] == .moveWindowToWorkspaceIndex(1))
+        #expect(t[KeyBindings.parse("fn-shift-0")!] == .moveWindowToWorkspaceIndex(10))
+        #expect(t[KeyBindings.parse("fn-alt-shift-w")!] == .moveAppToWorkspace(.up))
+        #expect(t[KeyBindings.parse("fn-alt-shift-s")!] == .moveAppToWorkspace(.down))
+        #expect(KeyBindings.commandNames["move-window-to-workspace-3"] == .moveWindowToWorkspaceIndex(3))
+        #expect(KeyBindings.commandNames["move-app-down"] == .moveAppToWorkspace(.down))
     }
 
     // MARK: rebinding (settings window)

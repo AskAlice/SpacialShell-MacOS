@@ -45,21 +45,22 @@ public enum CheatSheet {
         add(.navigate, "focus-workspace-down", "Workspace down", "arrow.down", "S")
         add(.navigate, "focus-window-left", "Window left", "arrow.left", "A")
         add(.navigate, "focus-window-right", "Window right", "arrow.right", "D")
-        let jump = (1...10).flatMap { byName["focus-workspace-\($0)"] ?? [] }
-        if !jump.isEmpty {
-            let prefix = jump.first.map { ch in
-                var p = ""
-                if ch.fn { p += "Fn+" }; if ch.control { p += "⌃" }; if ch.option { p += "⌥" }
-                if ch.shift { p += "⇧" }; if ch.command { p += "⌘" }
-                return p
-            } ?? ""
-            out.append(Row(group: .navigate, title: "Jump to workspace 1–10", commandName: "focus-workspace-1",
-                           chords: ["\(prefix)1…0"], symbol: "1.circle", letter: "1"))
+        /// One row for a family of ten digit commands ("Fn+1…0"), prefixed with its first chord's modifiers.
+        func digits(_ g: Group, _ family: String, _ title: String, _ symbol: String, _ letter: String) {
+            guard let ch = (1...10).flatMap({ byName["\(family)\($0)"] ?? [] }).first else { return }
+            var p = ""
+            if ch.fn { p += "Fn+" }; if ch.control { p += "⌃" }; if ch.option { p += "⌥" }
+            if ch.shift { p += "⇧" }; if ch.command { p += "⌘" }
+            out.append(Row(group: g, title: title, commandName: "\(family)1", chords: ["\(p)1…0"], symbol: symbol, letter: letter))
         }
+        digits(.navigate, "focus-workspace-", "Workspace 1–10 / back", "1.circle", "1")
         add(.move, "move-window-left", "Move window left", "rectangle.lefthalf.inset.filled.arrow.left", "⇧A")
         add(.move, "move-window-right", "Move window right", "rectangle.righthalf.inset.filled.arrow.right", "⇧D")
         add(.move, "move-window-up", "Move to workspace above", "rectangle.tophalf.inset.filled", "⇧W")
         add(.move, "move-window-down", "Move to workspace below (new category)", "rectangle.bottomhalf.inset.filled", "⇧S")
+        digits(.move, "move-window-to-workspace-", "Move to workspace 1–10", "1.square", "⇧1")
+        add(.move, "move-app-up", "Move whole app up", "square.stack.3d.up", "⌥⇧W")
+        add(.move, "move-app-down", "Move whole app down", "square.stack.3d.down.right", "⌥⇧S")
         add(.move, "toggle-float", "Toggle float", "rectangle.portrait.on.rectangle.portrait", "G")
         add(.layout, "cycle-layout", "Cycle layout", "square.split.2x1", "Space")
         add(.screens, "focus-screen-prev", "Previous screen", "display", "[")

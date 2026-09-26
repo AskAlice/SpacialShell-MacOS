@@ -252,7 +252,9 @@ Generated from `KeyBindings.commandNames`:
 | `move-window-to-screen-prev` | Move the focused window to the previous screen and follow it |
 | `move-window-to-screen-next` | Move the focused window to the next screen and follow it |
 | `toggle-float` | Float a tiled window at its current frame, or re-tile a floating one |
-| `focus-workspace-1` … `focus-workspace-10` | Jump directly to workspace 1…10 on the focused screen (`focus-workspace-10` is bound to the `0` key by default) |
+| `focus-workspace-1` … `focus-workspace-10` | Jump directly to workspace 1…10 on the focused screen (`focus-workspace-10` is bound to the `0` key by default); on the workspace already active, go back to the previously active one |
+| `move-window-to-workspace-1` … `move-window-to-workspace-10` | Move the focused window to workspace 1…10 of its screen and follow it; past the last row, into the trailing empty one |
+| `move-app-up` / `move-app-down` | Move every managed window of the focused window's app to the workspace above / below the focused one and follow; the app's new windows land there too, over its category |
 
 ### Key names
 

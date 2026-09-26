@@ -37,7 +37,8 @@ public enum KeyBindings {
         "focus-workspace-4": .focusWorkspaceIndex(4), "focus-workspace-5": .focusWorkspaceIndex(5), "focus-workspace-6": .focusWorkspaceIndex(6),
         "focus-workspace-7": .focusWorkspaceIndex(7), "focus-workspace-8": .focusWorkspaceIndex(8), "focus-workspace-9": .focusWorkspaceIndex(9),
         "focus-workspace-10": .focusWorkspaceIndex(10),
-    ]
+        "move-app-up": .moveAppToWorkspace(.up), "move-app-down": .moveAppToWorkspace(.down),
+    ].merging((1...10).map { ("move-window-to-workspace-\($0)", Command.moveWindowToWorkspaceIndex($0)) }) { a, _ in a }
 
     /// "fn-shift-g" → Chord. Modifiers: fn, ctrl, alt, shift, cmd. Last token is a KeyCodes name.
     public static func parse(_ s: String) -> Chord? {
@@ -69,7 +70,11 @@ public enum KeyBindings {
         ("g", "toggle-float"), ("comma", "open-settings"),
         ("1", "focus-workspace-1"), ("2", "focus-workspace-2"), ("3", "focus-workspace-3"), ("4", "focus-workspace-4"), ("5", "focus-workspace-5"),
         ("6", "focus-workspace-6"), ("7", "focus-workspace-7"), ("8", "focus-workspace-8"), ("9", "focus-workspace-9"), ("0", "focus-workspace-10"),
-    ]
+    ] + (1...10).map { ("shift-\($0 % 10)", "move-window-to-workspace-\($0)") }   // #105: Fn+⇧1…0
+    /// Fn preset only (#98, P6: +⌥ on the move chord = the whole app). The ctrl-alt prefix already
+    /// holds ⌥, so there these would land on ⌃⌥⇧W/S and take them from move-window-up/down; they
+    /// stay bindable by name.
+    static let fnOnly: [(String, String)] = [("alt-shift-w", "move-app-up"), ("alt-shift-s", "move-app-down")]
     static let arrows: [(String, String)] = [
         ("ctrl-alt-up", "focus-workspace-up"), ("ctrl-alt-down", "focus-workspace-down"), ("ctrl-alt-left", "focus-window-left"), ("ctrl-alt-right", "focus-window-right"),
         ("ctrl-alt-shift-up", "move-window-up"), ("ctrl-alt-shift-down", "move-window-down"), ("ctrl-alt-shift-left", "move-window-left"), ("ctrl-alt-shift-right", "move-window-right"),
@@ -88,7 +93,7 @@ public enum KeyBindings {
             commandNames[name] != nil && parse(chord) != nil ? name : nil
         })
 
-        for (k, name) in core where !rebound.contains(name) {
+        for (k, name) in core + (config.keybindingPreset == .fn ? fnOnly : []) where !rebound.contains(name) {
             if let ch = parse(prefix + k), let cmd = commandNames[name] { t[ch] = cmd }
         }
         for (k, name) in arrows where !rebound.contains(name) {

@@ -522,3 +522,116 @@ import Foundation
         }
     }
 }
+
+// MARK: move to workspace N (#105)
+
+extension CommandTests {
+    /// Fn+Shift+2 from row 1: the window goes to row 2 and focus follows, like Fn+Shift+S.
+    @Test func moveToWorkspaceNFollows() {
+        let (w, e) = run(base(), .moveWindowToWorkspaceIndex(2))   // D1 [a*, b, c], +
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[b, c], [a], []])
+        #expect(w.screens["D1"]!.activeIndex == 1 && w.focus == Focus(screen: "D1", window: a))
+        #expect(e == [.focus(a), .relayout])
+    }
+    /// N past the last row targets the trailing empty row, and a new "+" grows below it.
+    @Test func moveToWorkspacePastTheEndLandsInTheTrailingRow() {
+        let (w, _) = run(base(), .moveWindowToWorkspaceIndex(9))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[b, c], [a], []])
+    }
+    @Test func moveToTheWorkspaceItIsInChangesNothing() {
+        let w = base()
+        let (out, e) = run(w, .moveWindowToWorkspaceIndex(1))
+        #expect(out == w && e.isEmpty)
+        #expect(run(w, .moveWindowToWorkspaceIndex(0)).1.isEmpty)
+    }
+    @Test func moveToWorkspaceNUpwards() {
+        var w = stack()                                          // [[a], [c], [b*], +]
+        (w, _) = run(w, .moveWindowToWorkspaceIndex(1))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[a, b], [c], []])
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == b)
+    }
+}
+
+// MARK: back-and-forth (#106): Fn+N on the active workspace returns to the previous one.
+
+extension CommandTests {
+    @Test func rePressingTheActiveWorkspaceGoesBackAndForth() {
+        var w = stack()                                          // [[a], [c], [b*], +], active 2
+        (w, _) = run(w, .focusWorkspaceIndex(1))
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == a)
+        (w, _) = run(w, .focusWorkspaceIndex(1))                 // re-press: back to row 3
+        #expect(w.screens["D1"]!.activeIndex == 2 && w.focus.window == b)
+        (w, _) = run(w, .focusWorkspaceIndex(3))                 // re-press again: returns
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == a)
+    }
+    @Test func aFreshDisplayHasNothingToGoBackTo() {
+        let w = base()
+        let (out, e) = run(w, .focusWorkspaceIndex(1))
+        #expect(out == w && e.isEmpty)
+    }
+    /// The remembered workspace goes away: the memory goes with it, and the re-press is a no-op.
+    @Test func removingThePreviousWorkspaceClearsIt() {
+        var w = stack()
+        (w, _) = run(w, .focusWorkspaceIndex(1))                 // previous = [b]'s row
+        w.remove(b)                                              // that row empties and is reaped
+        #expect(w.screens["D1"]!.previous == nil)
+        let (out, e) = run(w, .focusWorkspaceIndex(1))
+        #expect(out == w && e.isEmpty)
+    }
+}
+
+// MARK: move all of an app's windows (#98)
+
+extension CommandTests {
+    /// Another app's window, pid 2.
+    var x: WindowRef { WindowRef(id: 9, pid: 2) }
+    /// D1 [[a*, x, b], [c], +], D2 [d]: `a b c d` are one app (pid 1), `x` another.
+    func apps() -> World {
+        var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
+        for r in [a, x, b] { w.adopt(r, kind: .tile, on: "D1") }
+        w.adopt(d, kind: .tile, on: "D2")
+        w.adopt(c, kind: .tile, on: "D1", workspace: w.screens["D1"]!.workspaces.last!.id)
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[a, x, b], [c], []] && w.focus.window == a)
+        return w
+    }
+    /// Fn+Shift+Option+S: every window of the app joins the row below, in order, and focus follows.
+    @Test func moveAppDownTakesEveryWindowOfTheApp() {
+        let (w, e) = run(apps(), .moveAppToWorkspace(.down))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[x], [c, a, b, d], []])
+        #expect(w.screens["D2"]!.active.windows.isEmpty)
+        #expect(w.screens["D1"]!.activeIndex == 1 && w.focus == Focus(screen: "D1", window: a))
+        #expect(e == [.focus(a), .relayout])
+    }
+    /// From the top row, as Fn+Shift+W does (#78): a new row above everything.
+    @Test func moveAppUpFromTheTopOpensANewRow() {
+        let (w, _) = run(apps(), .moveAppToWorkspace(.up))
+        #expect(w.screens["D1"]!.workspaces.map(\.windows) == [[a, b, c, d], [x], []])
+        #expect(w.screens["D1"]!.activeIndex == 0 && w.focus.window == a)
+    }
+    @Test func moveAppKeepsFloatingWindowsFloating() {
+        var w = apps(); w.setFloating(b, true)
+        (w, _) = run(w, .moveAppToWorkspace(.down))
+        #expect(w.screens["D1"]!.workspaces[1].floating == [b])
+    }
+    /// Option held on a drop (#95's non-following move): the app moves, nothing else does. Focus
+    /// was on one of its windows, so it falls to a window that stays — never to one that left.
+    @Test func optionDropMovesTheAppWithoutFollowing() {
+        let w = apps()
+        let plus = w.screens["D1"]!.workspaces.last!.id
+        let (out, e) = run(w, .moveAppRefToWorkspace(b, plus))
+        #expect(out.screens["D1"]!.workspaces.map(\.windows) == [[x], [a, b, c, d], []])
+        #expect(out.screens["D1"]!.activeIndex == 0 && out.focus == Focus(screen: "D1", window: x))
+        #expect(e == [.focus(x), .relayout])
+    }
+    /// Option on a tab-bar drop names the bar's own workspace, like its end-of-row drop.
+    @Test func optionDropOnABarMovesTheAppThere() {
+        let w = twoDisplays()
+        #expect(ShellUI.state(for: "D2", in: w)!.appDrop(b) == .moveAppRefToWorkspace(b, w.screens["D2"]!.active.id))
+    }
+    @Test func moveAppWithNothingToMoveChangesNothing() {
+        let w = single()
+        let (out, e) = run(w, .moveAppRefToWorkspace(a, w.screens["D1"]!.active.id))
+        #expect(out == w && e.isEmpty)
+        #expect(run(World.empty(screens: ["D1"], defaultLayout: .maximize), .moveAppToWorkspace(.down)).1.isEmpty)
+    }
+}

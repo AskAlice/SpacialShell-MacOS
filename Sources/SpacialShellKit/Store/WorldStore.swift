@@ -42,6 +42,10 @@ public actor WorldStore {
     /// boot so a relaunch puts windows back, then kept current by every reconcile, so an app that
     /// is quit and reopened mid-session also comes back to where the user last had it.
     private var placements: [String: UUID]
+    /// #98: apps the user moved as a whole (Fn+Shift+Option+W/S, Option+drop). Their placement is
+    /// an explicit choice, so it beats category routing (#74) for their new windows from then on.
+    /// ponytail: nothing clears it yet; "reset placement" is meant to, and does not exist yet.
+    private var movedApps: Set<String>
     private var intents = IntentSet()
     /// Spec §11 as amended 2026-09-15: retirement lasts only "until it changes", so a retired
     /// window's last known state is kept to recognise the change that brings it back (#36).
@@ -127,7 +131,7 @@ public actor WorldStore {
     private let onDropTarget: @Sendable (CGRect?) -> Void
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
-                placements: [String: UUID] = [:],
+                placements: [String: UUID] = [:], movedApps: Set<String> = [],
                 now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
                 animator: (any SwitchAnimator)? = nil,
                 tracerProvider: (any TracerProvider)? = nil,
@@ -140,6 +144,7 @@ public actor WorldStore {
         self.layouts = LayoutCatalogue(config: config)
         self.backend = backend; self.config = config; self.zeroSliverBundleIDs = zeroSliverBundleIDs; self.onChange = onChange
         self.placements = placements
+        self.movedApps = movedApps
         self.world = world ?? World.seeded(screens: [], config: config)
     }
 
@@ -167,11 +172,13 @@ public actor WorldStore {
     /// `parked` is what the restore actually acts on. §7.4 is about not stranding windows in a
     /// parking corner, and only parked windows are in one — a tiled window is already somewhere
     /// the user can reach, and centring it on the way out just scrambles their screen.
-    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID]) {
-        (world, displays, observed, stranded, parked, placements)
+    public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>) {
+        (world, displays, observed, stranded, parked, placements, movedApps)
     }
     /// The placement memory to persist — see `PersistedState.placements`.
     public func currentPlacements() -> [String: UUID] { placements }
+    /// See `PersistedState.movedApps`.
+    public func currentMovedApps() -> Set<String> { movedApps }
     /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
     /// window belongs to, whether the shell has it parked, and the last frame it observed.
     public func wireState() -> WireState {
@@ -224,6 +231,15 @@ public actor WorldStore {
         span.setAttribute(key: "command.detail", value: detail)
         let before = world.focus
         let (next, effects) = CommandRunner.apply(command, to: world, layouts: layouts)
+        // #98: a whole-app move is an explicit placement for that app (see `movedApps`).
+        let movedPid: Int32? = switch command {
+        case .moveAppToWorkspace: before.window?.pid
+        case .moveAppRefToWorkspace(let r, _): r.pid
+        default: nil
+        }
+        if let movedPid, next != world, let bundle = bundleIDs.first(where: { $0.key.pid == movedPid })?.value {
+            movedApps.insert(bundle)
+        }
         world = next
         if let f = world.focus.window, f != before.window { commandedFocus = (f, now()) }
         Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
@@ -378,7 +394,8 @@ public actor WorldStore {
                 // its own, else nil — `adopt`'s ordinary rules. Whichever row it gets becomes the
                 // app's placement, so the other windows of an app outside the order follow it. Only a window `adopt` will file on its own is routed: an
                 // ephemeral, ignored or child window would leave its new row empty.
-                let routable = w.bundleID != nil && w.parent == nil && (kind == .tile || kind == .float)
+                // #98: an app the user moved as a whole goes where they put it, not by category.
+                let routable = w.bundleID.map { !movedApps.contains($0) } == true && w.parent == nil && (kind == .tile || kind == .float)
                 let landing = world.landing(remembered: w.bundleID.flatMap { placements[$0] },
                                             crowdOn: w.bundleID.flatMap { crowds[$0] },
                                             routeOn: routable ? screenFor(w.frame) : nil,

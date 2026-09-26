@@ -103,7 +103,10 @@ struct ScreenPanelView: View {
                     defer { reordering = nil }
                     switch items.first {
                     case .window(let dropped)?:
-                        send(.moveWindowRefToWorkspace(dropped.ref, item.id, follow: false))
+                        // #98: Option held on the drop moves the window's whole app.
+                        send(NSEvent.modifierFlags.contains(.option)
+                             ? .moveAppRefToWorkspace(dropped.ref, item.id)
+                             : .moveWindowRefToWorkspace(dropped.ref, item.id, follow: false))
                         return true
                     case .workspace(let dragged)?:
                         guard let command = state.railReorder(dragged.workspace, before: item.id) else { return false }

@@ -6,11 +6,18 @@ public enum Neighbor: Sendable, Hashable { case prev, next }
 
 public enum Command: Sendable, Hashable {
     case focusWorkspace(Vertical)
-    case focusWorkspaceIndex(Int)          // 1-based; Fn+0 → 10
+    case focusWorkspaceIndex(Int)          // 1-based; Fn+0 → 10. On the active one: back to the previous (#106)
     case focusWindow(Horizontal)
     case closeFocusedWindow
     case moveWindow(Horizontal)
     case moveWindowToWorkspace(Vertical)
+    case moveWindowToWorkspaceIndex(Int)   // #105: 1-based, like focusWorkspaceIndex; focus follows
+    /// #98: every managed window of the focused window's app to the row above/below the focused
+    /// one, in order, keeping each one's floating state. Focus follows, as with a single window.
+    case moveAppToWorkspace(Vertical)
+    /// #98: Option held while dropping a tab — that window's whole app to the workspace. Does not
+    /// follow, like every drop (#95).
+    case moveAppRefToWorkspace(WindowRef, UUID)
     case cycleLayout
     case toggleShellUI                     // Zen mode: hide/show the shell panels
     case focusScreen(Neighbor)

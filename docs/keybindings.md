@@ -42,7 +42,9 @@ bound.
 |---|---|---|---|
 | Focus workspace up / down | `Fn+W` / `Fn+S` | `⌃⌥W` / `⌃⌥S` | Super+W / S |
 | Focus window left / right † | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` | Super+A / D |
-| Focus workspace 1…10 | `Fn+1` … `Fn+9`, `Fn+0` | `⌃⌥1` … `⌃⌥0` | Super+1 … 0 |
+| Focus workspace 1…10 (again on the active one: back to the previous) | `Fn+1` … `Fn+9`, `Fn+0` | `⌃⌥1` … `⌃⌥0` | Super+1 … 0 |
+| Move window to workspace 1…10 | `Fn+⇧1` … `Fn+⇧0` | `⌃⌥⇧1` … `⌃⌥⇧0` | Super+Shift+1 … 0 |
+| Move the whole app to the workspace above / below | `Fn+⌥⇧W` / `Fn+⌥⇧S` | unbound ‡ | — |
 | Close focused window (app keeps running) | `Fn+Q` | `⌃⌥Q` | Super+Q |
 | Move window left / right | `Fn+⇧A` / `Fn+⇧D` | `⌃⌥⇧A` / `⌃⌥⇧D` | Super+Shift+A / D |
 | Move window to workspace above / below | `Fn+⇧W` / `Fn+⇧S` | `⌃⌥⇧W` / `⌃⌥⇧S` | Super+Shift+W / S |
@@ -61,6 +63,10 @@ Settings, Calculator by default) are in no row at all. Under the *maximize* layo
 exactly like switching tabs — the newly focused window fills the screen and the previous one is
 parked. Under *split* the focused window and its right neighbour are shown.
 
+‡ The grammar is Fn = navigate, +⇧ = move, +⌃ = resize, +⌥ = monitor, and on the move chord +⌥
+means "the whole app". The `ctrl-alt` prefix already holds ⌥, so there the chord would be `⌃⌥⇧W/S`
+(move window up/down); bind `move-app-up` / `move-app-down` yourself if you want them.
+
 Semantics worth knowing:
 
 - Focus workspace **down** from the last (empty) workspace does nothing; move window **down**
@@ -78,6 +84,17 @@ Semantics worth knowing:
   an in-row swap promotes: a move to another screen leaves both layouts alone, and a refused move
   (outermost screen) changes nothing at all, layout included.
 - Move to another screen appends the window to that screen's active workspace and focus follows.
+- `Fn+N` on the workspace you are already on goes back to the one you were on before, so one chord
+  flips between two workspaces. Each screen remembers its own previous workspace; if that
+  workspace has gone away (emptied and removed), the re-press does nothing.
+- `Fn+⇧N` moves the focused window to workspace N of its screen and focus follows. N past the last
+  workspace lands in the trailing empty one, and a new empty one appears below it.
+- `Fn+⌥⇧W/S` moves every window of the focused window's app (tiled and floating; popups and
+  ignored windows stay put), in order, to the workspace above / below the focused one, and focus
+  follows. From the top row it opens a new workspace above, like `Fn+⇧W`. Holding **⌥ while
+  dropping a tab** (on a rail tile or a tab bar) does the same for that tab's app, into that
+  workspace, without switching to it. Either way the app's new windows land there too, and this
+  wins over category routing for that app from then on.
 - Close presses the window's close button; the app stays running (macOS convention). Focus goes to
   the left neighbour, else the right.
 - Autorepeat of a bound chord is swallowed, not re-fired: holding `Fn+D` moves once and types

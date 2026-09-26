@@ -94,7 +94,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         let dropIndicator = DropIndicator()
         let store = WorldStore(
             backend: backend, config: config, world: initial, zeroSliverBundleIDs: Self.zeroSliverBundleIDs,
-            placements: restored?.placements ?? [:],
+            placements: restored?.placements ?? [:], movedApps: restored?.movedApps ?? [],
             // #64: switches slide as screenshot proxies (#65); instant without the grant.
             animator: SwitchOverlay(),
             // #108: the tile a dragged window would swap with.
@@ -379,9 +379,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             try? await Task.sleep(for: Self.saveDebounce)
             guard !Task.isCancelled else { return }
             let placements = await self?.store?.currentPlacements() ?? [:]
+            let movedApps = await self?.store?.currentMovedApps() ?? []
             guard !Task.isCancelled else { return }
             do {
-                try PersistedState(world: world, placements: placements).save(to: Paths.stateFile)
+                try PersistedState(world: world, placements: placements, movedApps: movedApps).save(to: Paths.stateFile)
             } catch {
                 self?.log.error("state save failed: \(String(describing: error), privacy: .public)")
             }
@@ -503,11 +504,13 @@ final class TerminationGate: @unchecked Sendable {
             // the restore moves every window off its workspace, so a save after it would persist
             // a layout that no longer matches anything.
             do {
-                var state = PersistedState(world: e.world, placements: e.placements)
+                var state = PersistedState(world: e.world, placements: e.placements, movedApps: e.movedApps)
                 // The fallback export (store timed out) carries no placement memory; the debounced
                 // save left a good one on disk moments ago, so keep that rather than forget where
                 // every app lived.
-                if state.placements.isEmpty { state.placements = ((try? PersistedState.load(from: Paths.stateFile)) ?? nil)?.placements ?? [:] }
+                if state.placements.isEmpty, let saved = (try? PersistedState.load(from: Paths.stateFile)) ?? nil {
+                    state.placements = saved.placements; state.movedApps = saved.movedApps
+                }
                 try state.save(to: Paths.stateFile)
             } catch {
                 Self.log.error("final state save failed: \(String(describing: error), privacy: .public)")
@@ -547,7 +550,7 @@ final class TerminationGate: @unchecked Sendable {
             return nil
         }
         let placed = Set(world.screens.values.flatMap { $0.workspaces.flatMap(\.windows) })
-        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed, placements: [:])
+        return (world: world, displays: displays, observed: [:], stranded: [:], parked: placed, placements: [:], movedApps: [])
     }
 
     /// `DisplayTopology.current()` is `@MainActor`. On the main thread we are already there; from
@@ -599,7 +602,7 @@ final class TerminationGate: @unchecked Sendable {
 /// What `WorldStore.exportForTermination()` hands back.
 private typealias TerminationExport = (
     world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect],
-    parked: Set<WindowRef>, placements: [String: UUID]
+    parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>
 )
 
 /// A one-shot handoff out of a `Task` into a semaphore-blocked thread.

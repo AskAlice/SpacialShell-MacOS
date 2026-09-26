@@ -118,6 +118,12 @@ public struct ScreenShellState: Equatable, Sendable {
         return .moveWindowRefToWorkspace(ref, ws.id, follow: false)
     }
 
+    /// #98: a tab dropped on this bar (on a tab or its empty end) with Option held — the window's
+    /// whole app moves to this bar's workspace, appended in order and without following.
+    public func appDrop(_ ref: WindowRef) -> Command? {
+        rail.first(where: \.isActive).map { .moveAppRefToWorkspace(ref, $0.id) }
+    }
+
     /// A rail tile dropped on another tile of this rail (#75) lands just before it, like a tab in
     /// the bar; dropping on "+" puts it last. Nil for a no-op, or for a workspace from another
     /// display's rail: reordering stays within one display.
