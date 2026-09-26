@@ -36,6 +36,9 @@ public struct ThumbnailCache<Image> {
         return now - e.taken >= Self.freshFor
     }
 
+    /// When the held picture of `id` was taken; nil if there is none. For #142's refresh order.
+    public func taken(_ id: WindowID) -> ContinuousClock.Instant? { entries[id]?.taken }
+
     public mutating func insert(_ image: Image, for id: WindowID, taken: ContinuousClock.Instant = .now) {
         tick += 1
         // A picture taken before the one we hold (a slow capture landing late) does not replace it.

@@ -74,6 +74,7 @@ public final class ShellController: NSObject {
         self.world = world
         titles = snapshot.titles
         WindowThumbnails.shared.retain(world.allWindowIDs)   // #90: a closed window's thumbnail goes with it
+        ThumbnailRefresher.shared.update(world: world, railShown: config.showPanels && !world.zen)   // #142
         render()
     }
 

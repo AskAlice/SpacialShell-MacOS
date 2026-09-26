@@ -91,8 +91,8 @@ enum WindowPreviewCapture {
 
 /// #90: the last downscaled picture of every window, so the rail hover card draws in its first
 /// frame. The policy (LRU, the cap, staleness, eviction) is `ThumbnailCache` in Kit; this holds the
-/// pixels. Fed by captures taken anyway — #77's switch pictures via `ingest`, the hover's own
-/// refresh via `add` — and never by a capture of its own: no stream, no timer.
+/// pixels. Fed by #77's switch pictures via `ingest`, the hover's own refresh via `add`, and #142's
+/// background preload and refresh (`ThumbnailRefresher`), which skips what those keep fresh.
 @MainActor
 final class WindowThumbnails {
     static let shared = WindowThumbnails()
@@ -105,6 +105,7 @@ final class WindowThumbnails {
         cache.image(for: id).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
     }
     func isStale(_ id: WindowID) -> Bool { cache.isStale(id) }
+    func taken(_ id: WindowID) -> ContinuousClock.Instant? { cache.taken(id) }
     /// Every window the store still knows; the rest have closed.
     func retain(_ live: Set<WindowID>) { cache.retain(live) }
 
