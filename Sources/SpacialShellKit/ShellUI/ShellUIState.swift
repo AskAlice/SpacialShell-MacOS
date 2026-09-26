@@ -35,10 +35,13 @@ public struct WindowTabItem: Identifiable, Equatable, Sendable {
     public let isHidden: Bool        // minimized or app-hidden; drawn dimmed, click is a no-op
     public let isFullscreen: Bool    // native fullscreen: no tiling slot; a click returns to its Space
     public let isOffSpace: Bool      // on another native Space (#55): no tiling slot; a click goes there
+    /// The window's title (#110), from the snapshot feed. Empty when it has none or none is known
+    /// yet; the tab then shows the app name, as it did before titles.
+    public let title: String
     public init(ref: WindowRef, isFocused: Bool, isFloating: Bool, isHidden: Bool, isFullscreen: Bool = false,
-                isOffSpace: Bool = false) {
+                isOffSpace: Bool = false, title: String = "") {
         self.ref = ref; self.isFocused = isFocused; self.isFloating = isFloating; self.isHidden = isHidden
-        self.isFullscreen = isFullscreen; self.isOffSpace = isOffSpace
+        self.isFullscreen = isFullscreen; self.isOffSpace = isOffSpace; self.title = title
     }
 }
 
@@ -128,8 +131,10 @@ public struct ScreenShellState: Equatable, Sendable {
 
 public enum ShellUI {
     /// Nil when the world does not know this display (mid hot-plug); the caller just skips it.
+    /// `titles` is the snapshot feed's (`ShellSnapshot.titles`): the model carries no titles.
     public static func state(for display: DisplayID, in world: World,
-                             layouts: LayoutCatalogue = .builtins) -> ScreenShellState? {
+                             layouts: LayoutCatalogue = .builtins,
+                             titles: [WindowRef: String] = [:]) -> ScreenShellState? {
         guard let screen = world.screens[display] else { return nil }
         let rail = screen.workspaces.enumerated().map { i, ws in
             WorkspaceRailItem(
@@ -148,7 +153,8 @@ public enum ShellUI {
                 isFloating: active.floating.contains(w),
                 isHidden: world.hidden.contains(w),
                 isFullscreen: world.fullscreen.contains(w),
-                isOffSpace: world.offSpace.contains(w))
+                isOffSpace: world.offSpace.contains(w),
+                title: titles[w] ?? "")
         }
         return ScreenShellState(
             display: display,

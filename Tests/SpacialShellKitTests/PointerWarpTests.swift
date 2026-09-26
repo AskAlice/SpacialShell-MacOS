@@ -24,7 +24,7 @@ import Foundation
         var config = Config(); config.showPanels = false; config.categoryOrder = []; config.pointerWarp = warp
         let be = FakeBackend(snapshot: s)
         await be.setPointer(onD1)
-        let store = WorldStore(backend: be, config: config, world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        let store = WorldStore(backend: be, config: config, world: nil, zeroSliverBundleIDs: [], onChange: { _, _ in })
         await store.start()
         await be.reset()
         return (store, be)

@@ -5,8 +5,8 @@ import SpacialShellProtocol
 
 /// The window tab bar + layout switcher: material-shell's `WorkspacePanel`. Tabs are the active
 /// workspace's row, left→right in row order — the same order `Fn+A`/`Fn+D` walk, so the bar is a
-/// map of the navigation, not just of the layout. Tabs show the app (name + icon); window titles
-/// need an AX title feed and are a follow-up.
+/// map of the navigation, not just of the layout. Tabs show the app icon and the window title
+/// (#110), or the app name for a window with no title.
 struct WorkspacePanelView: View {
     let state: ScreenShellState
     let metaFor: (Int32) -> AppMeta
@@ -36,6 +36,8 @@ struct WorkspacePanelView: View {
     private static func minWidth(_ tab: WindowTabItem) -> CGFloat {
         tab.isFocused ? minTabWidth + 16 : minTabWidth
     }
+    /// The design system's tab-width ceiling: a long title truncates, it does not take the bar.
+    static let maxTabWidth: CGFloat = 220
     private static let tabSpacing: CGFloat = 3
     private static let endGap: CGFloat = 8
 
@@ -54,7 +56,7 @@ struct WorkspacePanelView: View {
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .panelButton()
             .help("All layouts")
             // Flush to the trailing edge: the layout popover (#10, absorbing #15) — every layout by
             // name, the bar set, the default, and the editor. The rail's cog is the one for settings.
@@ -65,7 +67,7 @@ struct WorkspacePanelView: View {
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .panelButton()
             .help("Layouts")
             .padding(.leading, 2)
         }
@@ -124,14 +126,18 @@ struct WorkspacePanelView: View {
     /// click. The tab body selects via a tap gesture; the inner button wins for clicks on it.
     private func tabView(_ tab: WindowTabItem) -> some View {
         let meta = metaFor(tab.ref.pid)
+        let titled = !tab.title.isEmpty
         return HStack(spacing: 5) {
             if sizing == .equal { Spacer(minLength: 0) }
             if let icon = meta.icon {
                 Image(nsImage: icon).resizable().frame(width: 16, height: 16)
             }
-            Text(meta.name)
+            // Middle truncation for titles: both ends carry the meaning ("Report — Pages",
+            // "~/code/spacial-shell — zsh"). An app name keeps the tail truncation it always had.
+            Text(titled ? tab.title : meta.name)
                 .font(.system(size: 11.5, weight: tab.isFocused ? .semibold : .regular))
                 .lineLimit(1)
+                .truncationMode(titled ? .middle : .tail)
             if tab.isFloating {
                 Image(systemName: "pin.fill").font(.system(size: 8)).opacity(0.6)
             }
@@ -148,12 +154,13 @@ struct WorkspacePanelView: View {
                 } label: {
                     Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).opacity(0.6)
                 }
-                .buttonStyle(.plain)
+                .panelButton()
                 .help("Close window")
             }
             if sizing == .equal { Spacer(minLength: 0) }
         }
         .padding(.horizontal, 9)
+        .modifier(WidthCap(max: sizing == .fit ? Self.maxTabWidth : .infinity))
         .frame(maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -172,7 +179,7 @@ struct WorkspacePanelView: View {
         .frame(minWidth: Self.minWidth(tab), maxWidth: sizing == .equal ? .infinity : nil)
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
-        .help(meta.name)
+        .help(titled ? "\(meta.name) — \(tab.title)" : meta.name)
         // Drag the tab to send its window somewhere: onto a rail row to move it to that
         // workspace, or onto another tab to land just before it — a reorder in its own row, a
         // move when that tab is in another row (#32).
@@ -223,9 +230,28 @@ struct WorkspacePanelView: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
+                .panelButton()
                 .help(shown ? state.layoutWarning ?? "\(choice.def.name) layout" : "\(choice.def.name) layout")
             }
+        }
+    }
+}
+
+/// Proposes at most `max` and takes the child's own width — unlike `.frame(maxWidth:)`, which
+/// grows to whatever it is offered. A short tab stays its content width; a long title truncates
+/// at the cap instead of taking the bar (#110).
+private struct WidthCap: ViewModifier {
+    let max: CGFloat
+    func body(content: Content) -> some View { Cap(max: max) { content } }
+
+    private struct Cap: Layout {
+        let max: CGFloat
+        func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+            subviews.first?.sizeThatFits(ProposedViewSize(width: min(proposal.width ?? .infinity, max),
+                                                          height: proposal.height)) ?? .zero
+        }
+        func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+            subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
         }
     }
 }

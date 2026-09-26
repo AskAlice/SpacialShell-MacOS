@@ -18,8 +18,11 @@ public struct AppInfo: Equatable, Sendable, Hashable {
     /// The app's own `LSApplicationCategoryType`, raw — tier 3 of `AppCategories.category`, read
     /// by the platform because Kit cannot look at a bundle it only knows by pid (#74).
     public let systemCategory: String?
-    public init(pid: Int32, bundleID: String?, isHidden: Bool, systemCategory: String? = nil) {
+    /// `localizedName` — the snapshot's `appName` (#110). Nil when the platform could not say.
+    public let name: String?
+    public init(pid: Int32, bundleID: String?, isHidden: Bool, systemCategory: String? = nil, name: String? = nil) {
         self.pid = pid; self.bundleID = bundleID; self.isHidden = isHidden; self.systemCategory = systemCategory
+        self.name = name
     }
 }
 
@@ -70,6 +73,9 @@ public enum BackendEvent: Sendable, Equatable {
     case windowMoved(WindowRef, CGRect)
     case windowResized(WindowRef, CGRect)
     case focusChanged(WindowRef?)
+    /// `kAXTitleChanged` (#110): one window's new title, read on the app's thread. Titles are not
+    /// spatial, so the store republishes without a refresh sweep or a reconcile.
+    case windowTitleChanged(WindowRef, String)
     /// A human just pressed a key or a mouse button (#28): the hotkey tap's keyDown — ⌘Tab
     /// included — or the global mouse monitors (button down, left drag). It carries no time: the store stamps it on
     /// arrival, and because it travels the same stream as `appActivated` and `focusChanged`, it is

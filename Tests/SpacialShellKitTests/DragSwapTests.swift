@@ -81,7 +81,7 @@ import Foundation
                             windows: [win(a), win(b)], focused: a)
         let be = FakeBackend(snapshot: snap)
         let store = WorldStore(backend: be, config: cfg, world: nil, zeroSliverBundleIDs: [], now: { box.t },
-                               onDropTarget: { box.targets.append($0) }, onChange: { _ in })
+                               onDropTarget: { box.targets.append($0) }, onChange: { _, _ in })
         await store.start()
         #expect(await store.world.screens["D1"]!.active.windows == [a, b])
         return (store, be)

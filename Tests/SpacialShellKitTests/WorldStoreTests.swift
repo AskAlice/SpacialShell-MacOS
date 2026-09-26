@@ -19,7 +19,7 @@ import OpenTelemetryApi
     func make(_ s: Snapshot, config: Config? = nil, world: World? = nil, placements: [String: UUID] = [:]) async -> (WorldStore, FakeBackend) {
         let be = FakeBackend(snapshot: s)
         let store = WorldStore(backend: be, config: config ?? m1Config(), world: world, zeroSliverBundleIDs: ["us.zoom.xos"],
-                               placements: placements, onChange: { _ in })
+                               placements: placements, onChange: { _, _ in })
         await store.start()
         return (store, be)
     }
@@ -111,7 +111,7 @@ import OpenTelemetryApi
     @Test func configOverridesHeuristicKind() async {
         var c = m1Config(); c.float = [AppRule(bundleId: "com.x")]
         let be = FakeBackend(snapshot: snap([win(a)], focused: a))
-        let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], onChange: { _, _ in })
         await store.start()
         #expect(await store.world.screens["D1"]!.active.floating == [a])
     }
@@ -289,7 +289,7 @@ import OpenTelemetryApi
     @Test func bootRescuesWindowsLeftBeyondReach() async {
         let corner = CGRect(x: 999, y: 699, width: 300, height: 200)   // where the last run parked it
         let be = FakeBackend(snapshot: snap([win(a), win(b, corner, kind: .float)], focused: a))
-        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { _, _ in })
         await store.start()
         let rescued = await be.calls.compactMap { call -> CGRect? in
             if case .setFrame(let r, let f) = call, r == b { return f } else { return nil }
@@ -472,7 +472,7 @@ import OpenTelemetryApi
         let c = WindowRef(id: 3, pid: 1)
         let be = FakeBackend(snapshot: snap([win(a), win(b), win(c)], focused: a))
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         await store.apply(.focusChanged(a))                 // macOS has a; the model agrees
         await store.run(.focusWindow(.right))               // Fn+D → b
@@ -492,7 +492,7 @@ import OpenTelemetryApi
         let other = WindowRef(id: 3, pid: 9)
         let be = FakeBackend(snapshot: snap([win(a), win(other, bundle: "com.other")], focused: a))
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         await store.run(.moveWindowToWorkspace(.down))
         await store.run(.focusWorkspace(.up))
@@ -587,7 +587,7 @@ import OpenTelemetryApi
         let be = FakeBackend(snapshot: s)
         let anim = FakeAnimator(be: be, accept: accept)
         let store = WorldStore(backend: be, config: config ?? m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               animator: anim, onChange: { _ in })
+                               animator: anim, onChange: { _, _ in })
         await store.start()
         return (store, be, anim)
     }
@@ -758,7 +758,7 @@ import OpenTelemetryApi
     @Test func onChangeFiresWithWorld() async {
         let be = FakeBackend(snapshot: snap([win(a)], focused: a))
         let box = ChangeBox()
-        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { w in Task { await box.set(w) } })
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { w, _ in Task { await box.set(w) } })
         await store.start()
         try? await Task.sleep(for: .milliseconds(50))
         #expect(await box.value?.screens["D1"]?.active.windows == [a])
@@ -778,7 +778,7 @@ import OpenTelemetryApi
     func randomSnapshotsPreserveInvariants(seed: Int) async {
         var rng = TestRNG(seed: UInt64(seed) &+ 7_000)
         let be = FakeBackend(snapshot: snap([]))
-        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _ in })
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: ["us.zoom.xos"], onChange: { _, _ in })
         await store.start()
 
         let cmds: [Command] = [
@@ -945,7 +945,7 @@ import OpenTelemetryApi
                          focused: video)
         let be = FakeBackend(snapshot: s)
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         #expect(await store.world.focus.window == video)
         await be.reset()
@@ -1093,7 +1093,7 @@ import OpenTelemetryApi
                                  kind: .float, parent: nil, isMinimized: false, isFullscreen: false, isStandard: false)]
         var c = m1Config(); c.tile = Config.defaultTile
         let be = FakeBackend(snapshot: snap(ws, focused: main))
-        let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], onChange: { _, _ in })
         await store.start()
         let w = await store.world
         let loc = w.location(of: main)!
@@ -1132,7 +1132,7 @@ import OpenTelemetryApi
         let clock = Clock()
         let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         #expect(await store.world.location(of: a)?.screen == "D1")
         await be.reset()
@@ -1155,7 +1155,7 @@ import OpenTelemetryApi
         let clock = Clock()
         let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
         let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         await be.reset()
 
@@ -1174,7 +1174,7 @@ import OpenTelemetryApi
         let clock = Clock()
         let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         await be.reset()
 

@@ -1,7 +1,8 @@
 import Foundation
 
-// NOT YET EMITTED: this is the M2 T8 wire contract; the store still publishes the v1 `WireState`.
-// Codec-tested here so the shape is frozen before the feed lands — nothing produces it yet.
+// M2 T8 / M3 B2 (#110): `WorldStore` publishes this to the UI with every world (built in Kit's
+// `ShellSnapshot+World.swift`). IPC still answers `state` with the v1 `WireState`; the push channel
+// is #117.
 
 /// The one wire shape published to the UI, the IPC subscribers, and the state-saver — spec
 /// "Snapshot" decision: rows for **all** workspaces on a screen (not just the active one),

@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import SpacialShellKit
 import SpacialShellPlatform
+import SpacialShellProtocol
 
 /// Owns the overview/launcher overlay. Toggled by `toggle-overview` (`Fn+Tab`), which AppRuntime
 /// routes here instead of the store — opening a search box is not a model mutation. Selections
@@ -14,6 +15,7 @@ public final class OverviewController {
     private let appMeta: AppMetaCache
     private let send: @Sendable (Command) -> Void
     private var world: World?
+    private var titles: [SpacialShellProtocol.WindowRef: String] = [:]
     private var isOpen = false
     /// URL → item, kept across opens; the directory listing is cheap, the icon loads are not.
     private var appCache: [URL: OverviewAppItem] = [:]
@@ -28,8 +30,9 @@ public final class OverviewController {
         panel.onDismiss = { [weak self] in self?.close() }
     }
 
-    public func update(world: World) {
+    public func update(world: World, snapshot: ShellSnapshot) {
         self.world = world
+        titles = snapshot.titles
     }
 
     public func toggle() {
@@ -92,13 +95,13 @@ public final class OverviewController {
                 for w in ws.windows {
                     let meta = appMeta.meta(for: w.pid)
                     let place = world.screenOrder.count > 1 ? "\(ws.name) · screen \(n + 1)" : ws.name
-                    out.append(OverviewWindowItem(ref: w, name: meta.name, detail: place, icon: meta.icon))
+                    out.append(OverviewWindowItem(ref: w, name: titles[w] ?? meta.name, app: meta.name, detail: place, icon: meta.icon))
                 }
             }
         }
         for w in world.ephemeral {
             let meta = appMeta.meta(for: w.pid)
-            out.append(OverviewWindowItem(ref: w, name: meta.name, detail: "visitor", icon: meta.icon))
+            out.append(OverviewWindowItem(ref: w, name: titles[w] ?? meta.name, app: meta.name, detail: "visitor", icon: meta.icon))
         }
         return out
     }

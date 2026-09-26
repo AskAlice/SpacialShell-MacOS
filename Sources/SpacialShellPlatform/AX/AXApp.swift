@@ -24,6 +24,9 @@ enum AXAppEvent: Sendable {
     case focusChanged
     case moved(WindowID, CGRect)
     case resized(WindowID, CGRect)
+    /// #110: the window's new `AXTitle`. Its own event rather than `windowsChanged`, so a terminal
+    /// retitling itself every second costs one attribute read, not a sweep of every app.
+    case titleChanged(WindowID, String)
 }
 
 /// Everything SpacialShell does to one running application, funnelled through that
@@ -234,6 +237,7 @@ final class AXApp: @unchecked Sendable {
                 kAXWindowDeminiaturizedNotification,
                 kAXMovedNotification,
                 kAXResizedNotification,
+                kAXTitleChangedNotification,
             ]),
         ]
         switch (try? AxSubscription.bulkSubscribe(nsApp, ax, job, handlers)) ?? .failed(.failure) {
@@ -263,6 +267,10 @@ final class AXApp: @unchecked Sendable {
                 }
                 let rect = CGRect(origin: origin, size: size)
                 onEvent(notif == kAXMovedNotification ? .moved(id, rect) : .resized(id, rect))
+            case kAXTitleChangedNotification:
+                // Unresolvable id or unreadable title: the next refresh reads it anyway.
+                guard let id = element.windowIdentity(), let title = element.get(Ax.titleAttr) else { return }
+                onEvent(.titleChanged(id, title))
             default: break
         }
     }

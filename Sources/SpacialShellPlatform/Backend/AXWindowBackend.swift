@@ -97,6 +97,10 @@ public final class AXWindowBackend: WindowBackend {
                     continuation.yield(.windowMoved(WindowRef(id: id, pid: pid), rect))
                 case .resized(let id, let rect):
                     continuation.yield(.windowResized(WindowRef(id: id, pid: pid), rect))
+                case .titleChanged(let id, let title):
+                    // ponytail: unthrottled; a window retitling many times a second during a long
+                    // reconcile could crowd the 64-event buffer. Coalesce per window if that shows.
+                    continuation.yield(.windowTitleChanged(WindowRef(id: id, pid: pid), title))
             }
         }
     }

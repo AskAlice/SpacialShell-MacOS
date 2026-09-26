@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import SpacialShellKit
 import SpacialShellPlatform
+import SpacialShellProtocol
 
 /// Owns one rail + one bar per display and keeps them in step with the world. Pure plumbing: the
 /// content is `ShellUI.state(for:in:)`, the geometry is the `panel-width`/`panel-height`/
@@ -23,6 +24,8 @@ public final class ShellController: NSObject {
 
     private var panels: [DisplayID: Panels] = [:]
     private var world: World?
+    /// #110: window titles from the store's snapshot feed, published alongside `world`.
+    private var titles: [SpacialShellProtocol.WindowRef: String] = [:]
     private var config: Config
     private var problems: [Problem] = []
     private let send: @Sendable (Command) -> Void
@@ -67,8 +70,9 @@ public final class ShellController: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    public func update(world: World) {
+    public func update(world: World, snapshot: ShellSnapshot) {
         self.world = world
+        titles = snapshot.titles
         WindowThumbnails.shared.retain(world.allWindowIDs)   // #90: a closed window's thumbnail goes with it
         render()
     }
@@ -109,7 +113,7 @@ public final class ShellController: NSObject {
 
         for nsScreen in NSScreen.screens {
             let id = DisplayTopology.uuid(for: nsScreen)
-            guard let state = ShellUI.state(for: id, in: world, layouts: layouts) else { continue }
+            guard let state = ShellUI.state(for: id, in: world, layouts: layouts, titles: titles) else { continue }
             seen.insert(id)
             let p = panels[id] ?? makePanels(for: id)
             panels[id] = p

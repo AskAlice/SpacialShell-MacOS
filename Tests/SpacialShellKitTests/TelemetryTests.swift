@@ -30,7 +30,7 @@ extension TracerProviderSdk: @retroactive @unchecked Sendable {}
         let be = FakeBackend(snapshot: snap(focused: a))
         var c = Config(); c.showPanels = false; c.categoryOrder = []
         let store = WorldStore(backend: be, config: c, world: nil, zeroSliverBundleIDs: [], animator: animator,
-                               tracerProvider: provider, onChange: { _ in })
+                               tracerProvider: provider, onChange: { _, _ in })
         await store.start()
         return (store, Spans(provider: provider, exporter: exporter), be)
     }
@@ -73,6 +73,7 @@ extension TracerProviderSdk: @retroactive @unchecked Sendable {}
         let (store, exporter, _) = await make()
         await store.run(.focusWindow(.right))
         await store.apply(.snapshot(snap(focused: b)))
+        await store.apply(.windowTitleChanged(a, Self.secret + " (edited)"))   // #110's title feed
         let spans = exporter.finished()
         #expect(!spans.isEmpty)
         for s in spans {

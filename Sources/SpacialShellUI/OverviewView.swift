@@ -7,7 +7,8 @@ import SpacialShellProtocol
 struct OverviewWindowItem: Identifiable {
     var id: SpacialShellProtocol.WindowRef { ref }
     let ref: SpacialShellProtocol.WindowRef
-    let name: String            // app name (window titles are a follow-up, same as the tab bar)
+    let name: String            // the window title, or the app name when it has none (#110)
+    let app: String             // the app name: searchable, and the tooltip beside the title
     let detail: String          // "workspace · screen n" or "visitor" for ephemeral windows
     let icon: NSImage?
 }
@@ -33,7 +34,9 @@ struct OverviewView: View {
     @FocusState private var searchFocused: Bool
 
     private var filteredWindows: [OverviewWindowItem] {
-        query.isEmpty ? windows : windows.filter { $0.name.localizedCaseInsensitiveContains(query) }
+        query.isEmpty ? windows : windows.filter {
+            $0.name.localizedCaseInsensitiveContains(query) || $0.app.localizedCaseInsensitiveContains(query)
+        }
     }
     private var filteredApps: [OverviewAppItem] {
         query.isEmpty ? apps : apps.filter { $0.name.localizedCaseInsensitiveContains(query) }
@@ -58,7 +61,8 @@ struct OverviewView: View {
                     if !filteredWindows.isEmpty {
                         sectionHeader("Windows")
                         grid(filteredWindows.map { item in
-                            cell(name: item.name, detail: item.detail, icon: item.icon) { onSelectWindow(item.ref) }
+                            cell(name: item.name, detail: item.detail, icon: item.icon,
+                                 help: item.name == item.app ? item.name : "\(item.app) — \(item.name)") { onSelectWindow(item.ref) }
                         })
                     }
                     if !filteredApps.isEmpty {
@@ -95,7 +99,8 @@ struct OverviewView: View {
         }
     }
 
-    private func cell(name: String, detail: String?, icon: NSImage?, action: @escaping () -> Void) -> AnyView {
+    private func cell(name: String, detail: String?, icon: NSImage?, help: String? = nil,
+                      action: @escaping () -> Void) -> AnyView {
         AnyView(
             Button(action: action) {
                 VStack(spacing: 4) {
@@ -105,7 +110,8 @@ struct OverviewView: View {
                         Image(systemName: "app.dashed").font(.system(size: 30)).frame(width: 40, height: 40)
                             .foregroundStyle(.secondary)
                     }
-                    Text(name).font(.system(size: 11)).lineLimit(1)
+                    // Middle: a title's two ends say the most ("Report — Pages", "~/code — zsh").
+                    Text(name).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
                     if let detail {
                         Text(detail).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
                     }
@@ -114,7 +120,7 @@ struct OverviewView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(name)
+            .help(help ?? name)
         )
     }
 }

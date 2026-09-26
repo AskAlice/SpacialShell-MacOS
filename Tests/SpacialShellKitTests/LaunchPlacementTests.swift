@@ -175,7 +175,7 @@ extension WorldStoreTests {
         let clock = Clock()
         let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         clock.t += WorldStore.launchWindow + .seconds(1)
         let late = crowd(9, bundle: "com.late", pid: 7, on: onD2)
@@ -191,7 +191,7 @@ extension WorldStoreTests {
         let clock = Clock()
         let be = FakeBackend(snapshot: twoDisplays([win(a)], focused: a))
         let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [],
-                               now: { clock.t }, onChange: { _ in })
+                               now: { clock.t }, onChange: { _, _ in })
         await store.start()
         clock.t += .seconds(3)
         let big = crowd(9, bundle: "com.big", pid: 7, on: onD2)

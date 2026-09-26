@@ -143,10 +143,10 @@ enum Stories {
     }
     /// `window` distinguishes several windows of one app — tabs are keyed by their ref.
     static func tab(_ pid: Int32, window: Int = 0, focused: Bool = false, floating: Bool = false, hidden: Bool = false,
-                    fullscreen: Bool = false, offSpace: Bool = false) -> WindowTabItem {
+                    fullscreen: Bool = false, offSpace: Bool = false, title: String = "") -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: pid),
                       isFocused: focused, isFloating: floating, isHidden: hidden, isFullscreen: fullscreen,
-                      isOffSpace: offSpace)
+                      isOffSpace: offSpace, title: title)
     }
 
     static let railGeometry = CGSize(width: 48, height: 800)
@@ -311,6 +311,20 @@ enum Stories {
             state: tabs([tab(1, focused: true), tab(2), tab(3), tab(4), tab(6)]), metaFor: meta, sizing: .fit, send: send))
         add("bar-long-names", barGeometry, WorkspacePanelView(
             state: tabs([tab(5, focused: true), tab(5), tab(5), tab(5)]), metaFor: meta, sizing: .fit, send: send), truncates: true)
+        // #110: window titles. Two Terminal windows told apart by title; Notes has no title yet and
+        // shows its app name, as every tab did before the feed.
+        add("bar-titles", barGeometry, WorkspacePanelView(
+            state: tabs([tab(3, focused: true, title: "~/code/spacial-shell — zsh"),
+                         tab(3, window: 1, title: "~/Downloads — zsh"),
+                         tab(1, title: "Pull requests · AskAlice/SpacialShell-MacOS"), tab(2)]),
+            metaFor: meta, sizing: .fit, send: send))
+        // A title longer than the 220 pt tab ceiling truncates in the middle, keeping both ends.
+        add("bar-long-title", barGeometry, WorkspacePanelView(
+            state: tabs([tab(4, focused: true,
+                             title: "Re: Quarterly planning — the long thread everyone was copied on (37 messages)"),
+                         tab(1, title: "developer.apple.com/documentation/applicationservices/axuielement_h/1462085-axuielementcopyattributevalue"),
+                         tab(3, title: "zsh")]),
+            metaFor: meta, sizing: .fit, send: send), truncates: true)
         add("bar-floating-hidden", barGeometry, WorkspacePanelView(
             state: tabs([tab(1, focused: true), tab(2, floating: true), tab(3, hidden: true), tab(4)]),
             metaFor: meta, sizing: .fit, send: send))
@@ -364,11 +378,16 @@ enum Stories {
 
         // Overview
         let windows = [
-            OverviewWindowItem(ref: WindowRef(id: 10, pid: 1), name: "Safari", detail: "Web", icon: swatch(.systemBlue)),
-            OverviewWindowItem(ref: WindowRef(id: 20, pid: 2), name: "Notes", detail: "Web", icon: swatch(.systemYellow)),
-            OverviewWindowItem(ref: WindowRef(id: 30, pid: 3), name: "Terminal", detail: "Code", icon: swatch(.systemGray)),
+            // #110: cells show the window title; Notes has none and falls back to its app name.
+            OverviewWindowItem(ref: WindowRef(id: 10, pid: 1), name: "Start Page", app: "Safari", detail: "Web",
+                               icon: swatch(.systemBlue)),
+            OverviewWindowItem(ref: WindowRef(id: 20, pid: 2), name: "Notes", app: "Notes", detail: "Web",
+                               icon: swatch(.systemYellow)),
+            OverviewWindowItem(ref: WindowRef(id: 30, pid: 3), name: "~/code/spacial-shell — zsh", app: "Terminal",
+                               detail: "Code", icon: swatch(.systemGray)),
             OverviewWindowItem(ref: WindowRef(id: 40, pid: 5),
                                name: "A Very Long Application Name That Must Truncate",
+                               app: "A Very Long Application Name That Must Truncate",
                                detail: "a workspace with a very long name", icon: swatch(.systemPink)),
         ]
         let apps = ["Mail", "Files", "Music", "Calendar", "Photos",

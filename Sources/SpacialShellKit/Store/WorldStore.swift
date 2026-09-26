@@ -1,6 +1,7 @@
 import Foundation
 import OpenTelemetryApi
 import os
+import SpacialShellProtocol
 
 public actor WorldStore {
     /// Model membership changes only (adopt, fullscreen, retire, vanish): rare, and the one trail that
@@ -15,7 +16,12 @@ public actor WorldStore {
     /// Unresolved layout ids already logged: once per id, not once per reconcile (design §8).
     private var loggedUnresolved: Set<LayoutID> = []
     private let zeroSliverBundleIDs: Set<String>
-    private let onChange: @Sendable (World) -> Void
+    /// M2 design "Store→UI/IPC feed": the world and its `ShellSnapshot`, in the same instant.
+    /// Deduped — an unchanged world with an equivalent snapshot is not published again, so the 2 s
+    /// backstop and a title that did not really change wake nobody (#110).
+    private let onChange: @Sendable (World, ShellSnapshot) -> Void
+    private var lastPublished: (world: World, snapshot: ShellSnapshot)?
+    private var publishGeneration: UInt64 = 0
 
     private var displays: [DisplayInfo] = []
     private var observed: [WindowRef: CGRect] = [:]
@@ -27,6 +33,11 @@ public actor WorldStore {
     private var stranded: [WindowRef: CGRect] = [:]
     private var parked: Set<WindowRef> = []
     private var bundleIDs: [WindowRef: String] = [:]
+    /// #110: the snapshot's `title` per window, kept current by every refresh and by
+    /// `kAXTitleChanged`. Never put on a span or a log line: titles are the user's content (#83).
+    private var titles: [WindowRef: String] = [:]
+    /// #110: `appName` by pid, replaced wholesale by each refresh's app list.
+    private var appNames: [Int32: String] = [:]
     /// Where each app's windows belong: bundle id → workspace id. Seeded from the state file at
     /// boot so a relaunch puts windows back, then kept current by every reconcile, so an app that
     /// is quit and reopened mid-session also comes back to where the user last had it.
@@ -121,7 +132,7 @@ public actor WorldStore {
                 animator: (any SwitchAnimator)? = nil,
                 tracerProvider: (any TracerProvider)? = nil,
                 onDropTarget: @escaping @Sendable (CGRect?) -> Void = { _ in },
-                onChange: @escaping @Sendable (World) -> Void) {
+                onChange: @escaping @Sendable (World, ShellSnapshot) -> Void) {
         self.onDropTarget = onDropTarget
         self.now = now
         self.tracerProvider = tracerProvider
@@ -168,6 +179,22 @@ public actor WorldStore {
                   problems: ProblemCenter.shared.current)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
+
+    /// The pull side of the feed: what the last publish would say now.
+    public func shellSnapshot() -> ShellSnapshot { makeSnapshot(generation: publishGeneration) }
+
+    private func makeSnapshot(generation: UInt64) -> ShellSnapshot {
+        ShellSnapshot(world: world, generation: generation, displays: displays, config: config, layouts: layouts,
+                      titles: titles, appNames: appNames, bundleIDs: bundleIDs, locked: locked)
+    }
+
+    private func publish() {
+        let snapshot = makeSnapshot(generation: publishGeneration + 1)
+        if let last = lastPublished, last.world == world, last.snapshot.isEquivalent(to: snapshot) { return }
+        publishGeneration += 1
+        lastPublished = (world, snapshot)
+        onChange(world, snapshot)
+    }
 
     /// A span that is a root when `parent` is nil — never a child of whatever happens to be active.
     private func startSpan(_ name: String, parent: (any Span)?) -> any Span {
@@ -272,12 +299,19 @@ public actor WorldStore {
             }
         case .humanInput:
             lastHumanInput = now(); return
+        case .windowTitleChanged(let r, let title):
+            // Not spatial: no sweep, no reconcile, no span. Only a window a refresh has already
+            // seen, and only a real change reaches `publish`'s dedupe.
+            guard let was = titles[r], was != title else { return }
+            titles[r] = title
+            if !locked { publish() }
+            return
         case .screenLocked:
             // Spec §7.7 freeze. Setting the flag only stops the *next* pass from starting; a plan
             // already mid-flight would keep writing frames at a locked screen, and its writes land
             // against whatever the lock screen reports. Bumping the generation is the same signal
             // a newer reconcile sends, and every await in `reconcile()` checks it.
-            locked = true; generation += 1; pointerDown = nil; endDrag(); return
+            locked = true; generation += 1; pointerDown = nil; endDrag(); publish(); return
         case .screenUnlocked:
             locked = false
             eventSpan = tracedSnapshot(await backend.currentSnapshot())
@@ -318,12 +352,14 @@ public actor WorldStore {
         let hiddenApps = Set(s.apps.filter(\.isHidden).map(\.pid))
         let crowds = crowdedApps(s)
         let systemCategories = Dictionary(s.apps.map { ($0.pid, $0.systemCategory) }, uniquingKeysWith: { a, _ in a })
+        appNames = Dictionary(s.apps.compactMap { a in a.name.map { (a.pid, $0) } }, uniquingKeysWith: { a, _ in a })
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
             defer { lastSeen[w.ref] = w.frame }
             observed[w.ref] = w.frame
             bundleIDs[w.ref] = w.bundleID
+            titles[w.ref] = w.title
             // Spec §11 "until it changes": a retired window that has moved, resized or changed
             // fullscreen state is alive and ours again — `ignored` is not a one-way door (#36). So
             // is one back on the active Space after time away: its frame never changed (#55).
@@ -376,7 +412,7 @@ public actor WorldStore {
             for gone in all.subtracting(present) {
                 vanished += 1
                 Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
-                world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; intents.forget(gone)
+                world.remove(gone); observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; intents.forget(gone)
                 retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
@@ -861,7 +897,7 @@ public actor WorldStore {
         }
         if animating, let animator { animating = false; await animator.play(trace: trace) }
         finished = true
-        onChange(world)
+        publish()
         // #77: only a pass that finished speaks for what is on screen; a superseded one returned above.
         if let animator, config.animations, gen == generation {
             await animator.prefetch(predictedSwitches(insets: insets, zero: zero))

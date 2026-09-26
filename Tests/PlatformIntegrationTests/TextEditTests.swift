@@ -53,7 +53,7 @@ struct TextEditTests {
         let backend = AXWindowBackend(config: Config())
         defer { backend.stop() }    // terminal — must be called exactly once, at the very end.
 
-        let store = WorldStore(backend: backend, config: Config(), world: nil, zeroSliverBundleIDs: [], onChange: { _ in })
+        let store = WorldStore(backend: backend, config: Config(), world: nil, zeroSliverBundleIDs: [], onChange: { _, _ in })
         backend.start()
         await store.start()
         try await Task.sleep(for: .seconds(1))

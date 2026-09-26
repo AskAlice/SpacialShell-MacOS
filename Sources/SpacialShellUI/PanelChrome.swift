@@ -1,6 +1,15 @@
 import SwiftUI
 import SpacialShellKit
 
+extension View {
+    /// Every rail and tab-bar button (#93). The panels are non-activating and never key, so no
+    /// control in them may take keyboard focus: with Full Keyboard Access on, a layout button drew
+    /// the focus ring anyway. Out of the key-view loop, and no focus effect if one is drawn regardless.
+    func panelButton() -> some View {
+        buttonStyle(.plain).focusable(false).focusEffectDisabled()
+    }
+}
+
 /// What the rail and the tab bar are painted with.
 ///
 /// Both panels take this rather than hardcoding `.thinMaterial`, which is what they did while

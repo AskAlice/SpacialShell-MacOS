@@ -65,7 +65,7 @@ struct ScreenPanelView: View {
                     .foregroundStyle(.secondary)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .panelButton()
             .help("Search / launcher")
 
             ForEach(state.rail) { item in
@@ -81,7 +81,7 @@ struct ScreenPanelView: View {
                 } label: {
                     row(item)
                 }
-                .buttonStyle(.plain)
+                .panelButton()
                 // No `.help` here any more: the hover card says everything the tooltip said and
                 // shows the windows as well, and two hover surfaces on one tile is one too many.
                 .background(GeometryReader { geo in
@@ -122,7 +122,7 @@ struct ScreenPanelView: View {
             // the workspace list never moves it; absent when there is nothing to bring back.
             if !state.tray.isEmpty {
                 Button { onHoverTray(true, trayFrame) } label: { tray }
-                    .buttonStyle(.plain)
+                    .panelButton()
                     .background(GeometryReader { geo in
                         Color.clear.onChange(of: geo.frame(in: .global), initial: true) { _, frame in trayFrame = frame }
                     })
@@ -148,7 +148,7 @@ struct ScreenPanelView: View {
                             }
                         }
                 }
-                .buttonStyle(.plain)
+                .panelButton()
                 // With problems the hover card is the label; two hover surfaces is one too many.
                 .help(problems.isEmpty ? "SpacialShell settings" : "")
                 .background(GeometryReader { geo in

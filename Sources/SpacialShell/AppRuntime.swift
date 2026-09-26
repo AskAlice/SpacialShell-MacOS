@@ -99,12 +99,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             animator: SwitchOverlay(),
             // #108: the tile a dragged window would swap with.
             onDropTarget: { frame in Task { @MainActor in dropIndicator.show(frame) } },
-        ) { [weak self] world in
+        ) { [weak self] world, snapshot in
             gate.note(world: world)
             Task { @MainActor in
                 self?.scheduleSave(world)
-                self?.shell?.update(world: world)
-                self?.overview?.update(world: world)
+                self?.shell?.update(world: world, snapshot: snapshot)
+                self?.overview?.update(world: world, snapshot: snapshot)
                 self?.layouts?.update(world: world)
             }
         }
