@@ -48,7 +48,10 @@ public enum Command: Sendable, Hashable {
     case focusWorkspaceID(UUID)            // rail click; workspace by id, wherever it lives
     case focusWindowRef(WindowRef)         // tab click / overview selection
     case setWorkspaceLayout(UUID, LayoutID)  // layout switcher; targets that workspace directly
-    case closeWindowRef(WindowRef)         // tab close button
+    case closeWindowRef(WindowRef)         // tab close button, tab menu, middle-click (#127)
+    /// #127: the tab menu's Float/Tile — `toggleFloat` for a named window, focused or not. Focus
+    /// and the active rows stay put.
+    case toggleFloatRef(WindowRef)
     case toggleOverview                    // overview/launcher overlay; app-layer surface, not a World mutation
     /// Tab dragged onto a rail row. Absolute where `moveWindowToWorkspace(Vertical)` is relative:
     /// a drag names both the window and the destination, and neither need be the focused one.

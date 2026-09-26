@@ -191,6 +191,15 @@ struct WorkspacePanelView: View {
         .frame(minWidth: minWidth(tab), maxWidth: sizing == .equal ? .infinity : nil)
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(tab.ref)) }
+        // #127: right-click is the tab menu; middle-click closes the window, as in a browser.
+        .overlay {
+            RailClickCatcher(
+                onRight: {
+                    RailMenu.tab(tab, rail: state.rail, metaFor: metaFor, send: send)
+                        .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+                },
+                onMiddle: { send(.closeWindowRef(tab.ref)) })
+        }
         // #116: the whole title, however the tab truncates or hides it. The system tooltip keeps
         // its own delay; the rail's hover card (#6) is a separate surface and waits for nothing.
         .help(titled ? "\(meta.name) — \(tab.title)" : meta.name)

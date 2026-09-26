@@ -510,6 +510,14 @@ import Foundation
         (w, _) = run(w, .toggleFloat); #expect(w.screens["D1"]!.active.floating == [a])
         (w, _) = run(w, .toggleFloat); #expect(w.screens["D1"]!.active.floating.isEmpty)
     }
+    /// #127: the tab menu floats a window that is not the focused one; focus stays on `a`.
+    @Test func toggleFloatRefTargetsTheNamedWindow() {
+        var w = base()
+        (w, _) = run(w, .toggleFloatRef(c))
+        #expect(w.screens["D1"]!.active.floating == [c] && w.focus.window == a)
+        (w, _) = run(w, .toggleFloatRef(c)); #expect(w.screens["D1"]!.active.floating.isEmpty)
+        #expect(CommandRunner.run(.toggleFloatRef(d), on: w).report == .failed(.unknownWindow(d)))
+    }
     @Test func toggleShellUIFlipsZen() {
         let (w, e) = run(base(), .toggleShellUI)
         #expect(w.zen && e == [.relayout])

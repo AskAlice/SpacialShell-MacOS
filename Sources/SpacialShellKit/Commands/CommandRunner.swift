@@ -451,6 +451,12 @@ public enum CommandRunner {
             w.normalize()
             effects.append(.relayout)
 
+        case .toggleFloatRef(let r):
+            guard let loc = w.location(of: r) else { return fail(.unknownWindow(r)) }
+            w.setFloating(r, !w.screens[loc.screen]!.workspaces[loc.index].floating.contains(r))
+            w.normalize()
+            effects.append(.relayout)
+
         // M3 B3, the rail's menus (#111, #112).
         case .setWorkspaceCategory(let id, let category):
             // The trailing "+" is the way down, not a workspace with an identity.

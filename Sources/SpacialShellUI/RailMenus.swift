@@ -71,6 +71,35 @@ enum RailMenu {
         return menu
     }
 
+    /// #127: a tab's right-click menu. "Move to workspace" lists this display's other rows as the
+    /// hover card names them — category (the row's own, else its apps'), else the name, and the
+    /// position — then "+" as "New workspace". It is a drop in menu form: it does not follow (#95).
+    static func tab(_ tab: WindowTabItem, rail: [WorkspaceRailItem], metaFor: (Int32) -> AppMeta,
+                    send: @escaping (Command) -> Void) -> NSMenu {
+        let menu = NSMenu()
+        let ref = tab.ref
+        menu.addItem(ActionMenuItem("Close") { send(.closeWindowRef(ref)) })
+        menu.addItem(ActionMenuItem(tab.isFloating ? "Tile" : "Float") { send(.toggleFloatRef(ref)) })
+
+        let move = NSMenu()
+        for item in rail where !item.isActive {
+            if item.isTrailingEmpty, !move.items.isEmpty { move.addItem(.separator()) }
+            var seen: Set<Int32> = []
+            let apps = item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid).category : nil }
+            let label = (item.category ?? AppCategories.summarise(apps))?.label
+            let title = item.isTrailingEmpty ? "New workspace"
+                : "\(label.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? item.name) (\(item.index + 1))"
+            let entry = ActionMenuItem(title) { send(.moveWindowRefToWorkspace(ref, item.id, follow: false)) }
+            entry.image = NSImage(systemSymbolName: item.isTrailingEmpty ? "plus" : item.symbol, accessibilityDescription: nil)
+            move.addItem(entry)
+        }
+        let moveItem = submenu("Move to workspace", move)
+        moveItem.isEnabled = !move.items.isEmpty
+        menu.addItem(.separator())
+        menu.addItem(moveItem)
+        return menu
+    }
+
     private static func submenu(_ title: String, _ menu: NSMenu) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.submenu = menu
@@ -78,8 +107,8 @@ enum RailMenu {
     }
 }
 
-/// A tile's right and middle clicks (#112, W13). SwiftUI on macOS 14 has neither, so this sits over
-/// the tile and claims only those: for every other event `hitTest` answers nil, so left clicks,
+/// A tile's or a tab's right and middle clicks (#112, W13, #127). SwiftUI on macOS 14 has neither,
+/// so this sits over the tile or tab and claims only those: for every other event `hitTest` answers nil, so left clicks,
 /// drags, drops and hovers reach the SwiftUI button underneath exactly as before.
 struct RailClickCatcher: NSViewRepresentable {
     let onRight: () -> Void

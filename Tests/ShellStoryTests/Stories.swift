@@ -392,6 +392,17 @@ enum Stories {
         add("rail-workspace-menu-category", nil, MenuPreview(menu: workspaceMenu.items[0].submenu!))
         add("rail-workspace-menu-symbol", nil, MenuPreview(menu: workspaceMenu.items[1].submenu!))
         add("rail-workspace-menu-layout", nil, MenuPreview(menu: workspaceMenu.items[2].submenu!))
+        // #127: a tab's right-click menu (a floating tab, so "Tile"), and "Move to workspace":
+        // every other row on the display, by category or name, then "+" as "New workspace".
+        let tabMenu = RailMenu.tab(tab(3, floating: true), rail: [
+            railItem(0, name: "Workspace", symbol: "globe", count: 2, active: true),
+            WorkspaceRailItem(id: UUID(), index: 1, name: "Workspace", symbol: "terminal", windowCount: 1,
+                              isActive: false, isPinned: false, isTrailingEmpty: false, category: .terminal),
+            railItem(2, name: "Workspace", symbol: "square.grid.2x2", count: 1),
+            railItem(3, name: "Workspace", symbol: "plus", count: 0, trailing: true),
+        ], metaFor: meta, send: send)
+        add("tab-menu", nil, MenuPreview(menu: tabMenu))
+        add("tab-menu-move", nil, MenuPreview(menu: tabMenu.items[3].submenu!))
         // The editor, at the walkthrough's step 6; an existing drawn layout (Delete); a built-in
         // (read-only, Duplicate to edit).
         add("layout-editor", LayoutEditorView.size, LayoutEditorView(mode: .edit(codeThree)))
