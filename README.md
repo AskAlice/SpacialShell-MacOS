@@ -44,8 +44,8 @@ stops being a search and becomes wayfinding.
 
 This is the paradigm of GNOME's [**material-shell**](https://github.com/material-shell/material-shell)
 and its successor [**Veshell**](https://github.com/free-explorers/veshell) — a "not-desktop" you
-inhabit rather than tidy. SpacialShell is that lineage **rebuilt for macOS, not Linux**: not a port,
-and no shared code.
+inhabit rather than tidy. SpacialShell is that lineage **rebuilt for macOS, not Linux**: not a port
+and no shared code, under the same GPL-3.0.
 
 ### Built on Apple's terms
 
@@ -197,4 +197,8 @@ Its Accessibility/platform layer adapts MIT-licensed code from
 ships in `legal/third-party/LICENSE-AeroSpace.txt`, every adapted file carries an attribution
 header, and `NOTICE` lists them all. The spatial paradigm is design inspiration from
 [material-shell](https://github.com/material-shell/material-shell) and
-[Veshell](https://github.com/free-explorers/veshell) (both GPL-3); no code from either was used.
+[Veshell](https://github.com/free-explorers/veshell) (both GPL-3, like SpacialShell); no code from
+either was used.
+
+The Raycast extension in `raycast/` is MIT-licensed, as the Raycast Store requires of every
+extension.
