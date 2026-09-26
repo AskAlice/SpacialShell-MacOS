@@ -108,9 +108,9 @@ func askBlocking(_ path: String, _ request: IPCRequest) throws -> IPCResponse {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     defer { close(fd) }
     // A server that accepts but never answers (the readers-registration regression) must fail the
-    // test in seconds, not hang it: the recv timeout turns silence into n <= 0, which
+    // test in bounded time, not hang it: the recv timeout turns silence into n <= 0, which
     // `#require(n > 0)` reports.
-    var tv = timeval(tv_sec: 5, tv_usec: 0)
+    var tv = socketTestReceiveTimeout
     _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
     var addr = unixAddress(path)
     let rc = withUnsafePointer(to: &addr) {
@@ -133,7 +133,7 @@ func askBlocking(_ path: String, _ request: IPCRequest) throws -> IPCResponse {
 
 /// Runs a blocking call (a socket `read`) on a GCD thread. Blocking a cooperative-pool thread
 /// instead can starve the task that has to answer it: on a 3-core CI runner the server's reply
-/// then waits out the 5 s receive timeout and the round-trip tests fail.
+/// then waits out the receive timeout and the round-trip tests fail.
 func offPool<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
     try await withCheckedThrowingContinuation { done in
         DispatchQueue.global().async { done.resume(with: Result { try body() }) }

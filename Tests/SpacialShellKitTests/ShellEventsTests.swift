@@ -111,7 +111,7 @@ import SpacialShellProtocol
         var queued: [Data] = []
         init(path: String, receiveBuffer: Int32? = nil) throws {
             fd = socket(AF_UNIX, SOCK_STREAM, 0)
-            var tv = timeval(tv_sec: 5, tv_usec: 0)
+            var tv = socketTestReceiveTimeout
             _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
             if var size = receiveBuffer {
                 _ = setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &size, socklen_t(MemoryLayout<Int32>.size))
@@ -199,7 +199,7 @@ import SpacialShellProtocol
         var lines = 0
         while sub.next() != nil { lines += 1 }
         var byte: UInt8 = 0
-        #expect(read(sub.fd, &byte, 1) == 0)                  // EOF, not the 5 s timeout
+        #expect(read(sub.fd, &byte, 1) == 0)                  // EOF, not the receive timeout
         #expect(lines < 19 * 200)                             // it did not get everything
     }
 }

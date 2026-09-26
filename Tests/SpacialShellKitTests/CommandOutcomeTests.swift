@@ -95,7 +95,7 @@ import SpacialShellProtocol
         @Sendable func askBlocking(_ command: String) throws -> IPCResponse {
             let fd = socket(AF_UNIX, SOCK_STREAM, 0)
             defer { close(fd) }
-            var tv = timeval(tv_sec: 5, tv_usec: 0)
+            var tv = socketTestReceiveTimeout
             _ = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
             var addr = sockaddr_un()
             addr.sun_family = sa_family_t(AF_UNIX)
