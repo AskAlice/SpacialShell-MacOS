@@ -303,7 +303,12 @@ enum Stories {
         add("grant-wait-stale", nil, GrantWaitView(wait: GrantWait(elapsed: .seconds(47)), openSettings: {}, quit: {}))
         // …and the alert a failed hotkey tap opens, with the socket's queued behind it.
         add("problem-alert", nil, ProblemAlertView(
-            problem: .hotkeysInactive("the event tap could not be created"), queued: 1, dismiss: {}))
+            problem: .hotkeysInactive("the event tap could not be created"), queued: 1, dismiss: { _ in }))
+        // #138: another window manager is running — a warning the user may keep, so it offers
+        // "Don't warn again".
+        add("problem-alert-other-wm", nil, ProblemAlertView(
+            problem: .otherWindowManager(entry: "com.knollsoft.Rectangle", name: "Rectangle"), queued: 0,
+            dismiss: { _ in }))
 
         // panel-color / panel-opacity actually reaching the panels. These existed as config keys,
         // as persisted values and as settings-window controls while nothing read them, so the
@@ -464,6 +469,14 @@ enum Stories {
 
         // #108: the tile a dragged window would swap with, at a half-split tile's size.
         add("drop-target", CGSize(width: 480, height: 320), DropTargetView())
+
+        // The settings window's General pane, with #138's silenced warnings and the way back.
+        var silenced = SettingsOverrides()
+        silenced.silence("other-wm:com.knollsoft.Rectangle")
+        silenced.silence("other-wm:yabai")
+        add("settings-general", nil, SettingsView(
+            file: Config(), overrides: .constant(silenced), configPath: "~/.config/spacial-shell/config.toml",
+            openConfigFile: {}, checkForUpdates: nil, standalone: .general))
 
         return out
     }

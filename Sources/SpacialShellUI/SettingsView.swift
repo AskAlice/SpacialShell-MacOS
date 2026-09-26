@@ -40,28 +40,41 @@ struct SettingsView: View {
     /// both swallow the same keystroke.
     @State private var recording: String?
 
+    /// Stories only: one pane's contents on their own. `NavigationSplitView` does not draw into an
+    /// offscreen bitmap, so the snapshot tests render the pane without the sidebar around it.
+    var standalone: Pane? = nil
+
     var body: some View {
-        NavigationSplitView {
-            List(Pane.allCases, selection: Binding(get: { pane }, set: { pane = $0 ?? pane })) { p in
-                Label(p.rawValue, systemImage: p.symbol).tag(p)
-            }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 220)
-        } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    switch pane {
-                    case .general: general
-                    case .appearance: appearance
-                    case .layout: layout
-                    case .workspaces: workspaces
-                    case .keys: keys
-                    }
+        if let standalone {
+            content(standalone).frame(width: 520, alignment: .leading).padding(22)
+                .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            NavigationSplitView {
+                List(Pane.allCases, selection: Binding(get: { pane }, set: { pane = $0 ?? pane })) { p in
+                    Label(p.rawValue, systemImage: p.symbol).tag(p)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(22)
+                .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 220)
+            } detail: {
+                ScrollView {
+                    content(pane)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(22)
+                }
+            }
+            .frame(minWidth: 620, minHeight: 420)
+        }
+    }
+
+    private func content(_ pane: Pane) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            switch pane {
+            case .general: general
+            case .appearance: appearance
+            case .layout: layout
+            case .workspaces: workspaces
+            case .keys: keys
             }
         }
-        .frame(minWidth: 620, minHeight: 420)
     }
 
     // MARK: panes
@@ -106,6 +119,19 @@ struct SettingsView: View {
                 Toggle("", isOn: binding(\.gestureInvert, default: file.gestureInvert)).labelsHidden()
                     .help("Off: content follows your fingers, as with natural scrolling (swipe left for the next window). On: swipe the way the keys point (swipe left for Fn+A)")
             } reset: { overrides.gestureInvert = nil }
+
+            // #138: what "Don't warn again" silenced, and the way back. Only shown when there is any.
+            if let silenced = overrides.silencedWarnings, !silenced.isEmpty {
+                row("Silenced warnings", overridden: false) {
+                    HStack(spacing: 8) {
+                        Text(silenced.map(Self.warningLabel).joined(separator: ", "))
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                        Button("Warn again") { overrides.silencedWarnings = nil }
+                            .help("Warn again about everything you chose Don't warn again for")
+                    }
+                } reset: {}
+            }
 
             Divider()
             VStack(alignment: .leading, spacing: 6) {
@@ -318,6 +344,11 @@ struct SettingsView: View {
         ("close-window", "Close window"), ("toggle-shell-ui", "Toggle Zen mode"),
         ("toggle-overview", "Open overview"), ("open-settings", "Open settings"),
     ]
+
+    /// A silenced problem key as the user knows it: the `other-window-managers` entry it names.
+    static func warningLabel(_ key: String) -> String {
+        key.hasPrefix(Problem.Key.otherWindowManagerPrefix) ? String(key.dropFirst(Problem.Key.otherWindowManagerPrefix.count)) : key
+    }
 
     // MARK: pieces
 

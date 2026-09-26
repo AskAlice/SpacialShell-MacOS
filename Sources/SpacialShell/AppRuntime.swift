@@ -41,6 +41,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var tap: HotkeyTap?
     private var gestures: TrackpadGestures?
     private var pointerFocus: PointerFocus?
+    /// #138: warns while another window manager from `other-window-managers` runs.
+    private var otherWindowManagers: OtherWindowManagerWatch?
     private var shell: ShellController?
     private var overview: OverviewController?
     private var settingsWindow: SettingsWindowController?
@@ -299,6 +301,13 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         gestures.update(enabled: config.gestures, fingers: config.gestureFingers, invert: config.gestureInvert)
         self.gestures = gestures
 
+        // #138: after the socket and the tap, so its alert queues behind theirs, errors first.
+        // "Don't warn again" is remembered in settings.json, like every other window edit.
+        alerts.onSilence = { [weak self] key in self?.silence(key) }
+        let otherWindowManagers = OtherWindowManagerWatch()
+        otherWindowManagers.start(list: config.otherWindowManagers, silenced: silencedWarnings)
+        self.otherWindowManagers = otherWindowManagers
+
         log.info("stage 8/8: config watch and signal handlers")
         watchConfig()
         installSignalHandlers()
@@ -372,6 +381,18 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // not write its stale copy back over it on its next edit.
         settingsWindow?.update(overrides: new)
         applyEffectiveConfig()
+        // `push` refreshes the layouts' copy only when the config changed, and #138's silenced
+        // warnings change settings.json without changing the config.
+        layouts?.update(config: config, overrides: new)
+    }
+
+    /// #138: the problem keys answered "Don't warn again".
+    private var silencedWarnings: Set<String> { Set(overrides.silencedWarnings ?? []) }
+
+    private func silence(_ key: String) {
+        var new = overrides
+        new.silence(key)
+        applyOverrides(new)
     }
 
     /// Watches the *directory*, not the file: editors replace configs by rename, which leaves the
@@ -421,6 +442,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     /// One path for both doors into a config change — a file edit and a settings-window edit end
     /// up in exactly the same place, so neither can quietly skip a step the other does.
     private func push(previous: Config) {
+        // #138: before the guard — a "Don't warn again" changes the silenced set, not the config.
+        otherWindowManagers?.update(list: config.otherWindowManagers, silenced: silencedWarnings)
         guard config != previous else { return }
         log.info("config changed; re-binding keys and re-laying out")
         if config.axTimeoutMs != previous.axTimeoutMs || config.refreshIntervalMs != previous.refreshIntervalMs {

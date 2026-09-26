@@ -40,6 +40,8 @@ gesture-invert = false            # true: swipe the way the keys point instead o
 crowd-threshold = 8               # an app arriving at launch with more windows gets its own workspace
 category-order = ["web", "terminal", "coding", "media", "utilities"]   # [] turns routing off
 max-workspaces = 12               # routing never grows a display past this many rows
+# warn while one of these runs (bundle id or process name); [] turns the warning off
+other-window-managers = ["bobko.aerospace", "yabai", "skhd", "com.amethyst.Amethyst", "com.knollsoft.Rectangle", "com.crowdcafe.windowmagnet"]
 
 [[workspace]]                     # pinned, named workspaces seeded on every screen
 name = "Code"                     # (material-shell "categories")
@@ -92,6 +94,7 @@ title-regex = "^Picture in Picture$"
 | `crowd-threshold` | integer | `8` | An app arriving **at launch** with *more* windows than this, and no remembered placement, gets a workspace of its own on the display most of its windows are on, instead of piling into the active workspace. See [Where windows land at launch](#where-windows-land-at-launch). |
 | `category-order` | list of categories | `["web", "terminal", "coding", "media", "utilities"]` | Where an app's windows go: one row per listed category on each display, shared by every app of that category and kept at the top of the stack in this order. For these apps this beats the remembered workspace. Apps of any other category, or of none, get a row each below them. `[]` turns this off. Category names are the `app-categories` values. Also in the settings window's Workspaces pane. See [Where windows land](#where-windows-land-at-launch). |
 | `max-workspaces` | integer | `12` | Category routing never grows a display past this many rows (the empty row at the bottom does not count). Past it, a new app joins the last row. Also in the settings window's Workspaces pane (1–30). |
+| `other-window-managers` | list of strings | AeroSpace, yabai, skhd, Amethyst, Rectangle, Magnet (below) | Window managers that fight SpacialShell over the same windows or keys. While one runs, SpacialShell lists a warning under the rail cog and, once per launch, opens an alert with **Don't warn again**. An entry matches a bundle id exactly (`com.knollsoft.Rectangle`) or a process name ignoring case (`yabai`, for daemons with no app bundle). Checked at launch and whenever an app launches or quits. Setting the key **replaces** the default list; `[]` turns the warning off. Default: `["bobko.aerospace", "yabai", "skhd", "com.amethyst.Amethyst", "com.knollsoft.Rectangle", "com.crowdcafe.windowmagnet"]`. What you silence is kept in `settings.json`, not this file; the settings window's General pane lists it and has **Warn again**. |
 
 Layout names: `maximize` (one window fills the screen), `split` (a sliding view of N consecutive
 windows as columns — 2 by default, 2–6 per workspace from the layout popover's −/+ or

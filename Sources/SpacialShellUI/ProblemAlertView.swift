@@ -12,7 +12,9 @@ struct ProblemAlertView: View {
     let problem: Problem
     /// Alerts still queued behind this one, so "OK" is not a surprise when another follows.
     let queued: Int
-    let dismiss: () -> Void
+    /// `true` when "Don't warn again" was ticked (#138; only offered where `canSilence`).
+    let dismiss: (_ silence: Bool) -> Void
+    @State private var silence = false
 
     static let width: CGFloat = 400
 
@@ -28,18 +30,25 @@ struct ProblemAlertView: View {
                     Text(problem.message)
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("It stays listed under the rail's settings button until it is fixed.")
+                    Text(problem.canSilence
+                         ? "Until then it is listed under the rail's settings button."
+                         : "It stays listed under the rail's settings button until it is fixed.")
                         .font(.system(size: 11)).foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             HStack(spacing: 8) {
+                if problem.canSilence {
+                    Toggle("Don't warn again", isOn: $silence)
+                        .toggleStyle(.checkbox).font(.system(size: 11))
+                        .padding(.leading, 50)
+                }
                 if queued > 0 {
                     Text(queued == 1 ? "1 more" : "\(queued) more")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                Button(queued > 0 ? "Next" : "OK", action: dismiss)
+                Button(queued > 0 ? "Next" : "OK") { dismiss(silence) }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -53,6 +62,8 @@ struct ProblemAlertView: View {
 /// problem list on every change, like the rail's badge.
 @MainActor
 public final class ProblemAlertController: NSObject, NSWindowDelegate {
+    /// #138: "Don't warn again" was ticked on the alert for this problem key.
+    public var onSilence: (String) -> Void = { _ in }
     private var alerts = ProblemAlerts()
     private var queue: [Problem] = []
     private var shown: Problem?
@@ -77,10 +88,19 @@ public final class ProblemAlertController: NSObject, NSWindowDelegate {
 
     private func redraw() {
         guard let shown else { return }
-        let view = ProblemAlertView(problem: shown, queued: queue.count) { [weak self] in self?.showNext() }
+        let view = ProblemAlertView(problem: shown, queued: queue.count) { [weak self] silence in
+            if silence { self?.onSilence(shown.key) }
+            self?.showNext()
+        }
         if let window, let host = window.contentView as? NSHostingView<ProblemAlertView> {
-            host.rootView = view
-            window.setContentSize(host.fittingSize)
+            // Same alert (the queue count moved): keep the view, and a ticked box with it. A new
+            // alert gets a new host, so its "Don't warn again" starts unticked.
+            if host.rootView.problem.key == shown.key {
+                host.rootView = view
+            } else {
+                window.contentView = NSHostingView(rootView: view)
+            }
+            window.setContentSize(window.contentView?.fittingSize ?? host.fittingSize)
             return
         }
         let host = NSHostingView(rootView: view)

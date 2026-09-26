@@ -41,8 +41,20 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     /// #9. Replaces the file's `layout-bar` wholesale, like `categoryOrder`.
     public var layoutBar: [LayoutID]?
     public var defaultLayout: LayoutID?
+    /// #138: problem keys the user answered "Don't warn again" to. Not a config knob — nothing in
+    /// `Config` changes — so `Settings.effective` leaves it alone; the app reads it directly. Nil
+    /// and `[]` both mean none; the settings window's "Warn again" sets it back to nil.
+    public var silencedWarnings: [String]?
 
     public init() {}
+
+    /// #138: adds `key` to `silencedWarnings`, once.
+    public mutating func silence(_ key: String) {
+        var keys = silencedWarnings ?? []
+        guard !keys.contains(key) else { return }
+        keys.append(key)
+        silencedWarnings = keys
+    }
 
     /// Every key optional and tolerant, as the synthesized decoder was — plus `layouts`, lossily.
     public init(from d: Decoder) throws {
@@ -69,6 +81,7 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         layouts = try LayoutDef.lossy(c, .layouts)
         layoutBar = try c.decodeIfPresent([LayoutID].self, forKey: .layoutBar)
         defaultLayout = try c.decodeIfPresent(LayoutID.self, forKey: .defaultLayout)
+        silencedWarnings = try c.decodeIfPresent([String].self, forKey: .silencedWarnings)
     }
 }
 

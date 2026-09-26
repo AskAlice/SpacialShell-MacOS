@@ -11,14 +11,23 @@ extension Problem {
         Self.interruptingKeys.contains(key) || Self.interruptingPrefixes.contains { key.hasPrefix($0) }
     }
 
+    /// Whether its alert offers "Don't warn again" (#138). Only for a warning the user may
+    /// reasonably choose to live with; an error means something they asked for is not happening,
+    /// and silencing it would only hide that.
+    public var canSilence: Bool {
+        severity == .warning && Self.silenceablePrefixes.contains { key.hasPrefix($0) }
+    }
+
     /// The alert's headline; the message is its body. General on purpose: each message already
     /// opens by naming what broke, and a headline saying it again reads as a stutter.
     public var title: String {
-        severity == .error ? "Part of SpacialShell didn't start" : "SpacialShell needs your attention"
+        if key.hasPrefix(Key.otherWindowManagerPrefix) { return "Another window manager is running" }
+        return severity == .error ? "Part of SpacialShell didn't start" : "SpacialShell needs your attention"
     }
 
     static let interruptingKeys: Set<String> = [Key.hotkeys, Key.controlSocket]
-    static let interruptingPrefixes: [String] = []
+    static let interruptingPrefixes: [String] = [Key.otherWindowManagerPrefix]
+    static let silenceablePrefixes: [String] = [Key.otherWindowManagerPrefix]
 }
 
 /// Which problems to alert about now. Pure: the app feeds it every change of the problem list and
