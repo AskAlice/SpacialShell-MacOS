@@ -30,7 +30,7 @@ Scenario format (`scenarios/*.scn`): one step per line, `#` comments, shell-styl
                          `pid:NAME` as an argument is replaced by that pid; a trailing `?`
                          makes the step best effort
     sh LINE              the rest of the line through /bin/sh, unparsed (config files, defaults) —
-                         vm mode only
+                         vm mode only; $E2E_OUT is the scenario's artefact directory
     relaunch             quit and reopen SpacialShell, wait for its socket — vm mode only
     appearance dark|light  switch the session's appearance (appearance.swift) — vm mode only
     expect CHECK ARGS    see CHECKS below (check_* methods); a failure is recorded, the run goes on
@@ -289,7 +289,8 @@ class Run:
 
     def step_sh(self, line):
         self.vm_only("sh")
-        sh("/bin/sh", "-c", line)
+        # E2E_OUT: this scenario's artefact directory, for steps that leave files behind (#140).
+        sh("/bin/sh", "-c", line, env={**os.environ, "E2E_OUT": self.out})
 
     def step_appearance(self, mode):
         """Light or dark for the whole session, live (appearance.swift) — vm mode only."""

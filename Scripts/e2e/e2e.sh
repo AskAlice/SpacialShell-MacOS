@@ -122,8 +122,14 @@ bounded() { local secs="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$secs" "$
 # 0: the agent answers through the control socket; 1: tart closed it (agent not up); 2: no socket.
 agent_answers() { python3 "$HERE/agent-probe.py" "$SOCK"; }
 
+# #140: the guest has the Command Line Tools only, which have no xctrace. SPACIAL_E2E_XCODE (a host
+# Xcode.app) goes in read-only as the `xcode` share, and Scripts/profiling/retile-pass.sh runs
+# Instruments from it.
+EXTRA_DIRS=()
+[ -n "${SPACIAL_E2E_XCODE:-}" ] && EXTRA_DIRS+=("--dir=xcode:$SPACIAL_E2E_XCODE:ro")
+
 boot() {
-    tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "--dir=cache:$CACHE" "$VM" >>"$TART_LOG" 2>&1 &
+    tart run --no-graphics "--dir=repo:$REPO:ro" "--dir=out:$OUT" "--dir=cache:$CACHE" ${EXTRA_DIRS[@]+"${EXTRA_DIRS[@]}"} "$VM" >>"$TART_LOG" 2>&1 &
     TART_PID=$!
     local t0=$SECONDS rc
     while :; do
@@ -143,7 +149,7 @@ run tart clone "$GOLDEN" "$VM"
 # The repo goes in read-only (the guest builds from its own copy); artefacts come out through
 # the writable share, so there is nothing to copy back afterwards.
 if [ -n "$DRY" ]; then
-    echo "+ tart run --no-graphics --dir=repo:$REPO:ro --dir=out:$OUT --dir=cache:$CACHE $VM &"
+    echo "+ tart run --no-graphics --dir=repo:$REPO:ro --dir=out:$OUT --dir=cache:$CACHE ${EXTRA_DIRS[*]:+${EXTRA_DIRS[*]} }$VM &"
 else
     echo "e2e: waiting for the guest agent…"
     for attempt in 1 2; do

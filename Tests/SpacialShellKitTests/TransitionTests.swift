@@ -117,6 +117,31 @@ import Foundation
         #expect(Transition.moves(before: r, after: r, viewport: viewport, gap: 8).isEmpty)
     }
 
+    /// #140 (G13): a layout change moves every window inside the viewport; that is a re-tile.
+    @Test func aLayoutChangeIsARetile() {
+        let left = CGRect(x: 8, y: 8, width: 488, height: 584), right = CGRect(x: 504, y: 8, width: 488, height: 584)
+        let top = CGRect(x: 8, y: 8, width: 984, height: 288), bottom = CGRect(x: 8, y: 304, width: 984, height: 288)
+        let before = row(wsA, 0, [w1, w2], focused: w1, frames: [w1: left, w2: right])
+        let after = row(wsA, 0, [w1, w2], focused: w1, frames: [w1: top, w2: bottom])
+        let t = Transition(display: "d", viewport: viewport,
+                           moves: Transition.moves(before: before, after: after, viewport: viewport, gap: 8))
+        #expect(t.moves.count == 2)
+        #expect(t.isRetile)
+    }
+
+    /// A switch is never a re-tile: something travels out of the viewport (or in), whole.
+    @Test func aSwitchIsNotARetile() {
+        let tab = Transition(display: "d", viewport: viewport, moves: Transition.moves(
+            before: row(wsA, 0, [w1, w2], focused: w1, frames: [w1: full]),
+            after: row(wsA, 0, [w1, w2], focused: w2, frames: [w2: full]), viewport: viewport, gap: 8))
+        let rowDown = Transition(display: "d", viewport: viewport, moves: Transition.moves(
+            before: row(wsA, 0, [w1], focused: w1, frames: [w1: full]),
+            after: row(wsB, 1, [w2], focused: w2, frames: [w2: full]), viewport: viewport, gap: 8))
+        #expect(!tab.isRetile)
+        #expect(!rowDown.isRetile)
+        #expect(!Transition(display: "d", viewport: viewport, moves: []).isRetile)
+    }
+
     /// No direction (a window closed, a new one adopted): what stays visible still moves between
     /// its frames, but nothing slides in or out from an invented edge.
     @Test func withoutADirectionNothingSlidesInOrOut() {

@@ -65,6 +65,8 @@ private final class Stage {
     private var content: (listing: SCShareableContent, at: ContinuousClock.Instant)?
     /// #148: the flight in the air, ended when it lands or is dropped.
     private var playSpan: (any Span)?
+    /// #140 prototype: the re-tile being measured, only with `SPACIAL_PROTO_RETILE=1`.
+    private var probe: RetileProbe?
 
     static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "motion")
     /// Test hook (#81), like the Simulator's slow animations: `defaults write sh.emu.SpacialShell
@@ -121,9 +123,13 @@ private final class Stage {
         token += 1
         let mine = token
 
+        // #140 prototype: a re-tile is captured fresh, in full, and timed (see `RetileProbe`).
+        let retile = RetileProbe.enabled && transitions.allSatisfy(\.isRetile)
+        let probe = retile ? RetileProbe(windows: moves, since: since) : nil
+        self.probe = probe
         let started = ContinuousClock.now
         // #97: a kept set flies whatever its age; the prefetch after landing takes it again.
-        let hits = transitions.map { cache.take(Key($0)) }
+        let hits = transitions.map { retile ? nil : cache.take(Key($0)) }
         let missing = zip(transitions, hits).filter { $0.1 == nil }.map(\.0)
         let hit = missing.isEmpty ? "hit" : missing.count == transitions.count ? "miss" : "partial"
         span.setAttribute(key: "cache", value: hit)
@@ -131,25 +137,29 @@ private final class Stage {
         if !missing.isEmpty {
             // Its own task, so a capture that overruns the budget still lands in the cache.
             let job = Task { [weak self] () -> [Pictures]? in
-                guard let self, let got = await self.capture(missing) else { return nil }
-                for p in got { self.cache.add(p.key, p, taken: p.taken) }
+                guard let self, let got = await self.capture(missing, probe: probe) else { return nil }
+                if !retile { for p in got { self.cache.add(p.key, p, taken: p.taken) } }
                 return got
             }
-            result = await job.value(within: Self.captureBudget)
+            probe?.captureBegan()
+            result = retile ? .some(await job.value) : await job.value(within: Self.captureBudget)
         }
         let capture = ContinuousClock.now - started
+        probe?.captureEnded(capture)
         span.setAttribute(key: "capture.ms", value: Self.ms(capture))
-        guard mine == token else { outcome = "superseded"; return false }
+        guard mine == token else { outcome = "superseded"; probe?.abandoned(outcome); return false }
         guard let captured = result ?? nil else {
             busy = false
             let late = result == nil
             outcome = late ? "over-budget" : "capture-failed"
+            probe?.abandoned(outcome); self.probe = nil
             Self.log.notice("switch instant: \(late ? "capture over budget" : "capture failed", privacy: .public) (\(moves) moves); latency \(Self.ms(.now - since), format: .fixed(precision: 1), privacy: .public) ms")
             return false
         }
         var fresh = captured.makeIterator()
         let pictures = hits.map { $0 ?? fresh.next()! }
         show(transitions, pictures)
+        probe?.shown()
         // One frame for the window server to composite the overlay before anything moves under it.
         try? await Task.sleep(for: .milliseconds(16))
         guard mine == token else { outcome = "superseded"; return false }
@@ -170,14 +180,16 @@ private final class Stage {
         playSpan?.end()
         playSpan = Self.span("animation.play", trace: trace)
         playSpan?.setAttribute(key: "sprites", value: sprites.count)
+        probe?.playing(on: panels.first?.contentView)
         CATransaction.begin()
-        CATransaction.setAnimationDuration(Self.duration)
+        CATransaction.setAnimationDuration(probe == nil ? Self.duration : RetileProbe.duration * Self.scale)
         CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1))
         CATransaction.setCompletionBlock { [weak self] in
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: Self.landingHold)
                 guard let self, self.token == mine else { return }
                 self.playSpan?.setAttribute(key: "landed", value: true)
+                self.probe?.landed(); self.probe = nil
                 self.teardown()
                 self.startPrefetch()
             }
@@ -194,6 +206,7 @@ private final class Stage {
 
     private func teardown() {
         playSpan?.end(); playSpan = nil
+        probe?.abandoned("dropped before landing"); probe = nil
         token += 1
         busy = false
         for p in panels { p.orderOut(nil) }
@@ -295,7 +308,7 @@ private final class Stage {
 
     /// Every picture the transitions need, in their order, or nil if any is missing — a window with
     /// no image would pop in at the end instead of sliding, which is worse than no animation at all.
-    private func capture(_ transitions: [Transition]) async -> [Pictures]? {
+    private func capture(_ transitions: [Transition], probe: RetileProbe? = nil) async -> [Pictures]? {
         guard !transitions.isEmpty else { return [] }
         let taken = ContinuousClock.now
         // A reused listing can predate a window that has just opened: one retry with a new one.
@@ -306,17 +319,26 @@ private final class Stage {
         }
         guard let shots else { return nil }
 
-        // All at once: the backdrop and every window, on every display.
-        let images = await withTaskGroup(of: (Slot, CGImage?).self) { group in
+        // All at once: the backdrop and every window, on every display. Each is timed (#140).
+        let measured = probe != nil
+        let images = await withTaskGroup(of: (Slot, CGImage?, Duration).self) { group in
             for s in shots {
-                group.addTask { (s.slot, await CaptureGate.image { try await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.config) }) }
+                group.addTask {
+                    let sp = RetileProbe.signposter
+                    let state = measured ? sp.beginInterval("retile.shot", id: sp.makeSignpostID()) : nil
+                    let t0 = ContinuousClock.now
+                    let image = await CaptureGate.image { try await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.config) }
+                    if let state { sp.endInterval("retile.shot", state) }
+                    return (s.slot, image, ContinuousClock.now - t0)
+                }
             }
-            var out: [(Slot, CGImage?)] = []
+            var out: [(Slot, CGImage?, Duration)] = []
             for await r in group { out.append(r) }
             return out
         }
         var backdrops: [Int: CGImage] = [:], windows: [Int: [WindowID: CGImage]] = [:]
-        for (slot, image) in images {
+        for (slot, image, took) in images {
+            if case .window = slot { probe?.shot(window: true, took) } else { probe?.shot(window: false, took) }
             guard let image else { return nil }
             switch slot {
             case .backdrop(let i): backdrops[i] = image

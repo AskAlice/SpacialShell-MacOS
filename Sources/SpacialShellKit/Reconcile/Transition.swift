@@ -49,6 +49,13 @@ public struct Transition: Sendable, Equatable {
         self.display = display; self.viewport = viewport; self.moves = moves
     }
 
+    /// #140 (G13): a re-tile, not a switch. Nothing slides in or out; every moving window starts
+    /// and ends inside the tiling area (a layout change, a resize, a window opening or closing next
+    /// to it). A switch always has a window travelling out of or into the viewport.
+    public var isRetile: Bool {
+        !moves.isEmpty && moves.allSatisfy { !$0.from.intersection(viewport).isEmpty && !$0.to.intersection(viewport).isEmpty }
+    }
+
     public static func moves(before: ShownRow, after: ShownRow, viewport: CGRect, gap: CGFloat) -> [Move] {
         let delta = direction(before: before, after: after, viewport: viewport, gap: gap)
         var out: [Move] = []

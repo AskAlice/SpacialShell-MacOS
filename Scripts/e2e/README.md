@@ -247,6 +247,15 @@ A failure you did not intend is the suite doing its job: the diff shows where.
   held drag is a long-lived `input` process, and it re-points at the target before it lets go:
   otherwise AppKit sometimes drops nothing after a still hold.
 
+## Performance: re-tile motion (#140)
+
+`SPACIAL_E2E_XCODE=/Applications/Xcode.app Scripts/e2e/e2e.sh --vm --suite perf` runs
+`scenarios/perf/retile.scn`. It measures the re-tile prototype (`SPACIAL_PROTO_RETILE=1`) for 2, 4
+and 8 windows, under Instruments' Time Profiler. The guest has no xctrace, so the host's Xcode is
+shared in read-only as `xcode`. `Scripts/profiling/retile-report.py .build/e2e/vm-…/retile
+--pprof docs/perf` prints the table and writes pprof profiles. Method and results: the M4 spec,
+§7.
+
 ## Screen recordings for the docs (#8)
 
 `Scripts/e2e/e2e.sh --vm --suite media` runs `scenarios/media/*.scn`, which drive the shell while

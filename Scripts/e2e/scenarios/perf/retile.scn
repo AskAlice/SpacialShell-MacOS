@@ -1,0 +1,172 @@
+# #140 (G13): what re-tile motion costs on the switch overlay, for 2, 4 and 8 windows re-tiling at
+# once. Needs the prototype flag (SPACIAL_PROTO_RETILE=1, set below before the relaunch).
+#
+#   SPACIAL_E2E_XCODE=/Applications/Xcode.app Scripts/e2e/e2e.sh --vm --suite perf
+#   Scripts/profiling/retile-report.py .build/e2e/vm-…/retile     # the table, and the pprof files
+#
+# The trigger is a layout change on one row of N TextEdit windows: `grid` to `wide` (a drawn 4x2
+# layout, filled from the top-left) and back. Every window changes frame both ways and every one
+# stays on screen, so every re-tile moves all N. Both fit all 8 windows above the 120 x 80 pt
+# floor in the guest's 960 x 687 pt tiling area (grid: 3x3 cells of about 314 x 223; wide: 232 x
+# 340); `column` and a stack of 8 rows do not, and page down to one window. Each N gets: two re-tiles off the clock (a first capture in the GPU-less
+# guest takes seconds), then ten measured under Instruments' Time Profiler (retile-pass.sh), then
+# four under a 60 fps screen recording, which counts the frames the window server really showed.
+# Known state as the media scenarios (#81): light, full-speed motion, no desktop widgets.
+appearance light
+sh defaults delete sh.emu.SpacialShell SpacialMotionScale 2>/dev/null; true
+sh defaults write com.apple.WindowManager StandardHideWidgets -bool true; killall WindowManager NotificationCenter 2>/dev/null; true
+sh defaults write -g AppleKeyboardUIMode -int 0
+sh mkdir -p ~/.config/spacial-shell && printf '%s\n' '[[layout]]' 'id = "wide"' 'name = "Wide"' 'zones = [' '  { x = 0.0, y = 0.0, w = 0.25, h = 0.5 }, { x = 0.25, y = 0.0, w = 0.25, h = 0.5 },' '  { x = 0.5, y = 0.0, w = 0.25, h = 0.5 }, { x = 0.75, y = 0.0, w = 0.25, h = 0.5 },' '  { x = 0.0, y = 0.5, w = 0.25, h = 0.5 }, { x = 0.25, y = 0.5, w = 0.25, h = 0.5 },' '  { x = 0.5, y = 0.5, w = 0.25, h = 0.5 }, { x = 0.75, y = 0.5, w = 0.25, h = 0.5 },' ']' > ~/.config/spacial-shell/config.toml
+sh launchctl setenv SPACIAL_PROTO_RETILE 1
+relaunch
+input move 1000 740
+
+# ---- baseline: today's tab-switch slide under the same recorder --------------------------------------
+# The guest's virtual display does not keep up with 60 Hz for any motion; this is what a switch
+# that ships today shows, so a re-tile's repeated frames can be read against it.
+open 2 as a
+settle
+focus a1
+run set-layout-maximize
+settle
+run focus-window-right
+wait 3
+run focus-window-left
+wait 3
+record baseline-switch-screen 13 60
+wait 1
+run focus-window-right
+wait 3
+run focus-window-left
+wait 3
+run focus-window-right
+wait 3
+run focus-window-left
+wait 4
+
+# ---- N = 2 ----------------------------------------------------------------------------------------
+run set-layout-grid
+settle
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+sh Scripts/profiling/retile-pass.sh begin retile-N2
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+sh Scripts/profiling/retile-pass.sh end retile-N2
+record retile-N2-screen 14 60
+wait 1
+run set-layout-wide
+wait 3
+run set-layout-grid
+wait 3
+run set-layout-wide
+wait 3
+run set-layout-grid
+wait 3
+
+# ---- N = 4 ----------------------------------------------------------------------------------------
+open 2 as b
+settle
+focus a1
+run set-layout-grid
+settle
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+sh Scripts/profiling/retile-pass.sh begin retile-N4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+run set-layout-wide
+wait 4
+run set-layout-grid
+wait 4
+sh Scripts/profiling/retile-pass.sh end retile-N4
+record retile-N4-screen 14 60
+wait 1
+run set-layout-wide
+wait 3
+run set-layout-grid
+wait 3
+run set-layout-wide
+wait 3
+run set-layout-grid
+wait 3
+
+# ---- N = 8 ----------------------------------------------------------------------------------------
+open 4 as c
+settle
+focus a1
+run set-layout-grid
+settle
+run set-layout-wide
+wait 6
+run set-layout-grid
+wait 6
+sh Scripts/profiling/retile-pass.sh begin retile-N8
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+run set-layout-wide
+wait 5
+run set-layout-grid
+wait 5
+sh Scripts/profiling/retile-pass.sh end retile-N8
+record retile-N8-screen 16 60
+wait 1
+run set-layout-wide
+wait 3.5
+run set-layout-grid
+wait 3.5
+run set-layout-wide
+wait 3.5
+run set-layout-grid
+wait 3.5
+sh launchctl unsetenv SPACIAL_PROTO_RETILE; rm -f ~/.config/spacial-shell/config.toml
