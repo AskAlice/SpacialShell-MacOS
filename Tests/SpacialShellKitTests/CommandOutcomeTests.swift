@@ -92,7 +92,7 @@ import SpacialShellProtocol
         try server.start()
         defer { server.stop() }
 
-        func ask(_ command: String) throws -> IPCResponse {
+        @Sendable func askBlocking(_ command: String) throws -> IPCResponse {
             let fd = socket(AF_UNIX, SOCK_STREAM, 0)
             defer { close(fd) }
             var tv = timeval(tv_sec: 5, tv_usec: 0)
@@ -118,11 +118,13 @@ import SpacialShellProtocol
             }
         }
 
-        #expect(try ask("focus-workspace-2").cliOutput.code == 0)
-        let unknown = try ask("focus-workspace-9")
+        func ask(_ command: String) async throws -> IPCResponse { try await offPool { try askBlocking(command) } }
+
+        #expect(try await ask("focus-workspace-2").cliOutput.code == 0)
+        let unknown = try await ask("focus-workspace-9")
         #expect(unknown.cliOutput == CLIOutput(code: 1, stderr: "spacialctl: unknown workspace 9"))
-        #expect(try ask("switch 42").cliOutput.code == 1)
-        #expect(try ask("focus-workspace-up").cliOutput.stderr == "spacialctl: nothing to do: already on the top workspace")
+        #expect(try await ask("switch 42").cliOutput.code == 1)
+        #expect(try await ask("focus-workspace-up").cliOutput.stderr == "spacialctl: nothing to do: already on the top workspace")
     }
 }
 

@@ -16,7 +16,7 @@ import SpacialShellProtocol
         try server.start()
         defer { server.stop() }
 
-        func ask(_ request: IPCRequest) throws -> IPCResponse {
+        @Sendable func askBlocking(_ request: IPCRequest) throws -> IPCResponse {
             let fd = socket(AF_UNIX, SOCK_STREAM, 0)
             defer { close(fd) }
             // A server that accepts but never answers (the readers-registration regression) must
@@ -47,9 +47,20 @@ import SpacialShellProtocol
             }
         }
 
-        let ok = try ask(IPCRequest(id: 7, cmd: "ping"))
+        func ask(_ request: IPCRequest) async throws -> IPCResponse { try await offPool { try askBlocking(request) } }
+
+        let ok = try await ask(IPCRequest(id: 7, cmd: "ping"))
         #expect(ok.ok && ok.id == 7 && ok.data?["pong"]?.boolValue == true)
-        let bad = try ask(IPCRequest(id: 8, cmd: "nope"))
+        let bad = try await ask(IPCRequest(id: 8, cmd: "nope"))
         #expect(!bad.ok && bad.error == "unknown cmd")
+    }
+}
+
+/// Runs a blocking call (a socket `read`) on a GCD thread. Blocking a cooperative-pool thread
+/// instead can starve the task that has to answer it: on a 3-core CI runner the server's reply
+/// then waits out the 5 s receive timeout and the round-trip tests fail.
+func offPool<T: Sendable>(_ body: @escaping @Sendable () throws -> T) async throws -> T {
+    try await withCheckedThrowingContinuation { done in
+        DispatchQueue.global().async { done.resume(with: Result { try body() }) }
     }
 }
