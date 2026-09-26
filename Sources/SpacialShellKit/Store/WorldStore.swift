@@ -34,7 +34,7 @@ public actor WorldStore {
     private var parked: Set<WindowRef> = []
     private var bundleIDs: [WindowRef: String] = [:]
     /// #110: the snapshot's `title` per window, kept current by every refresh and by
-    /// `kAXTitleChanged`. Never put on a span or a log line: titles are the user's content (#83).
+    /// `kAXTitleChanged`. Never put on a span or a log line: titles are the user's content (#148).
     private var titles: [WindowRef: String] = [:]
     /// #110: `appName` by pid, replaced wholesale by each refresh's app list.
     private var appNames: [Int32: String] = [:]
@@ -114,7 +114,7 @@ public actor WorldStore {
     /// Bundle ids that have shown a window this session. The crowd rule looks only at an app's
     /// first appearance, so later windows of an app are never swept into a workspace of their own.
     private var seenApps: Set<String> = []
-    /// #83: nil means the global provider — a no-op until the app registers the SDK. Tests pass
+    /// #148: nil means the global provider — a no-op until the app registers the SDK. Tests pass
     /// their own, so they never race each other over the global.
     private let tracerProvider: (any TracerProvider)?
     private var tracer: any Tracer { Telemetry.tracer(tracerProvider) }
@@ -249,7 +249,7 @@ public actor WorldStore {
             command = .setPortions(id, key: page.key, next)
         }
         let issued = now()
-        // #83: the root of a command's trace. The case name is the low-cardinality key; the detail
+        // #148: the root of a command's trace. The case name is the low-cardinality key; the detail
         // carries only ids and enum values — `Command` has no string payloads.
         let span = startSpan("command", parent: nil)
         defer { span.end() }
@@ -304,7 +304,7 @@ public actor WorldStore {
     }
 
     public func apply(_ event: BackendEvent) async {
-        // #83: a snapshot is traced with the reconcile it causes as its child; every other event's
+        // #148: a snapshot is traced with the reconcile it causes as its child; every other event's
         // reconcile is a root of its own.
         var eventSpan: (any Span)?
         defer { eventSpan?.end() }
@@ -918,7 +918,7 @@ public actor WorldStore {
         placements.merge(PersistedState.placements(world: world, bundleIDs: bundleIDs)) { _, live in live }
         generation += 1
         let gen = generation
-        // #83: one span per pass, one child for all its writes and one for the raise — counts, not
+        // #148: one span per pass, one child for all its writes and one for the raise — counts, not
         // a span per window, so a burst of Fn+D stays a handful of spans a press. A pass a newer
         // one overtook is `superseded`: it returned early, and its writes are the newer pass's now.
         let span = startSpan("reconcile", parent: parent)

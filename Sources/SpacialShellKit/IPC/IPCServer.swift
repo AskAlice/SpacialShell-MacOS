@@ -106,7 +106,7 @@ public final class IPCServer: @unchecked Sendable {
             let request = try? IPCCodec.decoder.decode(IPCRequest.self, from: line)
             if let request, request.cmd == "subscribe" { subscribe(fd, id: request.id); continue }
             Task { [handle] in
-                // #83: one root span per request. `cmd` is one of a handful of verbs; the args
+                // #148: one root span per request. `cmd` is one of a handful of verbs; the args
                 // (a command name at most) are not recorded.
                 let span = Telemetry.tracer().spanBuilder(spanName: "ipc.request").setNoParent().startSpan()
                 span.setAttribute(key: "ipc.cmd", value: request?.cmd ?? "invalid")

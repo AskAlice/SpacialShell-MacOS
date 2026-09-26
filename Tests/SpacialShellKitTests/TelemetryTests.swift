@@ -8,7 +8,7 @@ import OpenTelemetrySdk
 // The SDK provider locks internally but is not marked Sendable; the tests share one with a store.
 extension TracerProviderSdk: @retroactive @unchecked Sendable {}
 
-/// #83: the store's spans, read back through the SDK's in-memory exporter. Each test builds its own
+/// #148: the store's spans, read back through the SDK's in-memory exporter. Each test builds its own
 /// provider and hands it to the store, so parallel tests never share the global one.
 @Suite struct TelemetryTests {
     let d1 = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1000, height: 700), visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 675), isMain: true)

@@ -63,7 +63,7 @@ public enum HexColor {
     }
 }
 
-/// #83: tracing, exported over OTLP/HTTP. Off unless `enabled` and a token are both present; the
+/// #148: tracing, exported over OTLP/HTTP. Off unless `enabled` and a token are both present; the
 /// app target owns everything past parsing. The token is a secret: `render()` never writes it.
 public struct TelemetryConfig: Codable, Equatable, Sendable {
     public var enabled = false
@@ -335,7 +335,7 @@ public struct Config: Codable, Equatable, Sendable {
             o += "\n[keybindings]\n"
             for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }
         }
-        // #83: never the token. A secret has no business in a file this writes, which can land
+        // #148: never the token. A secret has no business in a file this writes, which can land
         // anywhere a config gets pasted; put it back by hand, and keep the file mode 600.
         if telemetry != TelemetryConfig() {
             o += "\n[telemetry]\nenabled = \(telemetry.enabled)\nendpoint = \(q(telemetry.endpoint))\nuser = \(q(telemetry.user))\n"

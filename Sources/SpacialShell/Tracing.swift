@@ -8,7 +8,7 @@ import ResourceExtension
 import SpacialShellKit
 import os
 
-/// #83: the OpenTelemetry SDK, registered only when `[telemetry]` is on *and* there is a credential
+/// #148: the OpenTelemetry SDK, registered only when `[telemetry]` is on *and* there is a credential
 /// (`TelemetryConfig.export`). Otherwise nothing is registered, Kit's spans stay on the API's no-op
 /// tracer, and nothing leaves the machine.
 ///

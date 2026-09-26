@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/dduan/TOMLDecoder", from: "0.4.0"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0"),
-        // #83: tracing. Core carries the API (Kit) and the SDK; the other package the OTLP/HTTP
+        // #148: tracing. Core carries the API (Kit) and the SDK; the other package the OTLP/HTTP
         // exporter, resource detection and the in-memory exporter the tests read spans from.
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", exact: "2.6.0"),
         .package(url: "https://github.com/open-telemetry/opentelemetry-swift", exact: "2.5.2"),
@@ -25,7 +25,7 @@ let package = Package(
         .target(
             name: "SpacialShellKit",
             dependencies: ["SpacialShellProtocol", .product(name: "TOMLDecoder", package: "TOMLDecoder"),
-                           // The API only: a no-op tracer until the app registers the SDK (#83).
+                           // The API only: a no-op tracer until the app registers the SDK (#148).
                            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core")]
         ),
         .target(name: "SpacialShellPlatform", dependencies: ["SpacialShellKit", "SpacialShellProtocol"]),

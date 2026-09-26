@@ -1,6 +1,6 @@
 import OpenTelemetryApi
 
-/// #83: where Kit's spans come from. Kit sees the OpenTelemetry *API* only: until the app registers
+/// #148: where Kit's spans come from. Kit sees the OpenTelemetry *API* only: until the app registers
 /// the SDK the global provider is a no-op, so with telemetry off a span costs a few allocations and
 /// nothing leaves the machine.
 ///

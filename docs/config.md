@@ -291,7 +291,7 @@ chord with `fn` and an arrow means the key it really is: `"fn-shift-left"` is `"
 (move window to the display that way) are bound. Without `fn`, the arrow keys are the arrows, and
 ship pre-bound to `⌃⌥` in both presets.
 
-## `[telemetry]` — OpenTelemetry traces (#83)
+## `[telemetry]` — OpenTelemetry traces (#148)
 
 Off by default. When on, the shell exports traces over OTLP/HTTP (protobuf) to
 `<endpoint>/v1/traces`, with an `Authorization: Basic base64(user:token)` header — the shape

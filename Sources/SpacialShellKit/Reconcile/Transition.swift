@@ -101,7 +101,7 @@ public protocol SwitchAnimator: Sendable {
     /// Capture and cover, with every moving window drawn at its `from`. False means "place
     /// instantly" — no Screen Recording grant, reduce-motion, or a capture that failed. A switch
     /// arriving while the last is still in flight drops that one and starts over (never queues).
-    /// `trace` is the reconcile pass this switch belongs to (#83): the animator's own spans are its
+    /// `trace` is the reconcile pass this switch belongs to (#148): the animator's own spans are its
     /// children, so a switch reads as one trace, command to landing. `since` is when the command
     /// (or, with none, the reconcile pass) began: #97 measures the latency to the slide from it.
     func prepare(_ transitions: [Transition], trace: SpanContext?, since: ContinuousClock.Instant) async -> Bool

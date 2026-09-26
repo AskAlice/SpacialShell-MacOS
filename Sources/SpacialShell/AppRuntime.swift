@@ -75,7 +75,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         log.info("stage 2/8: loading config")
         loadOverrides()
         loadConfig()
-        // #83: before anything that traces. Read once: turning it on or off takes a relaunch.
+        // #148: before anything that traces. Read once: turning it on or off takes a relaunch.
         termination.arm(tracing: Tracing.start(config.telemetry))
 
         log.info("stage 3/8: constructing the AX backend")
@@ -245,7 +245,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         let tap = HotkeyTap(
             table: KeyBindings.table(for: config),
             onCommand: { command in
-                // #83: the tap thread's share of a key press — inside the tap's deadline, so it
+                // #148: the tap thread's share of a key press — inside the tap's deadline, so it
                 // is worth watching. The command's own trace starts in `WorldStore.run`.
                 let span = Telemetry.tracer().spanBuilder(spanName: "hotkey.dispatch").setNoParent().startSpan()
                 span.setAttribute(key: "command", value: String(String(describing: command).prefix { $0 != "(" }))
@@ -508,7 +508,7 @@ final class TerminationGate: @unchecked Sendable {
         didTerminate = true
         let store = self.store, backend = self.backend, tap = self.tap, ipc = self.ipc, tracing = self.tracing
         lock.unlock()
-        // #83: last, after the windows are back — the flush waits on the network, bounded by the
+        // #148: last, after the windows are back — the flush waits on the network, bounded by the
         // exporter's timeout. It sends the spans of this very shutdown too.
         defer { tracing?.shutdown() }
 

@@ -63,7 +63,7 @@ private final class Stage {
     /// A prefetch that arrived mid-flight; it starts once the overlay lands.
     private var pendingPrefetch: [[Transition]]?
     private var content: (listing: SCShareableContent, at: ContinuousClock.Instant)?
-    /// #83: the flight in the air, ended when it lands or is dropped.
+    /// #148: the flight in the air, ended when it lands or is dropped.
     private var playSpan: (any Span)?
 
     static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "motion")
@@ -85,7 +85,7 @@ private final class Stage {
     /// One window-server listing serves a burst of switches and their prefetches.
     static let listingFreshFor = Duration.seconds(1)
 
-    /// #83: a child of the reconcile pass that asked for it.
+    /// #148: a child of the reconcile pass that asked for it.
     private static func span(_ name: String, trace: SpanContext?) -> any Span {
         let b = Telemetry.tracer().spanBuilder(spanName: name)
         if let trace { b.setParent(trace) } else { b.setNoParent() }

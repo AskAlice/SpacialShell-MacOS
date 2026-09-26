@@ -155,7 +155,7 @@ import Foundation
         #expect(c.kindOverride(bundleID: "com.apple.systempreferences", title: "") == nil)
     }
 
-    // MARK: #83 telemetry
+    // MARK: #148 telemetry
 
     static let telemetryToml = """
     [telemetry]
