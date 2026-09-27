@@ -28,8 +28,8 @@ import Foundation
         #expect(r == Refusal(asked: tile, size: CGSize(width: 400, height: 300)))
         #expect(Refusal(asked: tile, got: tile) == nil, "granted")
         #expect(Refusal(asked: tile, got: tile.insetBy(dx: 0.4, dy: 0.4)) == nil, "rounding is not a refusal")
-        #expect(Refusal(asked: tile, got: CGRect(x: 10, y: 35, width: 1200, height: 654)) == nil,
-                "too big is the minimum-size case, not this one")
+        #expect(Refusal(asked: tile, got: CGRect(x: 10, y: 35, width: 1200, height: 654)) != nil,
+                "#164: too big doesn't equal the tile either, so it is centred too")
         #expect(Refusal(asked: tile, got: CGRect(x: 10, y: 35, width: 980, height: 500)) != nil, "one axis is enough")
     }
 
@@ -48,9 +48,30 @@ import Foundation
 
     /// A window bigger than its tile in one axis keeps the tile's edge there, as before (#54's
     /// floor bounds the tile, not the window); the other axis still centres.
-    @Test func anAxisWiderThanTheTileIsLeftAlone() {
+    /// #164: an axis bigger than the tile is centred as well; wider than the whole tiling area,
+    /// it is centred on that, overflowing both sides evenly rather than off one edge.
+    @Test func anAxisWiderThanTheDisplayIsCentredOnIt() {
         let d = desired(one(), refused: [a: Refusal(asked: tile, size: CGSize(width: 1200, height: 300))])
-        #expect(d[a] == .frame(CGRect(x: 10, y: 212, width: 980, height: 300)))
+        #expect(d[a] == .frame(CGRect(x: 10 + (980 - 1200) / 2, y: 212, width: 1200, height: 300)))
+    }
+
+    /// #164: an app minimum wider than its column but narrower than the display: centred on the
+    /// column, then pulled back inside the display at the edge instead of running off it.
+    @Test func aWindowBiggerThanItsTileIsCentredAndKeptOnTheDisplay() {
+        let column = CGRect(x: 0, y: 0, width: 400, height: 600)
+        let r = Refusal(asked: column, size: CGSize(width: 600, height: 600))
+        #expect(r.fitted(in: column, bounds: CGRect(x: 0, y: 0, width: 1000, height: 600)) == CGRect(x: 0, y: 0, width: 600, height: 600),
+                "centred would start at -100: clamped to the display's left edge")
+        let mid = CGRect(x: 300, y: 0, width: 400, height: 600)
+        #expect(Refusal(asked: mid, size: CGSize(width: 600, height: 600)).fitted(in: mid, bounds: CGRect(x: 0, y: 0, width: 1000, height: 600))
+                == CGRect(x: 200, y: 0, width: 600, height: 600), "room on both sides: truly centred")
+    }
+
+    /// #164: a bigger-than-tile window whose app later allows smaller is no longer held big.
+    @Test func aWindowThatShrinksTowardItsTileForgetsTheRecord() {
+        let r = Refusal(asked: tile, size: CGSize(width: 1200, height: 654))
+        #expect(r.grew(to: CGRect(x: 0, y: 0, width: 980, height: 654)), "shrank to the tile")
+        #expect(!r.grew(to: CGRect(x: 0, y: 0, width: 1200, height: 654)), "its own echo")
     }
 
     /// A refusal is about the tile it was asked for. A different tile is asked for in full, so a

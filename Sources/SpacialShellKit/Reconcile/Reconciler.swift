@@ -23,10 +23,11 @@ public struct Refusal: Sendable, Equatable {
     public var asked: CGRect
     public var size: CGSize
     public init(asked: CGRect, size: CGSize) { self.asked = asked; self.size = size }
-    /// The echo of our own `setFrame(asked)`: a refusal when it is smaller than asked on either
-    /// axis. Bigger is a minimum size, which the tile keeps as before (#54 bounds the tile).
+    /// The echo of our own `setFrame(asked)`: a refusal when its size doesn't equal what was
+    /// asked on either axis. Smaller is a window that can't grow to its tile; bigger (#164) is an
+    /// app minimum wider or taller than its tile. Either way it is centred on the tile.
     public init?(asked: CGRect, got: CGRect, tolerance: CGFloat = 1) {
-        guard got.width < asked.width - tolerance || got.height < asked.height - tolerance else { return nil }
+        guard abs(got.width - asked.width) > tolerance || abs(got.height - asked.height) > tolerance else { return nil }
         self.init(asked: asked, size: got.size)
     }
 
@@ -37,20 +38,33 @@ public struct Refusal: Sendable, Equatable {
             && abs(size.width - other.size.width) <= tolerance && abs(size.height - other.size.height) <= tolerance
     }
 
-    /// #164: `frame` is bigger than this refusal on an axis it refused, so the window can grow
-    /// after all. It was never truly fixed-size, and holding it small would shrink it back.
+    /// #164: `frame`'s size moved toward the tile on an axis this refusal mismatched: grew
+    /// where it was smaller, or shrank where it was bigger. The window can fit better than
+    /// recorded, so the record is stale; holding the old size would fight it.
     func grew(to frame: CGRect, tolerance: CGFloat = 1) -> Bool {
-        (size.width < asked.width - tolerance && frame.width > size.width + tolerance)
-            || (size.height < asked.height - tolerance && frame.height > size.height + tolerance)
+        func toward(_ got: CGFloat, _ was: CGFloat, _ want: CGFloat) -> Bool {
+            abs(was - want) > tolerance && abs(got - want) < abs(was - want) - tolerance
+        }
+        return toward(frame.width, size.width, asked.width) || toward(frame.height, size.height, asked.height)
     }
 
     /// `tile`, with the window centred in it on each axis where it is smaller; nil when this
     /// refusal was learned on another tile.
-    func fitted(in tile: CGRect) -> CGRect? {
+    /// #164: centred on each axis where the size doesn't equal the tile's, smaller or bigger. A
+    /// bigger window is then kept inside `bounds` (the display's tiling area), centred on it if it
+    /// is bigger still, so an overflowing tile never runs off the display.
+    func fitted(in tile: CGRect, bounds: CGRect? = nil, tolerance: CGFloat = 1) -> CGRect? {
         guard Reconciler.approx(asked, tile) else { return nil }
         var f = tile
-        if size.width < tile.width { f.origin.x = tile.midX - size.width / 2; f.size.width = size.width }
-        if size.height < tile.height { f.origin.y = tile.midY - size.height / 2; f.size.height = size.height }
+        if abs(size.width - tile.width) > tolerance { f.origin.x = tile.midX - size.width / 2; f.size.width = size.width }
+        if abs(size.height - tile.height) > tolerance { f.origin.y = tile.midY - size.height / 2; f.size.height = size.height }
+        if let b = bounds {
+            func clamp(_ o: CGFloat, _ len: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat {
+                len >= hi - lo ? lo + (hi - lo - len) / 2 : min(max(o, lo), hi - len)
+            }
+            f.origin.x = clamp(f.origin.x, f.width, b.minX, b.maxX)
+            f.origin.y = clamp(f.origin.y, f.height, b.minY, b.maxY)
+        }
         return f
     }
 }
@@ -114,7 +128,7 @@ public enum Reconciler {
                         continue
                     }
                     let ti = tiled.firstIndex(of: w)!
-                    out[w] = frames[ti].map { .frame(refused[w]?.fitted(in: $0) ?? $0) } ?? park(w)
+                    out[w] = frames[ti].map { .frame(refused[w]?.fitted(in: $0, bounds: rect) ?? $0) } ?? park(w)
                 }
                 // #134: a sheet keeps its place on its owner — framed, parked or left alone with it,
                 // at the offset it had from the owner. A parked pair measures from where both were

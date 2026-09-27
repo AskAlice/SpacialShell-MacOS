@@ -127,9 +127,14 @@ side below it, and `grid` has at least as many rows as columns, and `ratio` make
 landscape. Resized sizes are kept separately for each orientation. Drawn `[[layout]]` zones are
 drawn as they are, on any display.
 
-A window that cannot grow to fill its tile (it has a maximum size, or refuses the resize) sits
-centred in the tile instead of in its top-left corner, on each axis where it falls short. The
-next time its tile changes, it is offered the whole tile again.
+A window whose size doesn't equal its tile sits centred on the tile, on each axis where it
+differs. Smaller means it can't grow (a maximum size, or it refuses the resize); bigger means its
+app has a minimum wider or taller than the tile. A bigger one is kept inside the display: centred
+on the tile, pulled back at the display's edge, or centred on the display if wider than it. The
+shell only believes a mismatch after the same size comes back twice, since browsers briefly report
+smaller frames while resizing or moving between displays. A window that later moves toward its
+tile's size (it grows, or its minimum shrinks) is given the whole tile again, and so is every
+window when its tile changes.
 
 ## `[[workspace]]` — pinned workspace seeds
 
