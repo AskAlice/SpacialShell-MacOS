@@ -110,6 +110,9 @@ public actor WorldStore {
         var applied: GrabTarget?
         /// Where the highlight is looked for along the line: the pointer, or the focused tile.
         var anchor: CGPoint?
+        /// #178: where the line was when this grab first laid it out, so a settle can tell a resize
+        /// from a click on a border the keys left at 90 % (only a resize ends in maximize).
+        var from: Double?
         var bySwipe: Bool { swipeStart != nil }
     }
     /// Where the hand has the line: a pointer position, or (#162) a unit position on the axis.
@@ -738,12 +741,8 @@ public actor WorldStore {
     /// clamped, as a `setPortions` — false when nothing changed or the row no longer shows the page
     /// the line belongs to.
     private func moveGrab(to target: GrabTarget) -> Bool {
-        guard let g = grab, let loc = world.location(ofWorkspace: g.workspace), let rect = tilingRect(loc.screen) else { return false }
-        let ws = world.screens[loc.screen]!.workspaces[loc.index], row = world.tiled(in: ws)
-        let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
-        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap,
-                                           split: ws.split(in: row)),
-              page.key == g.key else { return false }
+        guard let g = grab, let (ws, _, page, rect) = grabbedPage(g) else { return false }
+        if g.from == nil { grab?.from = page.positions(ws.portions[g.key], g.axis)[g.line] }
         let u = switch target {
         case .pointer(let p): Resize.unit(g.axis == .width ? p.x : p.y, axis: g.axis, in: rect, gap: config.gap)
         case .unit(let u): u
@@ -757,10 +756,31 @@ public actor WorldStore {
 
     /// The release, a mouse-up's or (#162) a lift's: the line lands where it was let go — after
     /// the pump in flight, one more pass for `latest` — and leaves the hand.
+    /// #178: a resize (the line moved more than a snap's radius) that leaves a split tile within
+    /// `Resize.maximizeMargin` of the largest it can get makes it maximize on that window, by
+    /// commands, like a hotkey's.
     private func settleGrab() async {
         await pump?.value
         await pumpGrab()
+        let settled = grab
         grab = nil
+        guard let g = settled, let from = g.from, let (ws, row, page, _) = grabbedPage(g),
+              abs(page.positions(ws.portions[g.key], g.axis)[g.line] - from) > Resize.snapRadius else { return }
+        for c in Resize.collapse(page, ws.portions[g.key], layout: layouts.resolve(ws.layout).def.id, workspace: ws.id, row: row) {
+            await run(c)
+        }
+    }
+
+    /// The grabbed line's workspace, its tiled row, the page it shows now and the real tiling rect
+    /// that page is measured in; nil when the row no longer shows the page the line belongs to.
+    private func grabbedPage(_ g: Grab) -> (Workspace, [WindowRef], Resize.Page, CGRect)? {
+        guard let loc = world.location(ofWorkspace: g.workspace), let rect = tilingRect(loc.screen) else { return nil }
+        let ws = world.screens[loc.screen]!.workspaces[loc.index], row = world.tiled(in: ws)
+        let focused = ws.anchor.flatMap { row.firstIndex(of: $0) } ?? 0
+        guard let page = LayoutEngine.page(layouts.resolve(ws.layout).def, count: row.count, focused: focused, in: rect, gap: config.gap,
+                                           split: ws.split(in: row)),
+              page.key == g.key else { return nil }
+        return (ws, row, page, rect)
     }
 
     // MARK: four-finger edge drag (#162)

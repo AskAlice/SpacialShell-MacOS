@@ -165,6 +165,12 @@ Semantics worth knowing:
   tiles follow live, snapping to 25/50/75 % when you pass within 2 % of them. Grabbing a tile's own
   edge next to a neighbour does the same. Every edge in line with it moves too: dragging the line
   between the master and the stack in *half* resizes every window of the stack.
+- **Resize to maximize** (#178): in *split*, letting go of a border (or lifting a four-finger
+  drag) with one tile within 2 % of the largest a tile can get — every other tile at or near its
+  10 % floor, so 88 % with two columns and 78 % with three — switches the workspace to *maximize* on that tile, focused, and forgets the split's sizes, so
+  going back to split starts even (50/50 with two columns). Only at the release, and only after a
+  real resize: mid-drag nothing switches, and neither does a click or a nudge (under 2 %) on a
+  border the keys already left that far. Other layouts keep whatever size you leave them at.
 - Close presses the window's close button; the app stays running (macOS convention). Focus goes to
   the window you used before it in that workspace (#137), else the left neighbour, else the right.
 - **Focus history** (#137): each workspace remembers the last five windows focused in it, however
@@ -256,8 +262,9 @@ edge `Fn+⌃A/D` move: its right edge, or its left one for the last column) unti
 always grows the focused tile and left shrinks it, whichever side its edge is on. The change is
 proportional and gentle: the full width of the trackpad moves the edge half the width of the row. It behaves exactly like dragging that border with the mouse: no tile gets
 narrower than a tenth of the row, the edge catches on the 25/50/75 % marks as it passes them, and
-where you lift is where it stays. Fingers lifting unevenly don't move it. In `maximize` there is no
-edge, so a sideways drag does nothing. A swipe that starts up or down stays a layout swipe, however
+where you lift is where it stays, except that in `split` lifting with either tile within 2 % of the
+largest a tile can get switches to `maximize` on it (see *Resize to maximize* above). Fingers lifting unevenly don't move
+it. In `maximize` there is no edge, so a sideways drag does nothing. A swipe that starts up or down stays a layout swipe, however
 it goes on.
 
 `gesture-invert` doesn't apply to four fingers. Three and four fingers are told apart per gesture:

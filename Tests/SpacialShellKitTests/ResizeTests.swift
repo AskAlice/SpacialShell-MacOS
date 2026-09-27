@@ -96,6 +96,38 @@ import Foundation
         #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 1.6))!.x, [1 - Resize.minPortion]))
     }
 
+    // MARK: collapsing to maximize (#178)
+
+    /// #178: a split resize that settles with one tile within 2 % of the largest it can get (the
+    /// floor on the others allowing) becomes maximize on that window: focus it, switch the layout, forget the split's sizes (in
+    /// that order, so the switch never shows another window or the split snapping back first).
+    @Test func aSplitTileResizedToNearlyFullCollapsesToMaximize() {
+        let ws = UUID(), row = [a, b]
+        #expect(abs(Resize.maximizeAt(lines: 1) - 0.88) < 1e-9 && abs(Resize.maximizeAt(lines: 2) - 0.78) < 1e-9,
+                "the most one tile can reach, less 2 %: 90 % − 2 with two columns, 80 % − 2 with three")
+        func collapse(_ x: [Double], _ layout: LayoutID = .split, _ p: Resize.Page? = nil) -> [Command] {
+            Resize.collapse(p ?? page(layout, 2), Portions(x: x), layout: layout, workspace: ws, row: row)
+        }
+        #expect(collapse([0.9]) == [.focusWindowRef(a), .setWorkspaceLayout(ws, .maximize), .setPortions(ws, key: "split#2", nil)],
+                "90/10: the left tile")
+        #expect(collapse([0.1]) == [.focusWindowRef(b), .setWorkspaceLayout(ws, .maximize), .setPortions(ws, key: "split#2", nil)],
+                "10/90: the right tile")
+        #expect(collapse([0.88]).first == .focusWindowRef(a), "the threshold itself collapses")
+        #expect(collapse([0.85]).isEmpty && collapse([0.15]).isEmpty, "85/15 stays split")
+        #expect(Resize.collapse(page(.split, 2), nil, layout: .split, workspace: ws, row: row).isEmpty, "as designed stays split")
+        // Three columns: the floor caps one zone at 80 %, so the threshold is 78 %; any one zone.
+        let page3 = LayoutEngine.page(def(.split), count: 3, focused: 0, in: big, gap: 0, split: SplitView(columns: 3))!
+        func three(_ x: [Double]) -> [Command] { Resize.collapse(page3, Portions(x: x), layout: .split, workspace: ws, row: [a, b, c]) }
+        #expect(three([0.79, 0.895]) == [.focusWindowRef(a), .setWorkspaceLayout(ws, .maximize), .setPortions(ws, key: "split#3", nil)],
+                "79/10.5/10.5: the left tile")
+        #expect(three([0.1, 0.9]) == [.focusWindowRef(b), .setWorkspaceLayout(ws, .maximize), .setPortions(ws, key: "split#3", nil)],
+                "10/80/10: the middle tile, as far as the floor lets it go")
+        #expect(three([0.75, 0.875]).isEmpty, "75/12.5/12.5 stays split")
+        // Every other layout is left alone, however far its edge went.
+        for l in [LayoutID.column, .half, .grid] { #expect(collapse([0.9], l).isEmpty, "\(l)") }
+        #expect(Resize.collapse(page(.half, 3), Portions(x: [0.9], y: [0.9]), layout: .half, workspace: ws, row: [a, b, c]).isEmpty)
+    }
+
     // MARK: the engine
 
     let rect = CGRect(x: 10, y: 20, width: 1000, height: 600)
@@ -202,13 +234,13 @@ import Foundation
                          visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 675), isMain: true)
     final class Box: @unchecked Sendable { var borders: [CGRect?] = [] }
 
-    func make(_ box: Box, layout: LayoutID = .split) async -> (WorldStore, FakeBackend) {
+    func make(_ box: Box, layout: LayoutID = .split, display: DisplayInfo? = nil) async -> (WorldStore, FakeBackend) {
         var cfg = Config(); cfg.showPanels = false; cfg.categoryOrder = []; cfg.defaultLayout = layout
         func win(_ r: WindowRef) -> WindowSnapshot {
             WindowSnapshot(ref: r, frame: CGRect(x: 0, y: 0, width: 300, height: 200), title: "t", bundleID: "com.x",
                            kind: .tile, parent: nil, isMinimized: false, isFullscreen: false)
         }
-        let be = FakeBackend(snapshot: Snapshot(displays: [d1], apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false)],
+        let be = FakeBackend(snapshot: Snapshot(displays: [display ?? d1], apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false)],
                                                 windows: [win(a), win(b)], focused: a))
         let store = WorldStore(backend: be, config: cfg, world: nil, zeroSliverBundleIDs: [],
                                onBorder: { box.borders.append($0) }, onChange: { _, _ in })
@@ -232,6 +264,76 @@ import Foundation
         #expect(ws.portions["split#2"].map { near($0.x, [0.75]) } == true, "\(ws.portions)")
         let (na, nb) = await (be.frames[a]!, be.frames[b]!)
         #expect(abs(na.width - (0.75 * 992 - 8)) < 1 && abs(nb.minX - na.maxX - 8) < 1, "both tiles follow the line")
+    }
+
+    /// #178: a border released with the right tile at 90 % (the floor stops the left at 10 %)
+    /// switches the row to maximize on that tile; going back to split starts even. Released at
+    /// 85/15, it stays split at 85/15.
+    @Test func aBorderReleasedAtNearlyFullCollapsesToMaximize() async {
+        let (store, be) = await make(Box())
+        let fa = await be.frames[a]!, fb = await be.frames[b]!
+        let mid = CGPoint(x: (fa.maxX + fb.minX) / 2, y: fa.midY)
+        let rect = CGRect(x: 8, y: 33, width: 984, height: 658)
+        func x(_ u: Double) -> CGFloat { rect.minX + u * (rect.width + 8) - 4 }
+
+        await store.apply(.pointerDown(mid))
+        await store.apply(.pointerMoved(CGPoint(x: x(0.85), y: mid.y)))
+        await store.apply(.pointerUp(CGPoint(x: x(0.85), y: mid.y)))
+        var ws = await store.world.screens["D1"]!.active
+        #expect(ws.layout == .split && ws.portions["split#2"].map { near($0.x, [0.85]) } == true, "85/15 stays split: \(ws.portions)")
+        #expect(await store.world.focus.window == a)
+
+        let moved = await be.frames[a]!, next = await be.frames[b]!
+        let edge = CGPoint(x: (moved.maxX + next.minX) / 2, y: mid.y)
+        await store.apply(.pointerDown(edge))
+        await store.apply(.pointerMoved(CGPoint(x: x(0.02), y: mid.y)))
+        await store.apply(.pointerUp(CGPoint(x: x(0.02), y: mid.y)))
+        ws = await store.world.screens["D1"]!.active
+        #expect(ws.layout == .maximize, "\(ws.layout)")
+        #expect(await store.world.focus.window == b, "the grown tile is the one shown")
+        #expect(ws.portions["split#2"] == nil, "the split's sizes are forgotten")
+
+        await store.run(.setWorkspaceLayout(ws.id, .split))
+        let (na, nb) = await (be.frames[a]!, be.frames[b]!)
+        #expect(abs(na.width - (0.5 * 992 - 8)) < 1 && abs(nb.width - na.width) < 1, "back to even: \(na) \(nb)")
+    }
+
+    /// #178: only a resize ends in maximize. The keys can leave split at 90/10 (on a display wide
+    /// enough that 10 % clears the point floor); a click on that border, or a nudge within a
+    /// snap's radius, keeps it.
+    @Test func aClickOnABorderAlreadyAtNearlyFullStaysSplit() async {
+        let wide = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1600, height: 900),
+                               visibleFrame: CGRect(x: 0, y: 25, width: 1600, height: 875), isMain: true)
+        let (store, be) = await make(Box(), display: wide)
+        for _ in 0..<8 { await store.run(.resizeWindow(.width, grow: true)) }
+        let keyed = await portion(store)
+        #expect(keyed.map { abs($0 - 0.9) < 1e-9 } == true, "\(String(describing: keyed))")
+        let fa = await be.frames[a]!, fb = await be.frames[b]!
+        let edge = CGPoint(x: (fa.maxX + fb.minX) / 2, y: fa.midY)
+        await store.apply(.pointerDown(edge))
+        await store.apply(.pointerUp(edge))
+        #expect(await store.world.screens["D1"]!.active.layout == .split)
+        await store.apply(.pointerDown(edge))
+        await store.apply(.pointerMoved(CGPoint(x: edge.x - 10, y: edge.y)))
+        await store.apply(.pointerUp(CGPoint(x: edge.x - 10, y: edge.y)))
+        let ws = await store.world.screens["D1"]!.active
+        #expect(ws.layout == .split && ws.portions["split#2"].map { abs($0.x[0] - 0.9) < 0.01 } == true, "\(ws.portions)")
+    }
+
+    /// #178: a four-finger drag that lifts with the focused tile at 90 % does the same.
+    @Test func aFourFingerDragEndingAtNearlyFullCollapsesToMaximize() async {
+        let (store, be) = await make(Box())
+        await store.run(.focusWindowRef(b))   // the last column: right grows it leftwards
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.2)) == .done)
+        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 1.2)) == .done)
+        let ws = await store.world.screens["D1"]!.active
+        #expect(ws.layout == .maximize, "\(ws.layout)")
+        #expect(await store.world.focus.window == b)
+        #expect(ws.portions["split#2"] == nil)
+
+        await store.run(.setWorkspaceLayout(ws.id, .split))
+        let (na, nb) = await (be.frames[a]!, be.frames[b]!)
+        #expect(abs(na.width - (0.5 * 992 - 8)) < 1 && abs(nb.width - na.width) < 1, "back to even: \(na) \(nb)")
     }
 
     @Test func aResizeKeyUsesTheRealRect() async {

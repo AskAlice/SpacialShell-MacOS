@@ -37,6 +37,13 @@ public enum Resize {
     /// resized (or below what it already had). The engine then enforces the #54 point floor
     /// against the real rect, which the model does not know.
     public static let minPortion = 0.1
+    /// #178: how close to the largest it can get a split tile has to be to count as "basically
+    /// maximized". See `maximizeAt`.
+    public static let maximizeMargin = 0.02
+    /// #178: the share of an axis with `lines` interior lines at which one tile counts as basically
+    /// maximized: the most the `minPortion` floor on every other tile lets it reach, less
+    /// `maximizeMargin`. 0.88 with two columns, 0.78 with three.
+    public static func maximizeAt(lines: Int) -> Double { 1 - Double(lines) * minPortion - maximizeMargin }
     static let eps = 1e-9
 
     /// The page a workspace is showing, as the resize model sees it.
@@ -180,6 +187,26 @@ public enum Resize {
     /// opposite.
     public static func swiped(from start: Double, travel: Double, trailing: Bool = true) -> Double {
         start + travel * swipeGain * (trailing ? 1 : -1)
+    }
+
+    /// #178: what a resize that settled at `settled` on `page` of workspace `workspace` (whose
+    /// tiled windows are `row`, laid out by `layout`) turns into: in split, a tile holding
+    /// `maximizeAt` or more of an axis the page has lines on (within `maximizeMargin` of the
+    /// largest it can get there) becomes maximize on that window —
+    /// focus it, switch the layout, then clear the split's sizes for this page, so the switch never
+    /// shows another window or the split snapping back first, and returning to split is even.
+    /// Empty for every other layout, and below the threshold. The store runs these at settle only.
+    public static func collapse(_ page: Page, _ settled: Portions?, layout: LayoutID, workspace: UUID,
+                                row: [WindowRef]) -> [Command] {
+        guard layout == .split, let p = settled else { return [] }
+        let axes = [ResizeAxis.width, .height].filter { !page.lines($0).isEmpty }
+        for (i, zone) in page.zones.enumerated() {
+            guard let natural = zone, row.indices.contains(i) else { continue }
+            let z = page.remap(natural, p)
+            guard axes.contains(where: { ($0 == .width ? z.w : z.h) >= maximizeAt(lines: page.lines($0).count) - eps }) else { continue }
+            return [.focusWindowRef(row[i]), .setWorkspaceLayout(workspace, .maximize), .setPortions(workspace, key: page.key, nil)]
+        }
+        return []
     }
 
     /// A shared edge between two framed tiles, which the mouse can drag: the gap between them,
