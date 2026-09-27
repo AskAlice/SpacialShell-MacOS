@@ -445,6 +445,13 @@ enum Stories {
                          tab(1, title: "developer.apple.com/documentation/applicationservices/axuielement_h/1462085-axuielementcopyattributevalue"),
                          tab(3, title: "zsh")]),
             metaFor: meta, sizing: .fit, send: send), truncates: true)
+        // #180: an unfocused tab under the pointer shows its close button over the end of its
+        // title; every tab keeps its width.
+        let hoverRow = [tab(3, focused: true, title: "~/code/spacial-shell — zsh"),
+                        tab(4, title: "Inbox — 3 unread"), tab(2)]
+        add("bar-hover-close", barGeometry, WorkspacePanelView(
+            state: tabs(hoverRow), metaFor: meta, sizing: .fit, send: send,
+            hoverPreview: hoverRow[1].ref))
         add("bar-floating-hidden", barGeometry, WorkspacePanelView(
             state: tabs([tab(1, focused: true), tab(2, floating: true), tab(3, hidden: true), tab(4)]),
             metaFor: meta, sizing: .fit, send: send))

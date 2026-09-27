@@ -18,6 +18,8 @@ struct WorkspacePanelView: View {
     /// #10: the cog, and the ⋯ menu's "Edit layouts…" — the layout popover, which the controller
     /// owns because it is a window of its own.
     var openLayouts: () -> Void = {}
+    /// Stories only: draw this tab as hovered, since a snapshot has no pointer (#180).
+    var hoverPreview: SpacialShellProtocol.WindowRef? = nil
 
     /// Where a dragged tab would land, while it is being dragged.
     private enum DropSlot: Equatable {
@@ -26,6 +28,8 @@ struct WorkspacePanelView: View {
     }
 
     @State private var dropSlot: DropSlot?
+    /// The tab under the pointer: it shows its close button (#180).
+    @State private var hoveredTab: SpacialShellProtocol.WindowRef?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The narrowest a tab gets: the design system's tab-width floor (88 pt, "tab width 88–220").
@@ -218,6 +222,25 @@ struct WorkspacePanelView: View {
                         .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
                 },
                 onMiddle: { if tab.canClose { send(.closeWindowRef(tab.ref)) } })
+        }
+        // #180: an unfocused tab reveals its close button on hover, drawn over the end of its
+        // title so the tab's width, and the row, never move as the pointer passes.
+        .overlay(alignment: .trailing) {
+            if !tab.isFocused, tab.canClose, (hoveredTab ?? hoverPreview) == tab.ref {
+                Button {
+                    send(.closeWindowRef(tab.ref))
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(.background.opacity(0.92)))
+                }
+                .panelButton()
+                .help("Close window")
+                .padding(.trailing, 5)
+            }
+        }
+        .onHover { inside in
+            if inside { hoveredTab = tab.ref } else if hoveredTab == tab.ref { hoveredTab = nil }
         }
         // #116: the whole title, however the tab truncates or hides it. The system tooltip keeps
         // its own delay; the rail's hover card (#6) is a separate surface and waits for nothing.
