@@ -358,6 +358,13 @@ enum Stories {
                                 preview(3, image: cached(.systemGray)),
                                 preview(1, image: nil)]),
             onGrantAccess: {}), truncates: true)
+        // #182: a window whose app has quit — no picture, no icon, no name — still draws an app
+        // glyph, never a blank grey box.
+        add("rail-hover-app-gone", nil, RailHoverCard(
+            title: "Code (1)", subtitle: "2 windows · coding",
+            content: .previews([preview(5, image: nil),
+                                WindowPreviewItem(ref: WindowRef(id: 990, pid: 99), name: "App", icon: nil, image: nil)]),
+            onGrantAccess: {}))
         // One window gets the big frame; the capture has not landed yet on the second tile, so
         // this also covers the icon placeholder.
         add("rail-hover-one-window", nil, RailHoverCard(

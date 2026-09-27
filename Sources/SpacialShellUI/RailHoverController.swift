@@ -1,4 +1,5 @@
 import AppKit
+import os
 import SwiftUI
 import SpacialShellKit
 import SpacialShellProtocol
@@ -19,6 +20,12 @@ import SpacialShellProtocol
 /// #179: resting the pointer on a preview rings it and, after `peekDwell`, peeks its window —
 /// `.peek`, the real window shown centred with everything else hidden — until the pointer leaves
 /// it, another preview takes over (a swap, never a restore in between), or the card goes.
+///
+/// #182: at most one card is ever on screen, and none once the pointer is on neither the rail nor
+/// the card. SwiftUI's exit events alone cannot promise that — a tile removed from under the
+/// pointer never reports one, and neither does a pointer that leaves across a screen edge — so
+/// while the card shows, a pointer monitor hides it once the pointer has been outside both for
+/// the hide grace, and the shell hides it when its row goes or moves, or the rail slides away.
 @MainActor
 final class RailHoverController {
     private let window = PanelWindow()
@@ -40,6 +47,20 @@ final class RailHoverController {
     private var peeking: SpacialShellProtocol.WindowRef?
     private var peekTask: Task<Void, Never>?
     private let peekDwell: Duration
+    /// #182: the row the shown workspace sat at, so a re-render can tell it has moved.
+    private var shownIndex: Int?
+
+    // #182 pointer safety net. The pointer and the clock are injected so a test can move them.
+    private let pointer: () -> CGPoint
+    private let now: () -> ContinuousClock.Instant
+    /// The rail panel the card was opened from, in screen coordinates; nil when it is off screen.
+    var railFrame: () -> CGRect? = { nil }
+    private var pointerMonitors: [Any] = []
+    /// When the pointer was first seen outside both rail and card; nil while it is on either.
+    private var outsideSince: ContinuousClock.Instant?
+    /// Re-checks once the grace is up, since a pointer at rest outside sends no more events.
+    private var pointerCheck: Task<Void, Never>?
+    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "hover")
 
     /// Long enough that sweeping the rail to reach the tile you want does not fire a capture per
     /// tile on the way; the same 250 ms the design system gives every other hover label.
@@ -51,9 +72,13 @@ final class RailHoverController {
     /// two previews swaps the peek without putting the first window back in between.
     static let peekDwell = Duration.milliseconds(150)
 
-    init(send: @escaping @Sendable (Command) -> Void, peekDwell: Duration = RailHoverController.peekDwell) {
+    init(send: @escaping @Sendable (Command) -> Void, peekDwell: Duration = RailHoverController.peekDwell,
+         pointer: @escaping () -> CGPoint = { NSEvent.mouseLocation },
+         now: @escaping () -> ContinuousClock.Instant = { .now }) {
         self.send = send
         self.peekDwell = peekDwell
+        self.pointer = pointer
+        self.now = now
         host = NSHostingView(rootView: RailHoverCard(title: "", subtitle: nil,
                                                      content: .message(""), onGrantAccess: {}))
         window.contentView = host
@@ -70,6 +95,7 @@ final class RailHoverController {
         captureTask?.cancel()
         endPeek()   // #179: a peek belongs to the workspace the card was about
         shown = item.id
+        shownIndex = item.index
 
         let apps = distinctApps(item, metaFor: metaFor)
         let thumbs = WindowThumbnails.shared
@@ -83,7 +109,7 @@ final class RailHoverController {
         let card = content(for: item, items: items)
         render(title: title(item), subtitle: subtitle(item, apps: apps), content: card)
         place(near: tile, railSide: railSide, bounds: bounds)
-        window.orderFrontRegardless()
+        appear("workspace \(item.index + 1)")
 
         guard case .previews = card else { return }
         let stale = items.prefix(RailHoverCard.maxPreviews).map(\.ref).filter { !$0.isPlaceholder && thumbs.isStale($0.id) }
@@ -121,7 +147,7 @@ final class RailHoverController {
         let subtitle = refs.count == 1 ? "1 window · click to bring it back" : "\(refs.count) windows · click one to bring it back"
         render(title: title, subtitle: subtitle, content: .windows(items))
         place(near: tile, railSide: railSide, bounds: bounds)
-        window.orderFrontRegardless()
+        appear("tray")
 
         let shownRefs = Array(refs.prefix(RailHoverCard.maxRows))
         captureTask = Task { [weak self] in
@@ -144,7 +170,7 @@ final class RailHoverController {
         render(title: problems.count == 1 ? "1 problem" : "\(problems.count) problems",
                subtitle: "Each clears itself once it is fixed", content: .problems(problems))
         place(near: tile, railSide: railSide, bounds: bounds)
-        window.orderFrontRegardless()
+        appear("problems")
     }
 
     /// The pointer left `item`. Hides after a grace period, unless it has landed on the card
@@ -152,24 +178,28 @@ final class RailHoverController {
     /// reached. A late exit for a tile the card has already moved on from is ignored.
     func hide(_ item: UUID) {
         guard shown == item else { return }
-        hideAfterGrace()
+        hideAfterGrace("left the tile")
     }
 
-    private func hideAfterGrace() {
+    private func hideAfterGrace(_ reason: String) {
         captureTask?.cancel(); captureTask = nil
         hideTask?.cancel()
         hideTask = Task { [weak self] in
             try? await Task.sleep(for: Self.hideGrace)
             guard !Task.isCancelled, let self, !self.pointerInCard else { return }
-            self.hideNow()
+            self.hideNow(reason)
         }
     }
 
-    func hideNow() {
+    /// `reason` is for the trace (#182): `log stream --level debug --predicate 'category == "hover"'`.
+    func hideNow(_ reason: String = "dismissed") {
+        if let shown { Self.log.debug("hover card hide \(shown, privacy: .public) \(reason, privacy: .public)") }
         captureTask?.cancel(); captureTask = nil
         hideTask?.cancel(); hideTask = nil
         endPeek()
+        stopWatchingPointer()
         shown = nil
+        shownIndex = nil
         pointerInCard = false
         window.orderOut(nil)
         // Let go of the card's images; the thumbnails themselves stay in `WindowThumbnails`.
@@ -189,7 +219,71 @@ final class RailHoverController {
         peekTask?.cancel(); peekTask = nil
         peeking = nil
         send(shown == Self.trayID ? .recoverWindow(ref) : .focusWindowRef(ref))
-        hideNow()
+        hideNow("clicked")
+    }
+
+    /// #182: the rail `state` was drawn afresh. A tile removed or moved by that never reports an
+    /// exit, so a card about a workspace that has gone, or moved to another row, would be left
+    /// beside a tile that is no longer it; and one about a tray that has emptied, beside nothing.
+    func railChanged(_ state: ScreenShellState) {
+        guard let shown else { return }
+        switch shown {
+        case Self.problemsID:
+            return   // `ShellController.update(problems:)` owns this one
+        case Self.trayID:
+            if state.tray.isEmpty { hideNow("tray emptied") }
+        default:
+            guard let row = state.rail.first(where: { $0.id == shown }) else { return hideNow("workspace gone") }
+            if row.index != shownIndex { hideNow("workspace moved") }
+        }
+    }
+
+    // MARK: - #182 pointer safety net
+
+    /// On screen, and watching the pointer until it is hidden again.
+    private func appear(_ what: String) {
+        Self.log.debug("hover card show \(self.shown?.uuidString ?? "-", privacy: .public) \(what, privacy: .public)")
+        // A new tile's hover: the pointer is on the rail, whatever the card last heard about it.
+        pointerInCard = false
+        window.orderFrontRegardless()
+        guard pointerMonitors.isEmpty else { return }
+        let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkPointer() }
+        }) { pointerMonitors.append(m) }
+        if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            MainActor.assumeIsolated { self?.checkPointer() }
+            return event
+        }) { pointerMonitors.append(m) }
+    }
+
+    private func stopWatchingPointer() {
+        pointerMonitors.forEach(NSEvent.removeMonitor); pointerMonitors = []
+        pointerCheck?.cancel(); pointerCheck = nil
+        outsideSince = nil
+    }
+
+    /// The pointer moved (or the grace ran out). Hides the card once the pointer has been off both
+    /// the rail and the card for the hide grace, whatever exits SwiftUI did or did not deliver.
+    func checkPointer() {
+        guard shown != nil else { return }
+        let p = pointer()
+        if window.frame.contains(p) || railFrame()?.contains(p) == true {
+            outsideSince = nil
+            pointerCheck?.cancel(); pointerCheck = nil
+            return
+        }
+        let t = now()
+        guard let since = outsideSince else {
+            outsideSince = t
+            pointerCheck = Task { [weak self] in
+                try? await Task.sleep(for: Self.hideGrace)
+                guard !Task.isCancelled else { return }
+                self?.checkPointer()
+            }
+            return
+        }
+        if t - since >= Self.hideGrace { hideNow("pointer off rail and card") }
     }
 
     /// #179: the pointer entered or left a preview. Entering rings it at once and peeks its window
@@ -257,7 +351,7 @@ final class RailHoverController {
             onHoverCard: { [weak self] inside in
                 guard let self else { return }
                 self.pointerInCard = inside
-                if inside { self.hideTask?.cancel() } else { self.hideAfterGrace() }
+                if inside { self.hideTask?.cancel() } else { self.hideAfterGrace("left the card") }
             },
             onSelect: { [weak self] in self?.select($0) },
             highlighted: highlighted,

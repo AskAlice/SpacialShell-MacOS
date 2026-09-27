@@ -170,4 +170,95 @@ import SwiftUI
         hover.modelPeeked(nil)
         #expect(sent.commands.count == 4)
     }
+
+    // MARK: - #182: the card never outlives the pointer
+
+    /// A pointer, a clock and a rail the test moves by hand.
+    final class Stage {
+        var pointer = CGPoint(x: 24, y: 424)   // on the tile
+        var clock = ContinuousClock.now
+        var rail: CGRect? = CGRect(x: 0, y: 0, width: 48, height: 900)
+    }
+
+    func shownCard(_ stage: Stage, _ item: WorkspaceRailItem) -> RailHoverController {
+        let hover = RailHoverController(send: { _ in }, pointer: { stage.pointer }, now: { stage.clock })
+        hover.railFrame = { stage.rail }
+        hover.show(item: item, tile: NSRect(x: 0, y: 400, width: 48, height: 48), railSide: .left,
+                   bounds: NSRect(x: 0, y: 0, width: 1440, height: 900), metaFor: meta)
+        #expect(hover.shownWorkspace == item.id)
+        return hover
+    }
+
+    /// No tile reports an exit once it is gone: the re-render itself has to take the card away.
+    @Test func theCardGoesWhenItsWorkspaceLeavesTheRail() {
+        let stage = Stage()
+        let state = railState()
+        let hover = shownCard(stage, state.rail[0])
+
+        hover.railChanged(state)   // an unrelated re-render keeps it
+        #expect(hover.shownWorkspace == state.rail[0].id)
+
+        hover.railChanged(ScreenShellState(display: "D1", isFocusedScreen: true, rail: [], tabs: [],
+                                           layout: .split, layouts: .builtins))
+        #expect(hover.shownWorkspace == nil)
+    }
+
+    /// Still there but at another row: the card would sit beside some other tile.
+    @Test func theCardGoesWhenItsWorkspaceMoves() {
+        let stage = Stage()
+        let item = railState().rail[0]
+        let hover = shownCard(stage, item)
+        let moved = WorkspaceRailItem(id: item.id, index: 1, name: item.name, symbol: item.symbol,
+                                      windowCount: 1, windows: item.windows,
+                                      isActive: true, isPinned: false, isTrailingEmpty: false)
+        let above = WorkspaceRailItem(id: UUID(), index: 0, name: "Web", symbol: "globe", windowCount: 0,
+                                      isActive: false, isPinned: false, isTrailingEmpty: false)
+        hover.railChanged(ScreenShellState(display: "D1", isFocusedScreen: true, rail: [above, moved], tabs: [],
+                                           layout: .split, layouts: .builtins))
+        #expect(hover.shownWorkspace == nil)
+    }
+
+    /// The pointer left rail and card without any exit being delivered — across a screen edge, or
+    /// faster than SwiftUI noticed. The card goes once the grace is up, not before.
+    @Test func theCardGoesOnceThePointerHasBeenOffRailAndCardForTheGrace() {
+        let stage = Stage()
+        let hover = shownCard(stage, railState().rail[0])
+
+        stage.pointer = CGPoint(x: 900, y: 100)
+        hover.checkPointer()
+        #expect(hover.shownWorkspace != nil, "the grace covers the gap between tile and card")
+        stage.clock += .milliseconds(100)
+        hover.checkPointer()
+        #expect(hover.shownWorkspace != nil)
+        stage.clock += .milliseconds(100)
+        hover.checkPointer()
+        #expect(hover.shownWorkspace == nil)
+    }
+
+    /// On the rail, or back on it within the grace, the card stays — the tile's own exit decides.
+    @Test func theCardStaysWhileThePointerIsOnTheRail() {
+        let stage = Stage()
+        let hover = shownCard(stage, railState().rail[0])
+
+        stage.pointer = CGPoint(x: 900, y: 100)
+        hover.checkPointer()
+        stage.clock += .milliseconds(100)
+        stage.pointer = CGPoint(x: 24, y: 700)   // back on the rail, on another row
+        hover.checkPointer()
+        stage.clock += .seconds(1)
+        hover.checkPointer()
+        #expect(hover.shownWorkspace != nil)
+    }
+
+    /// An auto-hiding rail that slid away is not "on the rail" any more, however still the pointer.
+    @Test func aRailThatIsGoneDoesNotHoldTheCard() {
+        let stage = Stage()
+        let hover = shownCard(stage, railState().rail[0])
+
+        stage.rail = nil
+        hover.checkPointer()
+        stage.clock += .milliseconds(200)
+        hover.checkPointer()
+        #expect(hover.shownWorkspace == nil)
+    }
 }

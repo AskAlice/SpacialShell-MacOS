@@ -133,6 +133,10 @@ struct RailHoverCard: View {
                     Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
                 } else if let icon = item.icon {
                     Image(nsImage: icon).resizable().frame(width: 24, height: 24).opacity(0.5)
+                } else {
+                    // #182: an app that no longer resolves (it quit) still gets an app glyph, the
+                    // tray row's, never a bare grey box.
+                    Image(systemName: "app.dashed").font(.system(size: 20)).foregroundStyle(.secondary)
                 }
             }
             .frame(width: width, height: height)

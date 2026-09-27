@@ -64,6 +64,13 @@ public final class ShellController: NSObject {
         hover = RailHoverController(send: send)
         layoutPopover = LayoutPopoverController(send: send)
         super.init()
+        // #182: the rail the card was opened from, while it is on screen — the pointer safety net
+        // keeps the card while the pointer is on it.
+        hover.railFrame = { [weak self] in
+            guard let self, let display = self.hoverDisplay, let rail = self.panels[display]?.rail,
+                  rail.isVisible else { return nil }
+            return rail.frame
+        }
         NotificationCenter.default.addObserver(
             self, selector: #selector(screensChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -172,6 +179,7 @@ public final class ShellController: NSObject {
                                                        self.layoutPopover.toggle(state, bar: bar)
                                                    })
             layoutPopover.update(state)
+            if hoverDisplay == id { hover.railChanged(state) }   // #182: its tile may be gone or moved
 
             // #72: never order the panels onto a display showing a fullscreen Space.
             if visible && !world.showsFullscreenSpace(id) {
@@ -186,7 +194,7 @@ public final class ShellController: NSObject {
                 railEdges[id] = nil; autohide[id] = nil
                 p.rail.orderOut(nil)
                 p.bar.orderOut(nil)
-                hover.hideNow()   // Zen or fullscreen hides the rail; a card about it must not outlive it
+                hover.hideNow("rail hidden")   // Zen or fullscreen hides the rail; a card about it must not outlive it
                 if layoutPopover.display == id { layoutPopover.hide() }
             }
         }
@@ -197,7 +205,7 @@ public final class ShellController: NSObject {
             panels[id] = nil
             railEdges[id] = nil; autohide[id] = nil
             if layoutPopover.display == id { layoutPopover.hide() }
-            hover.hideNow()
+            hover.hideNow("display gone")
         }
         emptySheet.update(world: world, config: config)
     }
@@ -294,6 +302,7 @@ public final class ShellController: NSObject {
     /// off-edge frame never shows on a neighbouring display. Non-activating throughout.
     private func slide(_ id: DisplayID, home: NSRect, shown: Bool) {
         guard let rail = panels[id]?.rail else { return }
+        if !shown && hoverDisplay == id { hover.hideNow("rail slid out") }   // #182
         let off = home.offsetBy(dx: config.railSide == .left ? -home.width : home.width, dy: 0)
         if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             rail.setFrame(home, display: true)
