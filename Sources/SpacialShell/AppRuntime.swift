@@ -16,8 +16,10 @@ import os
 /// Boot order is not negotiable (spec §10, T18 handoff): the Accessibility grant has to land
 /// *before* `AXWindowBackend.start()`, because the global event monitors it installs are silently
 /// `nil` without it and would never be retried; the world has to be built before the store, since
-/// the store's first reconcile lays out against it; and the hotkey tap comes up last so a
-/// keystroke can't reach a store that has not started.
+/// the store's first reconcile lays out against it. The hotkey tap comes up first, right after the
+/// grant and the config (#184): while no tap exists, Globe+S opens Siri. What it fires before the
+/// store has started is held and replayed once it has, so a keystroke still never reaches a store
+/// that has not started.
 @MainActor
 final class AppRuntime: NSObject, NSApplicationDelegate {
     private let log = Logger(subsystem: Paths.bundleID, category: "app")
@@ -104,6 +106,23 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         loadConfig()
         // #148: before anything that traces. Read once: turning it on or off takes a relaunch.
         termination.arm(tracing: Tracing.start(config.telemetry))
+
+        log.info("stage 2b/8: arming the hotkey tap")
+        // #184: first, before the snapshot, the adoption and the panels. While no tap exists, every
+        // bound chord reaches macOS: Globe+S opens Type to Siri. It needs only the grant and the key
+        // table. What it fires goes to `hotkeys`, which holds commands until stage 7 connects it
+        // and replays them then (one older than 2 s is dropped).
+        let hotkeys = HotkeyOutlet<CGEventFlags> { .now }
+        let tap = HotkeyTap(
+            onCommand: { hotkeys.command($0) },
+            onFlags: { hotkeys.flags($0) },
+            onKeyDown: { hotkeys.keyDown() },
+            onRepeat: { hotkeys.repeated($0) },
+        )
+        termination.arm(tap: tap)
+        if let error = watchers.start(tap, "the hotkey tap", config: config) {
+            ProblemCenter.shared.report(.hotkeysInactive(String(describing: error)))
+        }
 
         log.info("stage 3/8: constructing the AX backend")
         let backend = AXWindowBackend(config: config)
@@ -265,19 +284,19 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             ProblemCenter.shared.report(.controlSocketInactive(String(describing: error)))
         }
 
-        log.info("stage 7/8: starting the hotkey tap")
+        log.info("stage 7/8: connecting the hotkey tap")
         // Ruling 8: `route` and the cheat sheet are captured directly, never `self` — these
         // closures run on the tap thread inside the event tap's deadline and must not touch the
         // main actor. Spawning a task that hops there later is fine; blocking on it is not.
-        // `onFlags` never consumes events: holding the bare modifier shows the cheat sheet.
+        // `flags` never consumes events: holding the bare modifier shows the cheat sheet.
         let cheatSheet = CheatSheetController(config: config)
         // #185: never over the spatial view.
         cheatSheet.isSuppressed = { [weak spatial] in spatial?.isOpen ?? false }
         spatial.onOpen = { [weak cheatSheet] in cheatSheet?.spatialOpened() }
         self.cheatSheet = cheatSheet
         // #135: focus follows the mouse, opt-in. A completed dwell is a click on that window's tab:
-        // the same `route`, the same `.focusWindowRef`. Made before the hotkey tap so a key press
-        // can cancel a pending dwell; installed only while `focus-follows-mouse` is on.
+        // the same `route`, the same `.focusWindowRef`. Made before the hotkey tap is connected so
+        // a key press can cancel a pending dwell; installed only while `focus-follows-mouse` is on.
         let pointerFocus = PointerFocus { ref in
             guard !gate.isTerminating else { return }
             backend.noteHumanInput()
@@ -287,8 +306,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         self.pointerFocus = pointerFocus
         // The store has published already; later publishes arrive through `onPointerTargets`.
         pointerFocus.update(targets: await store.pointerTargets())
-        let tap = HotkeyTap(
-            onCommand: { command in
+        // #184: the store is running, so the chords held since stage 2b replay now, in press order.
+        let replay = hotkeys.connect(.init(
+            command: { command in
+                // A quit stops the tap first, but not a replay already under way (the control
+                // socket is up): the restore has decided where every window goes.
+                guard !gate.isTerminating else { return }
                 // #148: the tap thread's share of a key press — inside the tap's deadline, so it
                 // is worth watching. The command's own trace starts in `WorldStore.run`.
                 let span = Telemetry.tracer().spanBuilder(spanName: "hotkey.dispatch").setNoParent().startSpan()
@@ -297,25 +320,24 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 span.end()
                 Task { @MainActor in cheatSheet.chordFired() }
             },
-            onFlags: { flags in
+            flags: { flags in
                 Task { @MainActor in
                     cheatSheet.flagsChanged(flags)
                     spatial.flagsChanged(flags)   // #132: a held-open spatial view lands on release
                 }
             },
-            onKeyDown: {
+            keyDown: {
                 backend.noteHumanInput()
                 Task { @MainActor in pointerFocus.cancel() }   // #135: the keyboard has the floor
             },
             // #132: holding Fn+W/S (their autorepeat) opens the spatial view.
-            onRepeat: { command in
+            repeated: { command in
                 guard SpatialView.opensOnHold(command) else { return }
                 Task { @MainActor in spatial.holdStarted() }
             },
-        )
-        termination.arm(tap: tap)
-        if let error = watchers.start(tap, "the hotkey tap", config: config) {
-            ProblemCenter.shared.report(.hotkeysInactive(String(describing: error)))
+        ))
+        if replay.commands.count + replay.dropped > 0 {
+            log.info("chords pressed during boot: \(replay.commands.count) replayed, \(replay.dropped) dropped as older than 2 s")
         }
 
         // #141: trackpad swipes are Fn+W/A/S/D by another route — the same `route`, the same

@@ -25,9 +25,11 @@ public extension Watcher {
 /// The running watchers, in start order.
 ///
 /// Each is started where the runtime registers it, so boot keeps its stage order: a watcher may
-/// need something an earlier stage built (the Dock marks draw on the shell panels; the hotkey tap
-/// must not come up before the store). A watcher that fails to start is logged and left out of
-/// everything after, and the rest carry on — a dead hotkey tap must not also take the trackpad.
+/// need something an earlier stage built (the Dock marks draw on the shell panels). The hotkey tap
+/// needs nothing but the config, so it comes up first, before the store; what it fires before the
+/// store runs is held and replayed (#184, `HotkeyOutlet`). A watcher that fails to start is logged
+/// and left out of everything after, and the rest carry on — a dead hotkey tap must not also take
+/// the trackpad.
 /// `stop` runs every stop once, in reverse start order.
 @MainActor
 public final class Watchers {

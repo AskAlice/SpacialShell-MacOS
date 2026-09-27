@@ -1,19 +1,17 @@
 # SpacialShell — thin wrappers over Scripts/ and swift build/test.
-.PHONY: build release test test-all bundle dmg dev run clean raycast raycast-dev hooks install
+.PHONY: build release test test-all bundle dmg dev run clean raycast raycast-dev hooks install relaunch
 
 hooks:            ## enable repo git hooks (pre-commit: build + fast tests + install)
 	git config core.hooksPath .githooks
 	@echo "hooks enabled; SPACIAL_SKIP_INSTALL=1 or --no-verify to bypass"
 
 install: bundle   ## bundle + install to /Applications, restarting the app
-	@killall SpacialShell 2>/dev/null && echo "stopped the running instance" || true
-	@# Both SIGINT and SIGTERM are trapped (AppRuntime), and quitting restores every managed
-	@# window before it exits (spec 7.4) — so wait for it to actually go before replacing the
-	@# bundle underneath it. Copying over a live .app is how you get a half-signed one.
-	@for i in $$(seq 1 50); do pgrep -x SpacialShell >/dev/null || break; sleep 0.1; done
-	rm -rf /Applications/SpacialShell.app
-	cp -R build/SpacialShell.app /Applications/SpacialShell.app
-	open /Applications/SpacialShell.app
+	@# Copies first, then quits the running shell (which restores every window, spec 7.4), polls
+	@# for its exit and opens the new one at once: no shell means Globe+S reaches Siri (#184).
+	Scripts/install.sh --relaunch
+
+relaunch:         ## restart the installed app, as fast as it can quit
+	Scripts/install.sh --relaunch-only
 
 build:            ## debug build
 	swift build

@@ -44,7 +44,8 @@ echo "pre-commit: bundling"
 Scripts/bundle.sh
 
 echo "pre-commit: installing to /Applications/SpacialShell.app"
-rm -rf /Applications/SpacialShell.app
-cp -R build/SpacialShell.app /Applications/SpacialShell.app
+Scripts/install.sh
 
-echo "pre-commit: done — built, tested, installed."
+# The running shell is still the old build. #184: restart it with `make relaunch`, which opens the
+# new one the moment the old one exits; every second without a shell, Globe+S reaches Siri.
+echo "pre-commit: done — built, tested, installed. Restart the shell on it with: make relaunch"

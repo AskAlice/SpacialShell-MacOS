@@ -15,6 +15,10 @@ notarize.sh package-dmg.sh + sign the DMG + notarytool submit + staple + spctl c
             an error. One-time credential setup: docs/release.md.
 sparkle-keys.sh  one-time: Sparkle EdDSA keypair into the login keychain, public key into
             Info.plist, --upload-secret for the private key (#58, docs/release.md).
+install.sh  build/SpacialShell.app into /Applications (the pre-commit hook). --relaunch also
+            restarts the shell on it (make install); --relaunch-only just restarts it (make
+            relaunch). The restart copies first, then quits, polls for the exit every 50 ms and
+            opens the new app at once: while no shell runs, Globe+S reaches Siri (#184).
 check-target-deps.py  fails if a target imports a package module it doesn't list as a
             dependency, which makes incremental `swift test` segfault after a Kit struct
             change (#156, docs/testing.md). Run by the pre-commit hook and CI.
