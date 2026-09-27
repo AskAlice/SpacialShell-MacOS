@@ -72,17 +72,16 @@ import Foundation
 
     // MARK: config
 
-    @Test func railIconStyleDefaultsToAppAndRoundTrips() throws {
+    @Test func railIconStyleDefaultsToAppAndParses() throws {
         #expect(try Config.parse(toml: "").railIconStyle == .app)
         for style in RailIconStyle.allCases {
             let c = try Config.parse(toml: "rail-icon-style = \"\(style.rawValue)\"")
             #expect(c.railIconStyle == style)
-            #expect(try Config.parse(toml: c.render()).railIconStyle == style)
         }
         #expect(throws: (any Error).self) { try Config.parse(toml: #"rail-icon-style = "icons""#) }
     }
 
-    @Test func categoryColorsParseNormaliseAndRoundTrip() throws {
+    @Test func categoryColorsParseAndNormalise() throws {
         let toml = """
         [category-colors]
         web = "#3478f6"
@@ -91,11 +90,7 @@ import Foundation
         let c = try Config.parse(toml: toml)
         #expect(c.categoryColors == [.web: "#3478F6", .terminal: "#30D158"])
         #expect(Config.unknownKeys(toml: toml).isEmpty)
-        let back = try Config.parse(toml: c.render())
-        #expect(back.categoryColors == c.categoryColors)
-        #expect(Config.unknownKeys(toml: c.render()).isEmpty)
         #expect(try Config.parse(toml: "").categoryColors.isEmpty)
-        #expect(!Config().render().contains("category-colors"))
     }
 
     /// A category name nothing knows is a warning (#133), not a rejection; a bad colour rejects,

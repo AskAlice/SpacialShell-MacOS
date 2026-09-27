@@ -284,7 +284,6 @@ import SpacialShellProtocol
                                             LayoutZone(x: 0.5, y: 0.5, w: 0.5, h: 0.5)]))
         #expect(c.layouts[1].symbol == "sidebar.left")
         #expect(c.workspaces[0].layout == "code-3")
-        #expect(try Config.parse(toml: c.render()) == c)
         let cat = LayoutCatalogue(config: c)
         #expect(cat.bar.last == "code-3" && cat.resolve("code-3").resolved)
     }

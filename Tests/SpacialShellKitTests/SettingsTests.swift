@@ -26,13 +26,12 @@ import Foundation
         #expect(!Settings.effective(config: Config(), overrides: gui).animations)
     }
 
-    /// #29: the empty-workspace cheat sheet defaults on, reads from the file, round-trips through
-    /// `render()`, and the settings window can override it.
+    /// #29: the empty-workspace cheat sheet defaults on, reads from the file, and the settings
+    /// window can override it.
     @Test func emptyCheatsheetKey() throws {
         #expect(Config().emptyCheatsheet)
         let file = try Config.parse(toml: "empty-cheatsheet = false")
         #expect(!file.emptyCheatsheet)
-        #expect(try !Config.parse(toml: file.render()).emptyCheatsheet)
         var gui = SettingsOverrides(); gui.emptyCheatsheet = true
         #expect(Settings.effective(config: file, overrides: gui).emptyCheatsheet)
     }

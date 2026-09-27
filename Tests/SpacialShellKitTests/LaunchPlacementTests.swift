@@ -133,7 +133,6 @@ import Foundation
     @Test func crowdThresholdIsAConfigKeyDefaulting8() throws {
         #expect(Config().crowdThreshold == 8)
         #expect(try Config.parse(toml: "crowd-threshold = 3").crowdThreshold == 3)
-        #expect(try Config.parse(toml: Config().render()) == Config())
     }
 }
 

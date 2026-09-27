@@ -215,15 +215,12 @@ import CoreGraphics
 
     // MARK: config
 
-    @Test func configKeysDecodeRenderAndDefault() throws {
+    @Test func configKeysDecodeAndDefault() throws {
         #expect(Config().categoryOrder == [.web, .terminal, .coding, .media, .utilities])
         #expect(Config().maxWorkspaces == 12)
         let c = try Config.parse(toml: "category-order = [\"media\", \"web\"]\nmax-workspaces = 5")
         #expect(c.categoryOrder == [.media, .web] && c.maxWorkspaces == 5)
         #expect(try Config.parse(toml: "category-order = []").categoryOrder.isEmpty)
-        #expect(try Config.parse(toml: c.render()) == c)
-        var off = Config(); off.categoryOrder = []
-        #expect(try Config.parse(toml: off.render()) == off)
     }
 }
 

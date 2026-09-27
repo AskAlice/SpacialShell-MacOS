@@ -241,7 +241,6 @@ import Testing
         #expect(!Config().workspaceWrap)
         let file = try Config.parse(toml: "workspace-wrap = true")
         #expect(file.workspaceWrap)
-        #expect(try Config.parse(toml: file.render()).workspaceWrap)
         var gui = SettingsOverrides(); gui.workspaceWrap = false
         #expect(!Settings.effective(config: file, overrides: gui).workspaceWrap)
     }

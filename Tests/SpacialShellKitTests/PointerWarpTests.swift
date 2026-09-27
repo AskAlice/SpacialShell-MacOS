@@ -100,7 +100,6 @@ import Foundation
         #expect(Config().pointerWarp)
         let file = try Config.parse(toml: "pointer-warp = false")
         #expect(!file.pointerWarp)
-        #expect(try !Config.parse(toml: file.render()).pointerWarp)
         var gui = SettingsOverrides(); gui.pointerWarp = true
         #expect(Settings.effective(config: file, overrides: gui).pointerWarp)
     }

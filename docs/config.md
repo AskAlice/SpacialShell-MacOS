@@ -27,6 +27,9 @@ panel-width = 48
 panel-height = 34
 rail-side = "left"                # or "right"
 tab-sizing = "fit"                # or "equal"
+tab-style = "full"                # or "name", "icon" — what a tab shows
+panel-color = "system"            # or a hex colour, #RRGGBB or #RRGGBBAA
+panel-opacity = 1                 # 0–1, for the rail and the tab bar
 rail-icon-style = "app"           # or "category", "hybrid" — what a rail tile draws
 dock-attention = true             # a red dot on the tile and tabs of an app the Dock badges or bounces
 launcher-url = "raycast://"
@@ -79,12 +82,16 @@ title-regex = "^Picture in Picture$"
 | `gap` | number (pt) | `8` | Space left between tiled windows, in every layout. Also the space to the screen edge unless `screen-gap` is set. Also in the settings window's Layout pane (*Window gap*). |
 | `screen-gap` | number (pt) | follows `gap` | Space left between the tiled row and the screen edge (and the rail and tab bar), on all four sides, in every layout — material-shell's `screen-gap`. `0` puts windows flush with the edges while `gap` still separates them. Unset, it follows `gap` (including a gap set in the settings window). Also in the settings window's Layout pane (*Screen edge gap*). |
 | `default-layout` | layout id | `"maximize"` | The layout a newly created workspace starts with: one of the six built-ins or a `[[layout]]` id (see below). |
+| `layout-bar` | list of layout ids | `["maximize", "split", "column", "half", "grid", "ratio"]` | What `Fn+Space` cycles, in this order, and what the layout switcher's bar shows: at most 8, each a built-in or a `[[layout]]` id. Also set from the layout popover. See [`[[layout]]`](#layout--drawn-layouts). |
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
 | `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
 | `panel-width` | number (pt) | `48` | Width of the workspace rail. Windows are inset by this on the rail side. |
 | `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
 | `tab-sizing` | `"fit"` \| `"equal"` | `"fit"` | How the tab bar spends its width. `fit`: each tab is as wide as its content and they pack left, so a single tab sits at the left edge. `equal`: every tab takes 1/n of the bar and centres its content. |
+| `tab-style` | `"full"` \| `"name"` \| `"icon"` | `"full"` | What a tab shows (#116). `full`: the app icon and the window title. `name`: the title only. `icon`: the icon only, for crowded rows. The whole title is always in the tab's tooltip. An unknown value rejects the whole config. Also in the settings window (*Tab style*). |
+| `panel-color` | `"system"` or a hex colour | `"system"` | The rail's and the tab bar's background. `"system"` is the stock vibrancy material, which tracks the desktop behind it; a hex colour (`#RRGGBB`, or `#RRGGBBAA` with alpha; the `#` is optional) replaces the material with that flat colour. Anything else rejects the whole config. Also in the settings window (*Panel colour*). |
+| `panel-opacity` | number (0–1) | `1` | How opaque the rail and the tab bar are, multiplied into the material or the colour (and its alpha). Clamped to 0–1. |
 | `rail-side` | `"left"` \| `"right"` | `"left"` | Which screen edge the rail sits on. An unknown value rejects the whole config (the previous one keeps running). |
 | `rail-icon-style` | `"app"` \| `"category"` \| `"hybrid"` | `"app"` | What a rail tile draws (#115). `app`: up to four of the workspace's apps as a 2×2 icon grid. `category`: the workspace's category symbol — its own category (the tile menu's **Set category**, or the one routing gave it), else the one its apps add up to. `hybrid`: that symbol with the workspace's top two apps (most windows first) beneath it. In `category` and `hybrid`, a symbol chosen for the workspace (**Set symbol**, or a `[[workspace]]` seed's `symbol`) beats the category's, and a workspace with neither a category nor a chosen symbol shows its app icons. Also in the settings window's Appearance pane (*Rail icons*). See [`[category-colors]`](#category-colors--rail-symbol-colours). |
 | `dock-attention` | boolean | `true` | Mirrors the Dock (#126): when an app's Dock icon has a badge, or is bouncing (the app is asking for attention), a red dot marks the rail tile of every workspace holding one of its windows, and each of its tabs. A bounce's mark goes a few seconds after the Dock stops; a badge's goes once you focus one of the app's windows, and comes back only when the badge changes (a count going up) or goes and returns. The app you are in is never marked. Read by polling the Dock's accessibility tree every 0.5 s — there is no public notification for either signal — which costs about 2 ms of CPU per poll here and about as much in the Dock (~0.4% of a core each); the poll runs only while this is on and the panels are showing. It is a heuristic: a bounce is inferred from the icon's movement, and an app with no Dock icon, or one that posts notifications without a badge, is never marked. Also a toggle (*Attention marks*) in the settings window's Appearance pane. |
@@ -404,8 +411,7 @@ token = "…"
 
 > **Warning: this table holds a secret.** Keep the file private — `chmod 600
 > ~/.config/spacial-shell/config.toml` — and do not paste it into issues or dotfile repos with the
-> token in it. SpacialShell never writes the token back out: a config it renders has the table
-> without `token`.
+> token in it. SpacialShell only ever reads `config.toml`, so it never copies the token anywhere.
 
 - **Environment overrides.** `OTEL_EXPORTER_OTLP_ENDPOINT` replaces `endpoint`, and
   `OTEL_EXPORTER_OTLP_HEADERS` (`key=value,key=value`, values percent-encoded, e.g.

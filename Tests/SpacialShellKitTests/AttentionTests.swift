@@ -118,11 +118,10 @@ import CoreGraphics
 
     // MARK: config
 
-    @Test func dockAttentionDefaultsOnAndRoundTrips() throws {
+    @Test func dockAttentionDefaultsOnAndParses() throws {
         #expect(try Config.parse(toml: "").dockAttention)
         let off = try Config.parse(toml: "dock-attention = false")
         #expect(!off.dockAttention)
-        #expect(try !Config.parse(toml: off.render()).dockAttention)
         #expect(Config.unknownKeys(toml: "dock-attention = false").isEmpty)
         var gui = SettingsOverrides(); gui.dockAttention = true
         #expect(Settings.effective(config: off, overrides: gui).dockAttention)

@@ -53,7 +53,7 @@ import Foundation
     @Test func invalidTomlThrows() {
         #expect(throws: (any Error).self) { try Config.parse(toml: "gap = ") }
     }
-    @Test func panelKeysRoundTrip() throws {
+    @Test func panelKeysParse() throws {
         let c = try Config.parse(toml: """
         panel-width = 64
         panel-height = 40
@@ -125,23 +125,15 @@ import Foundation
         let unknown = Config.unknownKeys(toml: toml)
         #expect(unknown == ["rail-sde", "workspace.symbl"])
         #expect(Problem.configUnknownKeys(unknown).severity == .warning)
-        #expect(Config.unknownKeys(toml: try Config.parse(toml: toml).render()).isEmpty)
     }
-    /// #116: `tab-style`, default `full`; rendered back out; a typo rejects like `rail-side`.
-    @Test func tabStyleParsesAndRoundTrips() throws {
+    /// #116: `tab-style`, default `full`; a typo rejects like `rail-side`.
+    @Test func tabStyleParses() throws {
         #expect(try Config.parse(toml: "").tabStyle == .full)
         let c = try Config.parse(toml: #"tab-style = "icon""#)
         #expect(c.tabStyle == .icon)
-        #expect(try Config.parse(toml: c.render()).tabStyle == .icon)
         #expect(throws: (any Error).self) { try Config.parse(toml: #"tab-style = "tiny""#) }
     }
 
-    /// `tab-sizing` survives a render: it was parsed but never written back, so re-rendering the
-    /// config silently reset it to `fit` (#144).
-    @Test func tabSizingRoundTrips() throws {
-        let c = try Config.parse(toml: #"tab-sizing = "equal""#)
-        #expect(try Config.parse(toml: c.render()).tabSizing == .equal)
-    }
     @Test func unknownRailSideRejects() {
         #expect(throws: (any Error).self) { try Config.parse(toml: #"rail-side = "middle""#) }
     }
@@ -193,14 +185,6 @@ import Foundation
         #expect(target.url.absoluteString == "http://127.0.0.1:4318/v1/traces")
         // Percent-decoded, and a base64 value keeps its padding.
         #expect(target.headers == ["Authorization": "Basic dTp0==", "X-Scope": "a,b"])
-    }
-
-    @Test func renderNeverWritesTheToken() throws {
-        let c = try Config.parse(toml: Self.telemetryToml)
-        let out = c.render()
-        #expect(!out.contains("not-a-real-token") && !out.contains("token"))
-        let back = try Config.parse(toml: out).telemetry
-        #expect(back.enabled && back.endpoint == c.telemetry.endpoint && back.user == c.telemetry.user && back.token.isEmpty)
     }
 
     /// #89: `[[tile]]` promotes only standard windows. System Settings' "Quit & Reopen" alert is

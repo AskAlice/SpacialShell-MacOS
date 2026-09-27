@@ -85,7 +85,6 @@ import Foundation
         #expect(!Config().railAutohide)
         let file = try Config.parse(toml: "rail-autohide = true")
         #expect(file.railAutohide)
-        #expect(try Config.parse(toml: file.render()).railAutohide)
         var gui = SettingsOverrides(); gui.railAutohide = false
         #expect(!Settings.effective(config: file, overrides: gui).railAutohide)
     }

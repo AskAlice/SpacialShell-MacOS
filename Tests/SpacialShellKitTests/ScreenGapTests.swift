@@ -42,15 +42,13 @@ import Foundation
         #expect(fa.minX == 0 && fa.minY == 25)
     }
 
-    @Test func parsesRendersAndRoundTrips() throws {
+    @Test func parsesAndFollowsGapWhenUnset() throws {
         let c = try Config.parse(toml: "gap = 6\nscreen-gap = 20")
         #expect(c.gap == 6 && c.screenGap == 20 && c.outerGap == 20)
-        let back = try Config.parse(toml: c.render())
-        #expect(back.screenGap == 20 && back.gap == 6)
         #expect(Config.unknownKeys(toml: "screen-gap = 4").isEmpty)
-        // Unset stays unset through a render, so it keeps following `gap`.
-        #expect(!Config().render().contains("screen-gap"))
-        #expect(try Config.parse(toml: Config().render()).screenGap == nil)
+        // Unset stays unset, so it keeps following `gap`.
+        let unset = try Config.parse(toml: "gap = 6")
+        #expect(unset.screenGap == nil && unset.outerGap == 6)
     }
 
     @Test func settingsOverrideIt() throws {

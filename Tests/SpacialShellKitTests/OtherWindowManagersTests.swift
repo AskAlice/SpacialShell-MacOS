@@ -44,15 +44,12 @@ import Foundation
         #expect(!Problem.hotkeysInactive("x").canSilence && !Problem.controlSocketInactive("x").canSilence)
     }
 
-    @Test func configKeyParsesRendersAndIsKnown() throws {
+    @Test func configKeyParsesAndIsKnown() throws {
         let toml = #"other-window-managers = ["com.example.Tiler", "yabai"]"#
         #expect(try Config.parse(toml: toml).otherWindowManagers == ["com.example.Tiler", "yabai"])
         #expect(Config.unknownKeys(toml: toml).isEmpty)
         #expect(try Config.parse(toml: "other-window-managers = []").otherWindowManagers.isEmpty)
-        var c = Config()
-        c.otherWindowManagers = ["a.b", "c"]
-        #expect(try Config.parse(toml: c.render()).otherWindowManagers == ["a.b", "c"])
-        #expect(try Config.parse(toml: Config().render()).otherWindowManagers == OtherWindowManagers.defaults)
+        #expect(try Config.parse(toml: "").otherWindowManagers == OtherWindowManagers.defaults)
     }
 
     @Test func dontWarnAgainIsRememberedOnceAndOldSettingsStillDecode() throws {

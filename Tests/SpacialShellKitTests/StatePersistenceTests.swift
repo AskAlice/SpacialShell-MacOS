@@ -33,14 +33,11 @@ import Foundation
         #expect(Problem.stateReset.key == "state.reset")
     }
 
-    @Test func configKeyParsesRendersAndIsKnown() throws {
+    @Test func configKeyParsesAndIsKnown() throws {
         let toml = "persist-state = false"
         #expect(try !Config.parse(toml: toml).persistState)
         #expect(Config.unknownKeys(toml: toml).isEmpty)
-        var c = Config()
-        c.persistState = false
-        #expect(try !Config.parse(toml: c.render()).persistState)
-        #expect(try Config.parse(toml: Config().render()).persistState)
+        #expect(try Config.parse(toml: "").persistState)
     }
 
     @Test func theSettingsWindowCanOverrideIt() throws {

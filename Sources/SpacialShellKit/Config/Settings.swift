@@ -68,39 +68,24 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
         silencedWarnings = keys
     }
 
-    /// Every key optional and tolerant, as the synthesized decoder was — plus `layouts`, lossily.
+    /// Every key optional and tolerant, as the synthesized decoder was. The knobs are the
+    /// `Config.keys` entries with an `override`, named as their properties are (`layouts` lossily);
+    /// `ConfigKeyTableTests` checks each property here is one of them, or `silencedWarnings`.
     public init(from d: Decoder) throws {
-        let c = try d.container(keyedBy: CodingKeys.self)
-        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth)
-        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight)
-        gap = try c.decodeIfPresent(Double.self, forKey: .gap)
-        screenGap = try c.decodeIfPresent(Double.self, forKey: .screenGap)
-        panelColor = try c.decodeIfPresent(String.self, forKey: .panelColor)
-        railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide)
-        tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing)
-        tabStyle = try c.decodeIfPresent(TabStyle.self, forKey: .tabStyle)
-        railIconStyle = try c.decodeIfPresent(RailIconStyle.self, forKey: .railIconStyle)
-        dockAttention = try c.decodeIfPresent(Bool.self, forKey: .dockAttention)
-        keybindingPreset = try c.decodeIfPresent(KeybindingPreset.self, forKey: .keybindingPreset)
-        animations = try c.decodeIfPresent(Bool.self, forKey: .animations)
-        animateRetile = try c.decodeIfPresent(Bool.self, forKey: .animateRetile)
-        emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet)
-        railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide)
-        pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp)
-        workspaceWrap = try c.decodeIfPresent(Bool.self, forKey: .workspaceWrap)
-        gestures = try c.decodeIfPresent(Bool.self, forKey: .gestures)
-        gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert)
-        gestureLayout = try c.decodeIfPresent(Bool.self, forKey: .gestureLayout)
-        focusFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .focusFollowsMouse)
-        persistState = try c.decodeIfPresent(Bool.self, forKey: .persistState)
-        keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides)
-        categoryOrder = try c.decodeIfPresent([AppCategory].self, forKey: .categoryOrder)
-        maxWorkspaces = try c.decodeIfPresent(Int.self, forKey: .maxWorkspaces)
-        layouts = try LayoutDef.lossy(c, .layouts)
-        layoutBar = try c.decodeIfPresent([LayoutID].self, forKey: .layoutBar)
-        defaultLayout = try c.decodeIfPresent(LayoutID.self, forKey: .defaultLayout)
-        silencedWarnings = try c.decodeIfPresent([String].self, forKey: .silencedWarnings)
+        let c = try d.container(keyedBy: ConfigKey.Name.self)
+        for key in Config.keys { try key.override?.decode(&self, c) }
+        silencedWarnings = try c.decodeIfPresent([String].self, forKey: Self.silencedWarningsKey)
     }
+
+    /// An unset knob is left out, not written as null: absent is how "the file decides" is stored.
+    public func encode(to e: Encoder) throws {
+        var c = e.container(keyedBy: ConfigKey.Name.self)
+        for key in Config.keys { try key.override?.encode(self, &c) }
+        try c.encodeIfPresent(silencedWarnings, forKey: Self.silencedWarningsKey)
+    }
+
+    /// The one key here that is not a config knob. Persisted: renaming it forgets every answer.
+    private static let silencedWarningsKey = ConfigKey.Name("silencedWarnings")
 }
 
 /// #10: the edits the layout popover and editor make. They only ever touch `settings.json`'s side;
@@ -141,34 +126,7 @@ public enum Settings {
     /// What the shell actually uses: the file, with anything the settings window has set on top.
     public static func effective(config: Config, overrides: SettingsOverrides) -> Config {
         var c = config
-        if let v = overrides.panelWidth { c.panelWidth = v }
-        if let v = overrides.panelHeight { c.panelHeight = v }
-        if let v = overrides.gap { c.gap = v }
-        if let v = overrides.screenGap { c.screenGap = v }
-        if let v = overrides.panelColor { c.panelColor = v }
-        if let v = overrides.railSide { c.railSide = v }
-        if let v = overrides.tabSizing { c.tabSizing = v }
-        if let v = overrides.tabStyle { c.tabStyle = v }
-        if let v = overrides.railIconStyle { c.railIconStyle = v }
-        if let v = overrides.dockAttention { c.dockAttention = v }
-        if let v = overrides.keybindingPreset { c.keybindingPreset = v }
-        if let v = overrides.animations { c.animations = v }
-        if let v = overrides.animateRetile { c.animateRetile = v }
-        if let v = overrides.emptyCheatsheet { c.emptyCheatsheet = v }
-        if let v = overrides.railAutohide { c.railAutohide = v }
-        if let v = overrides.pointerWarp { c.pointerWarp = v }
-        if let v = overrides.workspaceWrap { c.workspaceWrap = v }
-        if let v = overrides.gestures { c.gestures = v }
-        if let v = overrides.gestureInvert { c.gestureInvert = v }
-        if let v = overrides.gestureLayout { c.gestureLayout = v }
-        if let v = overrides.focusFollowsMouse { c.focusFollowsMouse = v }
-        if let v = overrides.persistState { c.persistState = v }
-        if let v = overrides.categoryOrder { c.categoryOrder = v }
-        if let v = overrides.maxWorkspaces { c.maxWorkspaces = max(1, v) }
-        if let v = overrides.keybindingOverrides { c.keybindingOverrides.merge(v) { _, gui in gui } }
-        if let v = overrides.layouts { c.layouts = LayoutDef.merge(file: c.layouts, gui: v) }
-        if let v = overrides.layoutBar { c.layoutBar = v }
-        if let v = overrides.defaultLayout { c.defaultLayout = v }
+        for key in Config.keys { key.override?.apply(overrides, &c) }
         return c
     }
 }

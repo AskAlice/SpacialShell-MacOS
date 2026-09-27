@@ -64,7 +64,7 @@ public enum HexColor {
 }
 
 /// #148: tracing, exported over OTLP/HTTP. Off unless `enabled` and a token are both present; the
-/// app target owns everything past parsing. The token is a secret: `render()` never writes it.
+/// app target owns everything past parsing.
 public struct TelemetryConfig: Codable, Equatable, Sendable {
     public var enabled = false
     /// The OTLP base URL; `/v1/traces` is appended.
@@ -114,7 +114,7 @@ public struct TelemetryConfig: Codable, Equatable, Sendable {
     }
 }
 
-public struct Config: Codable, Equatable, Sendable {
+public struct Config: Decodable, Equatable, Sendable {
     public var keybindingPreset: KeybindingPreset = .fn
     public var gap: Double = 8
     /// #124 (M4 G11): the space between the row and the screen edge, when it should differ from
@@ -241,96 +241,13 @@ public struct Config: Codable, Equatable, Sendable {
 
     public init() {}
 
-    enum CodingKeys: String, CodingKey, CaseIterable {
-        case keybindingPreset = "keybinding-preset", gap, screenGap = "screen-gap", defaultLayout = "default-layout", axTimeoutMs = "ax-timeout-ms",
-             refreshIntervalMs = "refresh-interval-ms", startAtLogin = "start-at-login", workspaces = "workspace",
-             ephemeral, float, ignore, tile, keybindings,
-             panelWidth = "panel-width", panelHeight = "panel-height", railSide = "rail-side", tabSizing = "tab-sizing", tabStyle = "tab-style",
-             launcherURL = "launcher-url", showPanels = "show-panels", crowdThreshold = "crowd-threshold", animations, appCategories = "app-categories",
-             animateRetile = "animate-retile",
-             panelColor = "panel-color", panelOpacity = "panel-opacity",
-             keybindingOverrides = "keybinding-overrides"
-        case railIconStyle = "rail-icon-style", categoryColors = "category-colors", dockAttention = "dock-attention"
-        case emptyCheatsheet = "empty-cheatsheet", railAutohide = "rail-autohide", pointerWarp = "pointer-warp",
-             workspaceWrap = "workspace-wrap"
-        case gestures, gestureFingers = "gesture-fingers", gestureInvert = "gesture-invert", gestureLayout = "gesture-layout"
-        case focusFollowsMouse = "focus-follows-mouse", focusFollowsMouseDelayMs = "focus-follows-mouse-delay-ms"
-        case categoryOrder = "category-order", maxWorkspaces = "max-workspaces"
-        case otherWindowManagers = "other-window-managers", persistState = "persist-state"
-        case layouts = "layout", layoutBar = "layout-bar"
-        case telemetry
-    }
+    /// Decodes over the defaults, one `Config.keys` entry at a time: a key the file leaves out
+    /// keeps its property's initial value.
     public init(from d: Decoder) throws {
-        let c = try d.container(keyedBy: CodingKeys.self)
-        keybindingPreset = try c.decodeIfPresent(KeybindingPreset.self, forKey: .keybindingPreset) ?? .fn
-        gap = try c.decodeIfPresent(Double.self, forKey: .gap) ?? 8
-        screenGap = try c.decodeIfPresent(Double.self, forKey: .screenGap)
-        defaultLayout = try c.decodeIfPresent(LayoutID.self, forKey: .defaultLayout) ?? .maximize
-        axTimeoutMs = try c.decodeIfPresent(Int.self, forKey: .axTimeoutMs) ?? 1000
-        refreshIntervalMs = try c.decodeIfPresent(Int.self, forKey: .refreshIntervalMs) ?? 2000
-        startAtLogin = try c.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
-        panelWidth = try c.decodeIfPresent(Double.self, forKey: .panelWidth) ?? 48
-        panelHeight = try c.decodeIfPresent(Double.self, forKey: .panelHeight) ?? 34
-        railSide = try c.decodeIfPresent(RailSide.self, forKey: .railSide) ?? .left
-        tabSizing = try c.decodeIfPresent(TabSizing.self, forKey: .tabSizing) ?? .fit
-        tabStyle = try c.decodeIfPresent(TabStyle.self, forKey: .tabStyle) ?? .full
-        railIconStyle = try c.decodeIfPresent(RailIconStyle.self, forKey: .railIconStyle) ?? .app
-        dockAttention = try c.decodeIfPresent(Bool.self, forKey: .dockAttention) ?? true
-        // A key that is not a category is left for `unknownKeys` to name; a bad colour rejects the
-        // file, as a bad `panel-color` does.
-        for (key, raw) in try c.decodeIfPresent([String: String].self, forKey: .categoryColors) ?? [:] {
-            guard let category = AppCategory(rawValue: key) else { continue }
-            guard let hex = HexColor.normalize(raw), hex != "system" else {
-                throw DecodingError.dataCorruptedError(forKey: .categoryColors, in: c,
-                                                       debugDescription: "category-colors.\(key) must be #RRGGBB")
-            }
-            categoryColors[category] = hex
-        }
-        launcherURL = try c.decodeIfPresent(String.self, forKey: .launcherURL) ?? "raycast://"
-        showPanels = try c.decodeIfPresent(Bool.self, forKey: .showPanels) ?? true
-        crowdThreshold = try c.decodeIfPresent(Int.self, forKey: .crowdThreshold) ?? 8
-        categoryOrder = try c.decodeIfPresent([AppCategory].self, forKey: .categoryOrder) ?? Config.defaultCategoryOrder
-        maxWorkspaces = max(1, try c.decodeIfPresent(Int.self, forKey: .maxWorkspaces) ?? 12)
-        otherWindowManagers = try c.decodeIfPresent([String].self, forKey: .otherWindowManagers) ?? OtherWindowManagers.defaults
-        persistState = try c.decodeIfPresent(Bool.self, forKey: .persistState) ?? true
-        animations = try c.decodeIfPresent(Bool.self, forKey: .animations) ?? true
-        animateRetile = try c.decodeIfPresent(Bool.self, forKey: .animateRetile) ?? false
-        emptyCheatsheet = try c.decodeIfPresent(Bool.self, forKey: .emptyCheatsheet) ?? true
-        railAutohide = try c.decodeIfPresent(Bool.self, forKey: .railAutohide) ?? false
-        pointerWarp = try c.decodeIfPresent(Bool.self, forKey: .pointerWarp) ?? true
-        workspaceWrap = try c.decodeIfPresent(Bool.self, forKey: .workspaceWrap) ?? false
-        gestures = try c.decodeIfPresent(Bool.self, forKey: .gestures) ?? true
-        // Clamped rather than refused, like `panel-opacity`: a 2 or a 10 is a typo, not a reason to
-        // throw the whole file away.
-        let fingers = try c.decodeIfPresent(Int.self, forKey: .gestureFingers) ?? 3
-        gestureFingers = min(Config.gestureFingerRange.upperBound, max(Config.gestureFingerRange.lowerBound, fingers))
-        gestureInvert = try c.decodeIfPresent(Bool.self, forKey: .gestureInvert) ?? false
-        gestureLayout = try c.decodeIfPresent(Bool.self, forKey: .gestureLayout) ?? true
-        focusFollowsMouse = try c.decodeIfPresent(Bool.self, forKey: .focusFollowsMouse) ?? false
-        // Clamped like `gesture-fingers`: a 0 or a 10000 is a typo, not a reason to reject the file.
-        focusFollowsMouseDelayMs = FocusFollowsMouse.clamp(
-            try c.decodeIfPresent(Int.self, forKey: .focusFollowsMouseDelayMs) ?? FocusFollowsMouse.defaultDelayMs)
-        if let raw = try c.decodeIfPresent(String.self, forKey: .panelColor) {
-            guard let n = HexColor.normalize(raw) else {
-                throw DecodingError.dataCorruptedError(forKey: .panelColor, in: c, debugDescription: "panel-color must be \"system\" or #RRGGBB")
-            }
-            panelColor = n
-        } else { panelColor = "system" }
-        // Clamped rather than refused: an out-of-range opacity is a typo, not a reason to reject
-        // the whole config and fall back to defaults the user never asked for.
-        panelOpacity = min(1, max(0, try c.decodeIfPresent(Double.self, forKey: .panelOpacity) ?? 1))
-        appCategories = try c.decodeIfPresent([String: AppCategory].self, forKey: .appCategories) ?? [:]
-        workspaces = try c.decodeIfPresent([WorkspaceSeed].self, forKey: .workspaces) ?? []
-        layouts = try LayoutDef.lossy(c, .layouts) ?? []
+        self.init()
+        let c = try d.container(keyedBy: ConfigKey.Name.self)
+        for key in Config.keys { try key.decode(&self, c) }
         fileLayoutIDs = Set(layouts.map(\.id))
-        layoutBar = try c.decodeIfPresent([LayoutID].self, forKey: .layoutBar) ?? Config.defaultLayoutBar
-        ephemeral = try c.decodeIfPresent([AppRule].self, forKey: .ephemeral) ?? Config.defaultEphemeral
-        float = try c.decodeIfPresent([AppRule].self, forKey: .float) ?? []
-        ignore = try c.decodeIfPresent([AppRule].self, forKey: .ignore) ?? []
-        tile = try c.decodeIfPresent([AppRule].self, forKey: .tile) ?? Config.defaultTile
-        keybindings = try c.decodeIfPresent([String: String].self, forKey: .keybindings) ?? [:]
-        keybindingOverrides = try c.decodeIfPresent([String: String].self, forKey: .keybindingOverrides) ?? [:]
-        telemetry = try c.decodeIfPresent(TelemetryConfig.self, forKey: .telemetry) ?? TelemetryConfig()
     }
 
     public static func parse(toml: String) throws -> Config { try TOMLDecoder().decode(Config.self, from: toml) }
@@ -344,19 +261,10 @@ public struct Config: Codable, Equatable, Sendable {
     /// `[keybinding-overrides]` and `[app-categories]` are free-form maps: any key there is data.
     public static func unknownKeys(toml: String) -> [String] {
         guard let root = try? TOMLTable(source: toml) else { return [] }
-        func names<K: CodingKey & CaseIterable>(_: K.Type) -> Set<String> { Set(K.allCases.map(\.stringValue)) }
-        let rule = names(AppRule.CodingKeys.self)
-        let tables: [String: Set<String>] = [
-            "workspace": names(WorkspaceSeed.CodingKeys.self), "layout": names(LayoutDef.CodingKeys.self),
-            "ephemeral": rule, "float": rule, "ignore": rule, "tile": rule,
-            "telemetry": names(TelemetryConfig.CodingKeys.self),
-            "category-colors": Set(AppCategory.allCases.map(\.rawValue)),
-        ]
-        let top = names(CodingKeys.self)
         var out: [String] = []
         for key in root.keys {
-            guard top.contains(key) else { out.append(key); continue }
-            guard let known = tables[key] else { continue }
+            guard knownKeys.contains(key) else { out.append(key); continue }
+            guard let known = knownSubkeys[key] else { continue }
             let blocks: [TOMLTable]
             if let t = try? root.table(forKey: key) { blocks = [t] }
             else if let a = try? root.array(forKey: key) { blocks = (0..<a.count).compactMap { try? a.table(atIndex: $0) } }
@@ -368,85 +276,10 @@ public struct Config: Codable, Equatable, Sendable {
         return out.sorted()
     }
 
-    /// ponytail: hand-written TOML (no encoder in deps). Round-trips values; drops comments.
-    public func render() -> String {
-        let q = Config.quote
-        // #124: written only when set, so an unset screen gap keeps following `gap` after a render.
-        let screenGapLine = screenGap.map { "screen-gap = \($0)\n" } ?? ""
-        var o = """
-        # written by SpacialShell settings; hand-edited comments are not preserved
-        keybinding-preset = \(q(keybindingPreset.rawValue))
-        gap = \(gap)
-        \(screenGapLine)default-layout = \(q(defaultLayout.rawValue))
-        ax-timeout-ms = \(axTimeoutMs)
-        refresh-interval-ms = \(refreshIntervalMs)
-        start-at-login = \(startAtLogin)
-        panel-width = \(panelWidth)
-        panel-height = \(panelHeight)
-        rail-side = \(q(railSide.rawValue))
-        tab-sizing = \(q(tabSizing.rawValue))
-        tab-style = \(q(tabStyle.rawValue))
-        rail-icon-style = \(q(railIconStyle.rawValue))
-        dock-attention = \(dockAttention)
-        launcher-url = \(q(launcherURL))
-        show-panels = \(showPanels)
-        crowd-threshold = \(crowdThreshold)
-        category-order = [\(categoryOrder.map { q($0.rawValue) }.joined(separator: ", "))]
-        max-workspaces = \(maxWorkspaces)
-        persist-state = \(persistState)
-        other-window-managers = [\(otherWindowManagers.map { q($0) }.joined(separator: ", "))]
-        animations = \(animations)
-        animate-retile = \(animateRetile)
-        empty-cheatsheet = \(emptyCheatsheet)
-        rail-autohide = \(railAutohide)
-        pointer-warp = \(pointerWarp)
-        workspace-wrap = \(workspaceWrap)
-        gestures = \(gestures)
-        gesture-fingers = \(gestureFingers)
-        gesture-invert = \(gestureInvert)
-        gesture-layout = \(gestureLayout)
-        focus-follows-mouse = \(focusFollowsMouse)
-        focus-follows-mouse-delay-ms = \(focusFollowsMouseDelayMs)
-        layout-bar = [\(layoutBar.map { q($0.rawValue) }.joined(separator: ", "))]
-
-        """
-        func rules(_ name: String, _ items: [AppRule]) {
-            for r in items {
-                o += "\n[[\(name)]]\nbundle-id = \(q(r.bundleId))\n"
-                if let t = r.titleRegex { o += "title-regex = \(q(t))\n" }
-            }
-        }
-        for w in workspaces {
-            o += "\n[[workspace]]\nname = \(q(w.name))\nsymbol = \(q(w.symbol))\nlayout = \(q(w.layout.rawValue))\n"
-        }
-        for l in layouts { if let t = l.toml { o += "\n" + t } }
-        rules("ephemeral", ephemeral); rules("float", float); rules("ignore", ignore); rules("tile", tile)
-        if !categoryColors.isEmpty {
-            o += "\n[category-colors]\n"
-            for c in AppCategory.allCases { if let hex = categoryColors[c] { o += "\(c.rawValue) = \(q(hex))\n" } }
-        }
-        if !keybindings.isEmpty {
-            o += "\n[keybindings]\n"
-            for k in keybindings.keys.sorted() { o += "\(q(k)) = \(q(keybindings[k]!))\n" }
-        }
-        // #148: never the token. A secret has no business in a file this writes, which can land
-        // anywhere a config gets pasted; put it back by hand, and keep the file mode 600.
-        if telemetry != TelemetryConfig() {
-            o += "\n[telemetry]\nenabled = \(telemetry.enabled)\nendpoint = \(q(telemetry.endpoint))\nuser = \(q(telemetry.user))\n"
-        }
-        return o
-    }
-
-    /// A TOML basic string. Newlines too: a layout's name comes from a text field.
-    static func quote(_ s: String) -> String {
-        "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n") + "\""
-    }
-
-    public func save(to url: URL) throws {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try render().write(to: url, atomically: true, encoding: .utf8)
-    }
+    /// What `unknownKeys` accepts: every key's name, and each table's own keys.
+    private static let knownKeys = Set(keys.map(\.name))
+    private static let knownSubkeys = Dictionary(keys.compactMap { k in k.subkeys.map { (k.name, $0) } },
+                                                 uniquingKeysWith: { first, _ in first })
 
     /// Spec §7.3 rule 0: config wins over heuristics. Order: ephemeral, float, ignore, tile.
     /// `standard` is the window's AX subrole being `AXStandardWindow`: `[[tile]]` only ever promotes

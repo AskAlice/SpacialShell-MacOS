@@ -366,16 +366,11 @@ import Foundation
 
     // MARK: config
 
-    @Test func gestureKeysDefaultParseAndRoundTrip() throws {
+    @Test func gestureKeysDefaultAndParse() throws {
         let d = try Config.parse(toml: "")
         #expect(d.gestures && d.gestureFingers == 3 && !d.gestureInvert && d.gestureLayout)
         let c = try Config.parse(toml: "gestures = false\ngesture-fingers = 4\ngesture-invert = true\ngesture-layout = false\n")
         #expect(!c.gestures && c.gestureFingers == 4 && c.gestureInvert && !c.gestureLayout)
-        #expect(c.render().contains("gesture-layout = false"))
-        let back = try Config.parse(toml: c.render())
-        #expect(!back.gestures && back.gestureFingers == 4 && back.gestureInvert && !back.gestureLayout)
-        #expect(try Config.parse(toml: Config().render()).gestureLayout)
-        #expect(Config.unknownKeys(toml: c.render()).isEmpty)
         #expect(Config.unknownKeys(toml: "gestures = true\ngesture-fingers = 3\ngesture-invert = false\ngesture-layout = true\n").isEmpty)
         #expect(Config.unknownKeys(toml: "gesture-finger = 3\n") == ["gesture-finger"])
         #expect(Config.unknownKeys(toml: "gesture-layouts = true\n") == ["gesture-layouts"])

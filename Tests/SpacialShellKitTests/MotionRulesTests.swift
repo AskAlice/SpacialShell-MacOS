@@ -67,15 +67,13 @@ import Foundation
         #expect(MotionRules.verdict(took: .milliseconds(112), complete: true, budget: .milliseconds(160)) == .animate)
     }
 
-    /// `animate-retile`: off by default, rendered, read back, known to #133's checker, and a
+    /// `animate-retile`: off by default, read from the file, known to #133's checker, and a
     /// settings-window override over the file.
-    @Test func animateRetileRoundTrips() throws {
+    @Test func animateRetileKey() throws {
         #expect(!Config().animateRetile)
-        #expect(!(try Config.parse(toml: Config().render())).animateRetile)
+        #expect(!(try Config.parse(toml: "")).animateRetile)
         let on = try Config.parse(toml: "animate-retile = true\n")
         #expect(on.animateRetile)
-        #expect(on.render().contains("animate-retile = true"))
-        #expect(try Config.parse(toml: on.render()).animateRetile)
         #expect(Config.unknownKeys(toml: "animations = true\nanimate-retile = true\n").isEmpty)
         #expect(Config.unknownKeys(toml: "animate-retiles = true\n") == ["animate-retiles"])
 

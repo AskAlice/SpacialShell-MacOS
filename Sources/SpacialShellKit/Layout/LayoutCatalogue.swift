@@ -93,14 +93,20 @@ public struct LayoutDef: Codable, Hashable, Sendable, Identifiable {
         }
     }
 
-    /// The `[[layout]]` block of design §3.3: what the editor's Copy as TOML puts on the pasteboard
-    /// and what `Config.render` writes. Nil for a built-in, which no file ever defines.
+    /// The `[[layout]]` block of design §3.3: what the editor's Copy as TOML puts on the pasteboard.
+    /// Nil for a built-in, which no file ever defines.
     public var toml: String? {
         guard case .zones(let zones) = body else { return nil }
-        let q = Config.quote
+        let q = LayoutDef.quote
         var o = "[[layout]]\nid = \(q(id.rawValue))\nname = \(q(name))\n"
         if let s = symbol { o += "symbol = \(q(s))\n" }
         return o + "zones = [\n" + zones.map { "  { x = \($0.x), y = \($0.y), w = \($0.w), h = \($0.h) },\n" }.joined() + "]\n"
+    }
+
+    /// A TOML basic string. Newlines too: a layout's name comes from a text field.
+    static func quote(_ s: String) -> String {
+        "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n") + "\""
     }
 
     /// `settings.json` over `config.toml`, per id, the GUI winning (design §3.1) — the rule

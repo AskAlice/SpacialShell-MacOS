@@ -298,15 +298,12 @@ import Foundation
 
     // MARK: config
 
-    @Test func keysDefaultOffAndRoundTrip() throws {
+    @Test func keysDefaultOffAndParse() throws {
         let d = Config()
         #expect(!d.focusFollowsMouse && d.focusFollowsMouseDelayMs == 150)
         let c = try Config.parse(toml: "focus-follows-mouse = true\nfocus-follows-mouse-delay-ms = 300\n")
         #expect(c.focusFollowsMouse && c.focusFollowsMouseDelayMs == 300)
-        let back = try Config.parse(toml: c.render())
-        #expect(back.focusFollowsMouse && back.focusFollowsMouseDelayMs == 300)
         #expect(Config.unknownKeys(toml: "focus-follows-mouse = true\nfocus-follows-mouse-delay-ms = 300\n").isEmpty)
-        #expect(Config.unknownKeys(toml: c.render()).isEmpty)
         #expect(try Config.parse(toml: "focus-follows-mouse-delay-ms = 5").focusFollowsMouseDelayMs == 50)
         #expect(try Config.parse(toml: "focus-follows-mouse-delay-ms = 99999").focusFollowsMouseDelayMs == 2000)
     }
