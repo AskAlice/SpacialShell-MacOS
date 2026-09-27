@@ -28,13 +28,13 @@ actor FakeBackend: WindowBackend {
         await gateIfNeeded()
         calls.append(.setFrame(ref, frame))
         if failWrites.contains(ref) { return .failure(.ax(-25200)) }
-        frames[ref] = frame; return .success(())
+        move(ref, to: frame); return .success(())
     }
     func setPosition(_ ref: WindowRef, _ o: CGPoint) async -> Result<Void, BackendError> {
         await gateIfNeeded()
         calls.append(.setPosition(ref, o))
         if failWrites.contains(ref) { return .failure(.ax(-25200)) }
-        if let f = frames[ref] { frames[ref] = CGRect(origin: o, size: f.size) }; return .success(())
+        if let f = frames[ref] { move(ref, to: CGRect(origin: o, size: f.size)) }; return .success(())
     }
     func raise(_ ref: WindowRef) -> Result<Void, BackendError> {
         calls.append(.raise(ref))
@@ -66,6 +66,20 @@ actor FakeBackend: WindowBackend {
     func finish() { continuation.finish() }
 
     // MARK: test hooks
+
+    /// #165: true sheets, each bound to its owner's title bar: a write to one reports success and
+    /// changes nothing, and moving the owner carries it along — what macOS does with an AX sheet.
+    var sheets: [WindowRef: WindowRef] = [:]
+    func pin(_ sheet: WindowRef, to owner: WindowRef) { sheets[sheet] = owner }
+    /// A window appearing where its app opened it, before the store hears of it.
+    func open(_ ref: WindowRef, at frame: CGRect) { frames[ref] = frame }
+    private func move(_ ref: WindowRef, to frame: CGRect) {
+        guard sheets[ref] == nil else { return }
+        let was = frames[ref]
+        frames[ref] = frame
+        guard let was else { return }
+        for (s, o) in sheets where o == ref { frames[s] = frames[s]?.offsetBy(dx: frame.minX - was.minX, dy: frame.minY - was.minY) }
+    }
 
     func fail(_ ref: WindowRef) { failWrites.insert(ref) }
     /// Fail only `raise` for this window — what a window in another Space, or an app mid-transition,

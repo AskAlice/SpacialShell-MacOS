@@ -32,6 +32,17 @@ public actor WorldStore {
     /// mid-resize, and a frame clamped while it moves between displays of different sizes looks
     /// the same, so the tile is asked for once more. A second echo of the same size confirms it.
     private var suspectedRefusal: [WindowRef: Refusal] = [:]
+    /// #165: dialogs and popups due a placement on the next pass: at first appearance, and again
+    /// when the displays change. Nothing else ever moves them, so one the user moved stays put.
+    private var pendingPopups: [WindowRef: PopupRequest] = [:]
+    /// #165: every window adopted as a dialog or popup, so a display change can clamp them all.
+    private var popups: Set<WindowRef> = []
+    /// #165: a first placement written to an attached window (#134), from where it was to where
+    /// we asked, until its echo or the next snapshot says which one it is at.
+    private var probes: [WindowRef: (from: CGRect, to: CGRect)] = [:]
+    /// #165: attached windows whose placement did not take (the echo still showed them where they
+    /// were): true sheets, bound to their owner's title bar. The reconciler moves the owner instead.
+    private var unmovable: Set<WindowRef> = []
     /// Spec §7.4 + §11. A window retired to `ignored` after three failed writes *while parked* is
     /// unreachable by the reconciler for good, so nothing would ever unpark it — the one way a
     /// window can be permanently stranded in a corner. Its last known real frame is kept here
@@ -397,6 +408,7 @@ public actor WorldStore {
             // its tile. Learned, not fought: the snap-back below re-places it centred in the tile.
             // #164: a refused window that grew past its refused size (the user or the app resized
             // it) can fill after all: forget the refusal, and the snap-back gives it the whole tile.
+            let pinned = settleProbe(r, at: f)
             if let rf = refused[r], rf.grew(to: f) { refused[r] = nil; suspectedRefusal[r] = nil }
             if let asked = intents.frame(for: r), let refusal = Refusal(asked: asked, got: f) {
                 if let s = suspectedRefusal[r], s.sameAs(refusal) {
@@ -414,6 +426,7 @@ public actor WorldStore {
             if grab != nil { return }
             if case .windowMoved = event, trackDrag(r, to: f, was: was) { return }
             if case .windowMoved = event, rehomeDragged(r, to: f, was: was) { break }
+            if pinned { break }   // #165: a sheet that would not move; its owner moves instead
             if let ws = world.workspace(containing: r), !ws.floating.contains(r) { /* tiled: snap back */ } else { return }
         case .focusChanged(let r):
             if locked { return }
@@ -476,6 +489,7 @@ public actor WorldStore {
         var adopted = 0, vanished = 0
         // displays
         let sorted = s.displays.sorted { ($0.frame.minX, $0.frame.minY) < ($1.frame.minX, $1.frame.minY) }
+        let displaysChanged = !displays.isEmpty && displays != sorted
         displays = sorted
         let main = sorted.first(where: \.isMain)?.id ?? sorted.first?.id ?? ""
         if world.screens.isEmpty && !sorted.isEmpty {
@@ -492,6 +506,7 @@ public actor WorldStore {
         for w in s.windows {
             present.insert(w.ref)
             defer { lastSeen[w.ref] = w.frame }
+            _ = settleProbe(w.ref, at: w.frame)
             observed[w.ref] = w.frame
             bundleIDs[w.ref] = w.bundleID
             titles[w.ref] = w.title
@@ -532,10 +547,11 @@ public actor WorldStore {
                                                                              overrides: config.appCategories),
                                             order: config.categoryOrder, maxWorkspaces: config.maxWorkspaces)
                 if let b = w.bundleID, let landing { placements[b] = landing }
+                let popup = popupRequest(for: w, kind: kind)   // before `adopt`, which may move focus to it
                 world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent, workspace: landing)
                 adopted += 1
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
-                if kind == .ephemeral { centerEphemeral(w.ref, size: w.frame.size) }
+                if let popup { pendingPopups[w.ref] = popup; popups.insert(w.ref) }
             }
             let nowHidden = w.isMinimized || hiddenApps.contains(w.ref.pid)
             rehomeIfMacOSOwnsFrame(w, hidden: nowHidden)
@@ -566,11 +582,17 @@ public actor WorldStore {
                 } else { world.remove(gone) }
                 observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; intents.forget(gone)
                 refused[gone] = nil; suspectedRefusal[gone] = nil
+                forgetPopup(gone)
                 retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
             }
             if vanished > 0 { publishWriteProblems() }
+        }
+        // #165: a display came, went or changed size: every popup is clamped back inside its
+        // display once. A popup still waiting for its first placement keeps that instead.
+        if displaysChanged {
+            for r in popups where pendingPopups[r] == nil { pendingPopups[r] = PopupRequest(.clamp) }
         }
         // Reservations only have to survive the gap between `PersistedState.restore` and the first
         // snapshot: restore holds a workspace open for each remembered placement so its window can
@@ -1061,8 +1083,47 @@ public actor WorldStore {
         return best?.0 ?? world.focus.screen
     }
 
-    private var pendingCenter: [(WindowRef, CGSize)] = []
-    private func centerEphemeral(_ r: WindowRef, size: CGSize) { pendingCenter.append((r, size)) }
+    // MARK: dialogs and popups (#165)
+
+    /// A window seen for the first time that is a dialog or popup gets placed on the next pass:
+    /// an ephemeral visitor, a floating child window (an attached dialog or sheet, #134), or a
+    /// floating window that is not an app's main window (AX subrole other than `AXStandardWindow`:
+    /// a standalone alert or file panel). A standard window floated by a `[[float]]` rule is the
+    /// user's own window and is left where it opens.
+    private func popupRequest(for w: WindowSnapshot, kind: WindowKind) -> PopupRequest? {
+        switch kind {
+        case .ephemeral: break
+        case .float where w.parent != nil || !w.isStandard: break
+        default: return nil
+        }
+        return PopupRequest(.place, owner: w.parent ?? ownerHint(pid: w.ref.pid))
+    }
+
+    /// The window a popup with no AX parent most likely came from: the focused window if it is the
+    /// same app's, else that app's first window tiled in an active row.
+    private func ownerHint(pid: Int32) -> WindowRef? {
+        if let f = world.focus.window, f.pid == pid, world.location(of: f) != nil { return f }
+        return world.screenOrder.lazy.compactMap { self.world.screens[$0] }
+            .compactMap { s in self.world.tiled(in: s.active).first { $0.pid == pid } }.first
+    }
+
+    /// Checks an observed frame against a first placement written to an attached window. At the
+    /// frame we asked for, it moved: nothing more to learn. Still where it was, the write did not
+    /// take: a true sheet, from now on moved by moving its owner. True when it just learned that.
+    private func settleProbe(_ r: WindowRef, at f: CGRect) -> Bool {
+        guard let p = probes[r] else { return false }
+        func near(_ a: CGRect, _ b: CGRect) -> Bool { abs(a.minX - b.minX) <= 2 && abs(a.minY - b.minY) <= 2 }
+        guard !near(f, p.to) else { probes[r] = nil; return false }
+        probes[r] = nil
+        guard near(f, p.from) else { return false }   // somewhere else: the user or the app moved it
+        unmovable.insert(r)
+        Self.log.notice("sheet \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) did not move: its owner moves instead")
+        return true
+    }
+
+    private func forgetPopup(_ r: WindowRef) {
+        pendingPopups[r] = nil; popups.remove(r); probes[r] = nil; unmovable.remove(r)
+    }
 
     // MARK: reconcile
 
@@ -1102,9 +1163,14 @@ public actor WorldStore {
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         logUnresolvedLayouts()
-        let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
+        var desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
-                                         insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: refused)
+                                         insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: refused,
+                                         unmovable: unmovable)
+        // #165: the popups due a placement, and the requests they were placed for.
+        let placed = Reconciler.placePopups(pendingPopups, into: &desired, world: world, displays: displays,
+                                            observed: observed, parkedNow: parked, unmovable: unmovable)
+        let placing = pendingPopups.filter { placed.contains($0.key) }
         tiles = DropTarget.tiles(world: world, desired: desired)
         borders = findBorders(desired)
         // The grabbed border's highlight follows it to where this pass puts it.
@@ -1142,32 +1208,29 @@ public actor WorldStore {
             span.setAttribute(key: "animating", value: animating)
             if gen != generation { return }          // superseded: the deferred play still lands it
         }
-        // Drained *before* the loop, not after it: every iteration awaits, and a `return` from any
-        // of them (superseded mid-write) used to leave the queue full, so the next pass centred the
-        // same windows again — dragging an ephemeral window back to the middle of the screen long
-        // after it appeared there.
-        let toCenter = pendingCenter
-        pendingCenter = []
-        for (r, size) in toCenter {
-            let d = displays.first { $0.id == world.focus.screen } ?? displays.first
-            guard let d else { continue }
-            let f = Reconciler.centered(size: size, in: d.visibleFrame)
-            intents.record(.setFrame(r, f))
-            beginWrites(); frames += 1
-            let result = await backend.setFrame(r, f)
-            count(result)
-            if gen != generation { return }          // superseded mid-write: side tables belong to the newer pass
-            observed[r] = f
-            note(result, for: r)
+        let plan = Reconciler.plan(desired: desired, observed: observed, parkedNow: parked)
+        // #165: a popup already where its placement puts it is placed; one being written is placed
+        // once its write returns, superseded or not, so no later pass drags it back there after
+        // the user has moved it.
+        for r in placing.keys where !plan.contains(where: { if case .setFrame(r, _) = $0 { true } else { false } }) {
+            if pendingPopups[r] == placing[r] { pendingPopups[r] = nil }
         }
-        for w in Reconciler.plan(desired: desired, observed: observed, parkedNow: parked) {
+        for w in plan {
             intents.record(w)
             beginWrites()
             switch w {
             case .setFrame(let r, let f):
                 frames += 1
+                let from = observed[r]
                 let result = await backend.setFrame(r, f)
                 count(result)
+                if let request = placing[r] {
+                    if pendingPopups[r] == request { pendingPopups[r] = nil }
+                    // A first placement of an attached window is also the test of whether it moves.
+                    if request.mode == .place, world.owner(of: r) != nil, let from, !Reconciler.approx(from, f) {
+                        probes[r] = (from, f)
+                    }
+                }
                 if gen != generation { return }
                 observed[r] = f; parked.remove(r); prePark[r] = nil
                 note(result, for: r)
@@ -1237,7 +1300,7 @@ public actor WorldStore {
                                           workspaceWrap: config.workspaceWrap).0
             let desired = Reconciler.desired(world: next, displays: displays, config: layoutConfig,
                                              observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
-                                             insets: insets, refused: refused)
+                                             insets: insets, refused: refused, unmovable: unmovable)
             return transitions(next, to: shownRows(next, desired: desired, insets: insets), insets: insets)
         }
     }
@@ -1288,7 +1351,7 @@ public actor WorldStore {
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: observed, prePark: prePark, parkedNow: parked,
-                                         zeroSliver: [], insets: insets, refused: refused)
+                                         zeroSliver: [], insets: insets, refused: refused, unmovable: unmovable)
         for (ref, frame) in observed.sorted(by: { $0.key.id < $1.key.id }) {
             guard Reconciler.isBeyondReach(frame, displays: displays) else { continue }
             // #55: never write to a window on another Space. ponytail: only placed windows carry the
@@ -1328,6 +1391,7 @@ public actor WorldStore {
             Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.bundleIDs[r] ?? "-", privacy: .public) after 3 failed writes")
             world.remove(r); world.ignored.insert(r)
             observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r); refused[r] = nil; suspectedRefusal[r] = nil
+            forgetPopup(r)
             if lastRaised == r { lastRaised = nil }
             publishWriteProblems()
         }

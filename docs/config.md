@@ -233,6 +233,15 @@ while it has focus), `Fn+A`/`Fn+D` step past it, it moves and parks with its own
 place on it, moving either one to another workspace takes both, and closing it hands focus back
 to the owner.
 
+**Dialogs and popups stay on screen.** When a dialog, alert, file panel, attached dialog or
+ephemeral window first appears, it is centred on its owner's tile if it fits there, otherwise on
+the display, and then kept fully inside the display's usable area (menu bar and Dock excluded). It
+may overlap neighbouring tiles and the shell's panels to do so. A popup wider than the display is
+centred on it; one taller than the display is aligned to its top. This happens only when it
+appears and when the displays change, so a popup you move stays where you put it. A true sheet
+cannot be moved off its window's title bar: when one would hang off the display, its owner slides
+sideways just far enough to show it, and goes back to its tile when the sheet closes.
+
 **Order of the rows.** On every display, rows of a category in `category-order` sit at the top,
 in that order. Pinned rows and rows without a category keep their own order below them, and are
 never re-sorted, so a drag (#75) of one of those sticks. The category rows are sorted each time
@@ -265,8 +274,8 @@ Each entry matches windows by bundle id and, optionally, a regex against the win
 Config rules always win over SpacialShell's own heuristic window classifier (spec §7.3 rule 0),
 checked in this order: `ephemeral`, then `float`, then `ignore`, then `tile`.
 
-- **`ephemeral`** — Veshell's "visitor" windows: they belong to no workspace, are centred on the
-  focused screen when they appear, are never parked, and `Fn+A`/`Fn+D` skip over them entirely.
+- **`ephemeral`** — Veshell's "visitor" windows: they belong to no workspace, are centred when they
+  appear (on their owner's tile if they fit, else on the focused screen), are never parked, and `Fn+A`/`Fn+D` skip over them entirely.
   **Default** (used whenever `[[ephemeral]]` is absent from your config entirely):
   `com.apple.calculator`. Note this is a full **replacement**, not a merge — if you add your own
   `[[ephemeral]]` entries, Calculator stops being ephemeral unless you list it yourself. (System

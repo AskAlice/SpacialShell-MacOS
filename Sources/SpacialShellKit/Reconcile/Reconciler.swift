@@ -58,14 +58,7 @@ public struct Refusal: Sendable, Equatable {
         var f = tile
         if abs(size.width - tile.width) > tolerance { f.origin.x = tile.midX - size.width / 2; f.size.width = size.width }
         if abs(size.height - tile.height) > tolerance { f.origin.y = tile.midY - size.height / 2; f.size.height = size.height }
-        if let b = bounds {
-            func clamp(_ o: CGFloat, _ len: CGFloat, _ lo: CGFloat, _ hi: CGFloat) -> CGFloat {
-                len >= hi - lo ? lo + (hi - lo - len) / 2 : min(max(o, lo), hi - len)
-            }
-            f.origin.x = clamp(f.origin.x, f.width, b.minX, b.maxX)
-            f.origin.y = clamp(f.origin.y, f.height, b.minY, b.maxY)
-        }
-        return f
+        return bounds.map { Reconciler.keepInside(f, $0) } ?? f
     }
 }
 public enum Write: Sendable, Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint) }
@@ -85,7 +78,8 @@ public enum Reconciler {
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
                                parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
                                insets: [DisplayID: ShellInsets] = [:],
-                               suspended: Set<WindowRef> = [], refused: [WindowRef: Refusal] = [:]) -> [WindowRef: Placement] {
+                               suspended: Set<WindowRef> = [], refused: [WindowRef: Refusal] = [:],
+                               unmovable: Set<WindowRef> = []) -> [WindowRef: Placement] {
         var out: [WindowRef: Placement] = [:]
         let byId = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
         for (sid, screen) in world.screens {
@@ -134,8 +128,21 @@ public enum Reconciler {
                 // at the offset it had from the owner. A parked pair measures from where both were
                 // before parking, not from the corner macOS clamped them into.
                 func base(_ r: WindowRef) -> CGRect? { parkedNow.contains(r) ? prePark[r] ?? observed[r] : observed[r] }
+                func offsetOf(_ w: WindowRef, _ p: WindowRef) -> CGVector? {
+                    zip2(base(w), base(p)).map { CGVector(dx: $0.minX - $1.minX, dy: $0.minY - $1.minY) }
+                }
+                // #165: a sheet macOS will not let us move (bound to its owner's title bar) that
+                // would hang off the display moves its tiled owner sideways instead, just far
+                // enough, for as long as it is open. Measured before any sheet is placed, so every
+                // window attached to that owner follows the shifted tile.
+                for (w, p) in attached where unmovable.contains(w) && !ws.floating.contains(p) {
+                    guard case .frame(let f)? = out[p], let d = offsetOf(w, p), let size = observed[w]?.size else { continue }
+                    let dx = sheetShift(CGRect(x: f.minX + d.dx, y: f.minY + d.dy, width: size.width, height: size.height),
+                                        display: visible)
+                    if abs(dx) > 0.5 { out[p] = .frame(f.offsetBy(dx: dx, dy: 0)) }
+                }
                 for (w, p) in attached {
-                    let offset = zip2(base(w), base(p)).map { CGVector(dx: $0.minX - $1.minX, dy: $0.minY - $1.minY) }
+                    let offset = offsetOf(w, p)
                     let size = observed[w]?.size ?? fallbackSize
                     switch out[p] {
                     case .frame(let f)?:
@@ -212,6 +219,20 @@ public enum Reconciler {
     }
 
     private static func zip2<A, B>(_ a: A?, _ b: B?) -> (A, B)? { if let a, let b { (a, b) } else { nil } }
+
+    /// `frame` moved the least distance that puts it fully inside `bounds`, on each axis. On an
+    /// axis where it is longer than `bounds` it is centred on them, or with `topAlignTall`, a
+    /// too-tall frame is aligned to their top instead (#165: a popup's title bar stays reachable).
+    /// Shared by #164's refused tiles and #165's popups.
+    static func keepInside(_ frame: CGRect, _ bounds: CGRect, topAlignTall: Bool = false) -> CGRect {
+        func clamp(_ o: CGFloat, _ len: CGFloat, _ lo: CGFloat, _ hi: CGFloat, leading: Bool) -> CGFloat {
+            len >= hi - lo ? (leading ? lo : lo + (hi - lo - len) / 2) : min(max(o, lo), hi - len)
+        }
+        var f = frame
+        f.origin.x = clamp(frame.minX, frame.width, bounds.minX, bounds.maxX, leading: false)
+        f.origin.y = clamp(frame.minY, frame.height, bounds.minY, bounds.maxY, leading: topAlignTall)
+        return f
+    }
 
     static func centered(size: CGSize, in rect: CGRect) -> CGRect {
         CGRect(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2, width: size.width, height: size.height)
