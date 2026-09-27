@@ -6,9 +6,12 @@ public struct LayoutConfig: Sendable, Equatable {
     /// #124: between the row and the screen edge (`screen-gap`); `gap` unless set.
     public var screenGap: CGFloat
     /// #9: what a workspace's layout id means. Every caller builds this from the effective config,
-    /// so the #77 prediction and the real switch can never disagree about a layout.
+    /// so the #77 prediction and the real switch can never disagree about a layout. No default
+    /// (#177): a caller that leaves it out does not compile, rather than silently tiling with the
+    /// built-ins. The same holds for `ScreenShellState`, `ShellUI.state`, `SpatialView.state` and
+    /// `WireState`.
     public var layouts: LayoutCatalogue
-    public init(gap: CGFloat, screenGap: CGFloat? = nil, layouts: LayoutCatalogue = .builtins) {
+    public init(gap: CGFloat, screenGap: CGFloat? = nil, layouts: LayoutCatalogue) {
         self.gap = gap; self.screenGap = screenGap ?? gap; self.layouts = layouts
     }
 }

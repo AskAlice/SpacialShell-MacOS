@@ -16,7 +16,7 @@ import Foundation
     }
 
     @Test func railStepsToTheNeighbourAndStopsAtTheEnds() {
-        let s = ShellUI.state(for: "D1", in: world())!
+        let s = ShellUI.testState(for: "D1", in: world())!
         #expect(s.rail.count == 3 && s.rail[0].isActive)
         #expect(s.railScroll(1) == .focusWorkspaceID(s.rail[1].id))
         #expect(s.railScroll(-1) == nil)                       // top: no wrap, like Fn+W
@@ -26,26 +26,26 @@ import Foundation
     /// The target is by id, from this display's state: scrolling D2's rail switches D2 even while
     /// D1 has focus — `.focusWorkspace(.down)` would have moved D1.
     @Test func unfocusedDisplayScrollsItself() {
-        let s = ShellUI.state(for: "D2", in: world())!
+        let s = ShellUI.testState(for: "D2", in: world())!
         #expect(!s.isFocusedScreen)
         #expect(s.railScroll(1) == .focusWorkspaceID(s.rail[1].id))
     }
 
     @Test func tabsStepAndWrapLikeTheKeys() {
-        let s = ShellUI.state(for: "D1", in: world())!
+        let s = ShellUI.testState(for: "D1", in: world())!
         #expect(s.tabs.map(\.ref) == [a, b])
         #expect(s.tabScroll(1) == .focusWindowRef(b))
         #expect(s.tabScroll(-1) == .focusWindowRef(b))          // wraps, like Fn+A
         // A bar with no focused tab starts from its ends.
-        let other = ShellUI.state(for: "D2", in: world())!
+        let other = ShellUI.testState(for: "D2", in: world())!
         #expect(other.tabScroll(1) == .focusWindowRef(d) && other.tabScroll(-1) == .focusWindowRef(d))
         // A single focused tab has nowhere to go.
         var w = world(); w.focus = Focus(screen: "D2", window: d)
-        #expect(ShellUI.state(for: "D2", in: w)!.tabScroll(1) == nil)
+        #expect(ShellUI.testState(for: "D2", in: w)!.tabScroll(1) == nil)
     }
 
     @Test func layoutCyclesTheSwitcherAndWraps() {
-        let s = ShellUI.state(for: "D1", in: world())!
+        let s = ShellUI.testState(for: "D1", in: world())!
         let set = s.switcher.map(\.id), ws = s.rail[0].id
         #expect(set.first == s.shownLayout && set.count > 1)
         #expect(s.layoutScroll(1) == .setWorkspaceLayout(ws, set[1]))

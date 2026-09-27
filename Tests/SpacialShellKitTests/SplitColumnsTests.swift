@@ -79,7 +79,7 @@ import Foundation
         #expect(KeyBindings.command(named: "split-columns-more") == .adjustSplitColumns(1))
         #expect(KeyBindings.command(named: "split-columns-fewer") == .adjustSplitColumns(-1))
         #expect(!KeyBindings.table(for: Config()).values.contains(.adjustSplitColumns(1)), "unbound by default")
-        #expect(ShellUI.state(for: "D1", in: w)!.rail.first(where: \.isActive)!.splitColumns == SplitView.columnRange.upperBound)
+        #expect(ShellUI.testState(for: "D1", in: w)!.rail.first(where: \.isActive)!.splitColumns == SplitView.columnRange.upperBound)
     }
 
     @Test func portionsApplyWithinTheVisibleColumns() {

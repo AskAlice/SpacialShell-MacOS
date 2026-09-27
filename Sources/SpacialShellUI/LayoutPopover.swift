@@ -129,8 +129,11 @@ final class LayoutPopoverController {
 
     init(send: @escaping (Command) -> Void) {
         self.send = send
+        // Never shown: `toggle` renders the bar's real state before it orders the window front.
+        // The stand-in names its catalogue because nothing defaults one (#177).
         host = NSHostingView(rootView: LayoutPopoverView(
-            state: ScreenShellState(display: "", isFocusedScreen: false, rail: [], tabs: [], layout: .maximize),
+            state: ScreenShellState(display: "", isFocusedScreen: false, rail: [], tabs: [], layout: .maximize,
+                                    layouts: .builtins),
             send: { _ in }))
         window.contentView = host
         window.hasShadow = true

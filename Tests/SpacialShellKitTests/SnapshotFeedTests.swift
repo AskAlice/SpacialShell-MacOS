@@ -84,7 +84,7 @@ import SpacialShellProtocol
         var w = World.seeded(screens: ["D1"], config: Config())
         w.adopt(a, kind: .tile, on: "D1")
         w.adopt(b, kind: .tile, on: "D1")
-        let state = ShellUI.state(for: "D1", in: w, titles: [a: "Report — Pages"])
+        let state = ShellUI.testState(for: "D1", in: w, titles: [a: "Report — Pages"])
         #expect(state?.tabs.map(\.title) == ["Report — Pages", ""])
     }
 

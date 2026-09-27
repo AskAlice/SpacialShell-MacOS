@@ -25,7 +25,7 @@ import Foundation
         #expect(ws(w).windows == [a, s, b], "it still joins its owner's row, after the owner")
         #expect(w.owner(of: s) == a && w.owner(of: a) == nil && w.owner(of: b) == nil)
         #expect(w.tabs(in: ws(w)) == [a, b])
-        let ui = try #require(ShellUI.state(for: "D1", in: w))
+        let ui = try #require(ShellUI.testState(for: "D1", in: w))
         #expect(ui.tabs.map(\.ref) == [a, b])
         #expect(ui.tabs.first { $0.ref == a }?.isFocused == true, "the owner's tab lights while its sheet has focus")
     }
@@ -73,7 +73,7 @@ import Foundation
 
     func desired(_ w: World, observed: [WindowRef: CGRect], parkedNow: Set<WindowRef> = [],
                  prePark: [WindowRef: CGRect] = [:]) -> [WindowRef: Placement] {
-        Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 10), observed: observed,
+        Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 10), observed: observed,
                            prePark: prePark, parkedNow: parkedNow, zeroSliver: [])
     }
 

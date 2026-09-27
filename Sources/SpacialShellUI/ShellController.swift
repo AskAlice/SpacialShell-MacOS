@@ -126,7 +126,7 @@ public final class ShellController: NSObject {
             let id = DisplayTopology.uuid(for: nsScreen)
             guard let state = ShellUI.state(for: id, in: world, layouts: layouts, titles: titles, attention: attention) else { continue }
             seen.insert(id)
-            let p = panels[id] ?? makePanels(for: id)
+            let p = panels[id] ?? makePanels(for: state)
             panels[id] = p
 
             // NSScreen speaks bottom-left y-up; panels are placed directly in it, no flip needed.
@@ -233,11 +233,12 @@ public final class ShellController: NSObject {
         return CGRect(x: frame.minX + tile.minX, y: frame.maxY - tile.maxY, width: tile.width, height: tile.height)
     }
 
-    private func makePanels(for id: DisplayID) -> Panels {
-        let placeholder = ScreenShellState(display: id, isFocusedScreen: false, rail: [], tabs: [], layout: .maximize)
-        let railHost = NSHostingView(rootView: ScreenPanelView(state: placeholder, launcherURL: config.launcherURL,
+    /// `render` sets both roots right after; they start from the display's real state, not an
+    /// empty stand-in, so the panels never hold a catalogue other than the user's (#177).
+    private func makePanels(for state: ScreenShellState) -> Panels {
+        let railHost = NSHostingView(rootView: ScreenPanelView(state: state, launcherURL: config.launcherURL,
                                                                metaFor: appMeta.meta(for:), send: forward))
-        let barHost = NSHostingView(rootView: WorkspacePanelView(state: placeholder, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward))
+        let barHost = NSHostingView(rootView: WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing, send: forward))
         let rail = PanelWindow(); rail.contentView = railHost
         let bar = PanelWindow(); bar.contentView = barHost
         return Panels(rail: rail, railHost: railHost, bar: bar, barHost: barHost)

@@ -111,7 +111,7 @@ import Foundation
             }
             func macOSOwns(_ r: WindowRef) -> Bool { w.fullscreen.contains(r) || w.offSpace.contains(r) }
 
-            let desired = Reconciler.desired(world: w, displays: displays, config: LayoutConfig(gap: 8),
+            let desired = Reconciler.desired(world: w, displays: displays, config: LayoutConfig.test(gap: 8),
                                              observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
             let byId = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
 

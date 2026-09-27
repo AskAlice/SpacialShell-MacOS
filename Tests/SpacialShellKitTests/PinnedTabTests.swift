@@ -182,10 +182,10 @@ import SpacialShellProtocol
         var w = CommandRunner.apply(.togglePinRef(b), to: row(), in: .test()).0
         _ = w.leavePlaceholder(for: b, bundleID: "com.notes", title: "")
         w = CommandRunner.apply(.togglePinRef(c), to: w, in: .test()).0
-        let tabs = ShellUI.state(for: "D1", in: w)!.tabs
+        let tabs = ShellUI.testState(for: "D1", in: w)!.tabs
         #expect(tabs.map(\.isPinned) == [false, true, true])
         #expect(tabs.map(\.canClose) == [true, false, true])
-        let wire = WireState(world: w)
+        let wire = WireState.test(world: w)
         #expect(wire.screens[0].workspaces[0].windows.map { $0.isPinned } == [nil, true, true])
     }
 }

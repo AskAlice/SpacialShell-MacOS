@@ -24,7 +24,7 @@ import CoreGraphics
     }
 
     func state() throws -> SpatialState {
-        try #require(SpatialView.state(for: d, in: world(), titles: [c: "main.swift"],
+        try #require(SpatialView.state(for: d, in: world(), layouts: .builtins, titles: [c: "main.swift"],
                                        viewport: CGSize(width: 1600, height: 1000), gap: 0))
     }
 
@@ -56,8 +56,8 @@ import CoreGraphics
     }
 
     @Test func noViewportNoState() {
-        #expect(SpatialView.state(for: d, in: world(), viewport: .zero) == nil)
-        #expect(SpatialView.state(for: "elsewhere", in: world(), viewport: CGSize(width: 10, height: 10)) == nil)
+        #expect(SpatialView.state(for: d, in: world(), layouts: .builtins, viewport: .zero) == nil)
+        #expect(SpatialView.state(for: "elsewhere", in: world(), layouts: .builtins, viewport: CGSize(width: 10, height: 10)) == nil)
     }
 
     /// The camera centres the active row; moving a row moves it by exactly one row and a gap.

@@ -17,7 +17,7 @@ import Foundation
     func frame(_ p: Placement?) -> CGRect? { if case .frame(let f)? = p { f } else { nil } }
 
     @Test func screenGapInsetsTheRowAndGapSeparatesTiles() throws {
-        let d = Reconciler.desired(world: columns(), displays: [d1], config: LayoutConfig(gap: 10, screenGap: 30),
+        let d = Reconciler.desired(world: columns(), displays: [d1], config: LayoutConfig.test(gap: 10, screenGap: 30),
                                    observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
         let fa = try #require(frame(d[a])), fb = try #require(frame(d[b]))
         #expect(fa.minX == 30 && fa.minY == 25 + 30, "outer edge is the screen gap")
@@ -27,7 +27,7 @@ import Foundation
     }
 
     @Test func unsetScreenGapFollowsGap() {
-        #expect(LayoutConfig(gap: 12).screenGap == 12)
+        #expect(LayoutConfig(gap: 12, layouts: .builtins).screenGap == 12)
         #expect(Config().screenGap == nil && Config().outerGap == 8)
         var c = Config(); c.gap = 20
         #expect(c.outerGap == 20)
@@ -36,7 +36,7 @@ import Foundation
     }
 
     @Test func zeroScreenGapIsFlush() throws {
-        let d = Reconciler.desired(world: columns(), displays: [d1], config: LayoutConfig(gap: 10, screenGap: 0),
+        let d = Reconciler.desired(world: columns(), displays: [d1], config: LayoutConfig.test(gap: 10, screenGap: 0),
                                    observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
         let fa = try #require(frame(d[a]))
         #expect(fa.minX == 0 && fa.minY == 25)

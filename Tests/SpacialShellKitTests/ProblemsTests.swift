@@ -67,7 +67,7 @@ import SpacialShellProtocol
 
     @Test func wireStateCarriesProblemsAndOldPayloadsStillDecode() throws {
         let w = World.empty(screens: ["D1"], defaultLayout: .column)
-        let s = WireState(world: w, problems: [.configInvalid("x")])
+        let s = WireState.test(world: w, problems: [.configInvalid("x")])
         #expect(s.capabilities.contains("problems"))
         let json = try JSONValue(encoding: s)
         #expect(try json.decode(WireState.self) == s)

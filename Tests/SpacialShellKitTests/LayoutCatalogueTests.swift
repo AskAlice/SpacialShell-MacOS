@@ -152,7 +152,7 @@ import SpacialShellProtocol
         for r in refs { w.adopt(r, kind: .tile, on: "D1") }
         let focus = refs.randomElement(using: &rng)!
         w.screens["D1"]!.workspaces[0].anchor = focus
-        let desired = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 8, layouts: LayoutCatalogue(config: c)),
+        let desired = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 8, layouts: LayoutCatalogue(config: c)),
                                          observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
         let framed = refs.compactMap { r -> CGRect? in if case .frame(let f) = desired[r] { f } else { nil } }
         if case .frame = desired[focus] {} else { Issue.record("seed \(seed): focused window not framed") }
@@ -333,7 +333,7 @@ import SpacialShellProtocol
         for i in w.screens["D1"]!.workspaces.indices {
             w.screens["D1"]!.workspaces[i].id = UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", i + 1))!
         }
-        let now = WireState(world: w, bundleIDs: [WindowRef(id: 11, pid: 7): "com.example.app"])
+        let now = WireState.test(world: w, bundleIDs: [WindowRef(id: 11, pid: 7): "com.example.app"])
         #expect(now.screens == old.screens)
         // #109 `problems`, #117 `subscribe`; #131's verbs are appended after them.
         #expect(Array(now.capabilities.prefix(7)) == old.capabilities + ["layouts", "problems", "subscribe"])
@@ -375,23 +375,23 @@ import SpacialShellProtocol
     @Test func aDeletedLayoutKeepsItsIdAndSurfacesAWarning() throws {
         var w = World.empty(screens: ["D1"], defaultLayout: "code-3")
         w.adopt(WindowRef(id: 1, pid: 1), kind: .tile, on: "D1"); w.adopt(WindowRef(id: 2, pid: 1), kind: .tile, on: "D1")
-        let ui = try #require(ShellUI.state(for: "D1", in: w))
+        let ui = try #require(ShellUI.testState(for: "D1", in: w))
         #expect(ui.layout == "code-3")
         #expect(ui.layoutWarning == "layout \"code-3\" is missing — using maximize")
-        #expect(WireState(world: w).screens[0].workspaces[0].layout == "code-3")
+        #expect(WireState.test(world: w).screens[0].workspaces[0].layout == "code-3")
         // It draws maximize: the focused window framed, the other parked.
         let d1 = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1000, height: 700), visibleFrame: CGRect(x: 0, y: 0, width: 1000, height: 700), isMain: true)
-        let desired = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 10), observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
+        let desired = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 10), observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
         let framed = [WindowRef(id: 1, pid: 1), WindowRef(id: 2, pid: 1)].filter { if case .frame = desired[$0] { true } else { false } }
         #expect(framed.count == 1)
         // Restoring the layout restores the workspace, with no further action.
         var c = Config(); c.layouts = [LayoutDef(id: "code-3", name: "Code", body: .zones([LayoutZone(x: 0, y: 0, w: 0.5, h: 1), LayoutZone(x: 0.5, y: 0, w: 0.5, h: 1)]))]
-        #expect(ShellUI.state(for: "D1", in: w, layouts: LayoutCatalogue(config: c))?.layoutWarning == nil)
+        #expect(ShellUI.testState(for: "D1", in: w, layouts: LayoutCatalogue(config: c))?.layoutWarning == nil)
     }
 
     @Test func wireStateListsTheCatalogue() {
         var c = Config(); c.layouts = [columnZones(3)]
-        let s = WireState(world: World.empty(screens: ["D1"], defaultLayout: .maximize), layouts: LayoutCatalogue(config: c))
+        let s = WireState.test(world: World.empty(screens: ["D1"], defaultLayout: .maximize), layouts: LayoutCatalogue(config: c))
         #expect(s.capabilities.contains("layouts") && s.v == 2)
         #expect(s.layouts.last == WireState.LayoutDTO(id: "test", name: "Test", symbol: nil, builtin: false, zones: 3))
         #expect(s.layouts.first == WireState.LayoutDTO(id: "maximize", name: "Maximize", symbol: "rectangle", builtin: true, zones: nil))

@@ -17,7 +17,7 @@ import Foundation
         return w
     }
     func desired(_ w: World, refused: [WindowRef: Refusal]) -> [WindowRef: Placement] {
-        Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 10), observed: [:], prePark: [:],
+        Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 10), observed: [:], prePark: [:],
                            parkedNow: [], zeroSliver: [], refused: refused)
     }
 

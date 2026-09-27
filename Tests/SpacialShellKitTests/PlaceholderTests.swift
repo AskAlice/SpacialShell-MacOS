@@ -103,7 +103,7 @@ import SpacialShellProtocol
         // Even as the row's first tab, in maximize — the one-window layout it would crowd out.
         w.screens["D1"]!.workspaces[0].windows = [refs[0], a]
         w.normalize()
-        let desired = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 8), observed: [:], prePark: [:],
+        let desired = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 8), observed: [:], prePark: [:],
                                          parkedNow: [], zeroSliver: [])
         #expect(desired[refs[0]] == nil)
         if case .frame? = desired[a] {} else { Issue.record("the live window lost its tile to a placeholder: \(String(describing: desired[a]))") }
@@ -284,10 +284,10 @@ import SpacialShellProtocol
         #expect(rows.first { $0.window == refs[0] }?.bundleID == "com.term")
         #expect(rows.first { $0.window == a }?.isPlaceholder == nil)
         #expect(snapshot.titles[refs[0]] == "~/a — zsh")
-        let wire = WireState(world: w, bundleIDs: [a: "com.x"])
+        let wire = WireState.test(world: w, bundleIDs: [a: "com.x"])
         #expect(wire.screens[0].workspaces[0].windows.map { $0.isPlaceholder } == [nil, true])
 
-        let tabs = ShellUI.state(for: "D1", in: w, titles: snapshot.titles)!.tabs
+        let tabs = ShellUI.testState(for: "D1", in: w, titles: snapshot.titles)!.tabs
         #expect(tabs.map(\.isPlaceholder) == [false, true])
         #expect(tabs[1].title == "~/a — zsh")
     }

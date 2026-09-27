@@ -5,7 +5,7 @@ import Foundation
 @Suite struct ReconcilerTests {
     let d1 = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1000, height: 700), visibleFrame: CGRect(x: 0, y: 25, width: 1000, height: 675), isMain: true)
     let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1), c = WindowRef(id: 3, pid: 1)
-    let cfg = LayoutConfig(gap: 10)
+    let cfg = LayoutConfig.test(gap: 10)
 
     func world() -> World {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)

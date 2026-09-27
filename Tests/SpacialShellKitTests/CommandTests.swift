@@ -293,7 +293,7 @@ import Foundation
     /// the window is appended there.
     @Test func dragOntoAnotherBarsEmptySpaceAppendsThere() {
         var w = twoDisplays()
-        let bar = ShellUI.state(for: "D2", in: w)!
+        let bar = ShellUI.testState(for: "D2", in: w)!
         (w, _) = run(w, bar.endOfRowDrop(b))
         #expect(w.screens["D1"]!.active.windows == [a, c])
         #expect(w.screens["D2"]!.active.windows == [d, b])
@@ -303,7 +303,7 @@ import Foundation
     /// The same drop on the window's own bar is the old row-end reorder, focus untouched.
     @Test func dragOntoItsOwnBarsEmptySpaceStillReordersToTheEnd() {
         var w = twoDisplays()
-        let bar = ShellUI.state(for: "D1", in: w)!
+        let bar = ShellUI.testState(for: "D1", in: w)!
         #expect(bar.endOfRowDrop(a) == .moveWindowRefBefore(a, nil))
         (w, _) = run(w, bar.endOfRowDrop(a))
         #expect(w.screens["D1"]!.active.windows == [b, c, a])
@@ -330,7 +330,7 @@ import Foundation
         #expect(effects == [.relayout])
         let d1 = DisplayInfo(id: "D1", frame: CGRect(x: 0, y: 0, width: 1440, height: 900),
                              visibleFrame: CGRect(x: 0, y: 25, width: 1440, height: 875), isMain: true)
-        let desired = Reconciler.desired(world: out, displays: [d1], config: LayoutConfig(gap: 8),
+        let desired = Reconciler.desired(world: out, displays: [d1], config: LayoutConfig.test(gap: 8),
                                          observed: [:], prePark: [:], parkedNow: [], zeroSliver: [])
         if case .parked = desired[b] {} else { Issue.record("b should be parked, got \(String(describing: desired[b]))") }
     }
@@ -371,7 +371,7 @@ import Foundation
     /// The bar's end-of-row drop sends the non-following form, as the rail does.
     @Test func endOfRowDropDoesNotFollow() {
         let w = twoDisplays()
-        #expect(ShellUI.state(for: "D2", in: w)!.endOfRowDrop(b)
+        #expect(ShellUI.testState(for: "D2", in: w)!.endOfRowDrop(b)
                 == .moveWindowRefToWorkspace(b, w.screens["D2"]!.active.id, follow: false))
     }
 
@@ -469,14 +469,14 @@ import Foundation
     /// The rail's drop: land before the tile dropped on, "+" meaning last, within one display.
     @Test func railReorderLandsBeforeTheTargetTile() {
         let w = stack()
-        let rail = ShellUI.state(for: "D1", in: w)!
+        let rail = ShellUI.testState(for: "D1", in: w)!
         let ids = rail.rail.map(\.id)
         #expect(rail.railReorder(ids[2], before: ids[0]) == .moveWorkspace(ids[2], toIndex: 0))
         #expect(rail.railReorder(ids[0], before: ids[2]) == .moveWorkspace(ids[0], toIndex: 1))
         #expect(rail.railReorder(ids[0], before: ids[3]) == .moveWorkspace(ids[0], toIndex: 2))   // "+"
         #expect(rail.railReorder(ids[0], before: ids[0]) == nil)
         #expect(rail.railReorder(ids[0], before: ids[1]) == nil)   // already there
-        let other = ShellUI.state(for: "D2", in: w)!.rail[0].id
+        let other = ShellUI.testState(for: "D2", in: w)!.rail[0].id
         #expect(rail.railReorder(other, before: ids[0]) == nil)     // another display's tile
     }
 
@@ -634,7 +634,7 @@ extension CommandTests {
     /// Option on a tab-bar drop names the bar's own workspace, like its end-of-row drop.
     @Test func optionDropOnABarMovesTheAppThere() {
         let w = twoDisplays()
-        #expect(ShellUI.state(for: "D2", in: w)!.appDrop(b) == .moveAppRefToWorkspace(b, w.screens["D2"]!.active.id))
+        #expect(ShellUI.testState(for: "D2", in: w)!.appDrop(b) == .moveAppRefToWorkspace(b, w.screens["D2"]!.active.id))
     }
     @Test func moveAppWithNothingToMoveChangesNothing() {
         let w = single()

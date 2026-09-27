@@ -280,7 +280,7 @@ import SpacialShellProtocol
         #expect(missing.shownLayout == .maximize && missing.switcher.map(\.id) == cat.bar)
         #expect(missing.layoutWarning == "layout \"gone\" is missing — using maximize")
         // No file layouts, no "From config.toml" section.
-        #expect(ScreenShellState(display: "D1", isFocusedScreen: true, rail: [], tabs: [], layout: .grid)
+        #expect(ScreenShellState(display: "D1", isFocusedScreen: true, rail: [], tabs: [], layout: .grid, layouts: .builtins)
             .menuSections.map(\.title) == ["Built-in"])
     }
 
@@ -289,7 +289,7 @@ import SpacialShellProtocol
     @Test func setLayoutTargetsTheFocusedWorkspaceAndRefusesUnknownIds() {
         var c = Config(); c.layouts = [drawn("code-3", GridEditor.Preset.one.zones)]
         let w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
-        let wire = WireState(world: w, layouts: LayoutCatalogue(config: c))
+        let wire = WireState.test(world: w, layouts: LayoutCatalogue(config: c))
         let focused = w.screens[w.focus.screen]!.active.id
         #expect(wire.setLayout("code-3", workspace: nil) == .success(.setWorkspaceLayout(focused, "code-3")))
         let other = w.screens[w.focus.screen == "D1" ? "D2" : "D1"]!.active.id

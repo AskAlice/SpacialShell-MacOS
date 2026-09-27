@@ -30,7 +30,7 @@ import UniformTypeIdentifiers
                    WorkspaceRailItem(id: UUID(), index: 1, name: "New", symbol: "plus",
                                      windowCount: 0, windows: [],
                                      isActive: false, isPinned: false, isTrailingEmpty: true)],
-            tabs: [], layout: .split)
+            tabs: [], layout: .split, layouts: .builtins)
     }
 
     func barState() -> ScreenShellState {
@@ -38,7 +38,7 @@ import UniformTypeIdentifiers
             display: "D1", isFocusedScreen: true, rail: railState().rail,
             tabs: [WindowTabItem(ref: WindowRef(id: 1, pid: 1), isFocused: true,
                                  isFloating: false, isHidden: false)],
-            layout: .split)
+            layout: .split, layouts: .builtins)
     }
 
     /// Every dragged type registered anywhere in the hosted hierarchy.

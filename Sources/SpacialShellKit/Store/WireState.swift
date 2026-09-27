@@ -68,7 +68,7 @@ public struct WireState: Codable, Equatable, Sendable {
     /// still gets every workspace, just with anonymous windows.
     public init(world: World, bundleIDs: [WindowRef: String] = [:],
                 parked: Set<WindowRef> = [], observed: [WindowRef: CGRect] = [:],
-                layouts: LayoutCatalogue = .builtins, problems: [Problem] = []) {
+                layouts: LayoutCatalogue, problems: [Problem] = []) {
         self.problems = problems
         self.layouts = layouts.all.map { d in
             var zones: Int?

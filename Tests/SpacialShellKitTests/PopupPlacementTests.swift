@@ -86,7 +86,7 @@ import Foundation
         return w
     }
     func desired(_ w: World, observed: [WindowRef: CGRect], unmovable: Set<WindowRef> = []) -> [WindowRef: Placement] {
-        Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 8), observed: observed, prePark: [:],
+        Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 8), observed: observed, prePark: [:],
                            parkedNow: [], zeroSliver: [], unmovable: unmovable)
     }
     func tileB() throws -> CGRect {
@@ -132,7 +132,7 @@ import Foundation
 
     func place(_ requests: [WindowRef: PopupRequest], _ w: World, observed: [WindowRef: CGRect],
                parkedNow: Set<WindowRef> = []) -> ([WindowRef: Placement], Set<WindowRef>) {
-        var d = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig(gap: 8), observed: observed, prePark: [:],
+        var d = Reconciler.desired(world: w, displays: [d1], config: LayoutConfig.test(gap: 8), observed: observed, prePark: [:],
                                    parkedNow: parkedNow, zeroSliver: [])
         let placed = Reconciler.placePopups(requests, into: &d, world: w, displays: [d1], observed: observed, parkedNow: parkedNow)
         return (d, placed)

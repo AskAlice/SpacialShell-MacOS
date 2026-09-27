@@ -26,7 +26,7 @@ import SwiftUI
             rail: [WorkspaceRailItem(id: UUID(), index: 0, name: "Code", symbol: "terminal",
                                      windowCount: 1, windows: [WindowRef(id: 1, pid: 1)],
                                      isActive: true, isPinned: false, isTrailingEmpty: false)],
-            tabs: [], layout: .split)
+            tabs: [], layout: .split, layouts: .builtins)
     }
 
     func trackingAreaCount(_ v: NSView) -> Int {

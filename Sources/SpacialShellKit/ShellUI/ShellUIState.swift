@@ -108,7 +108,7 @@ public struct ScreenShellState: Equatable, Sendable {
     /// The same list on every display — hidden windows and popups are the user's, not a screen's.
     public let tray: [WindowRef]
     public init(display: DisplayID, isFocusedScreen: Bool, rail: [WorkspaceRailItem],
-                tabs: [WindowTabItem], layout: LayoutID, layouts catalogue: LayoutCatalogue = .builtins,
+                tabs: [WindowTabItem], layout: LayoutID, layouts catalogue: LayoutCatalogue,
                 tray: [WindowRef] = []) {
         self.display = display; self.isFocusedScreen = isFocusedScreen
         self.rail = rail; self.tabs = tabs; self.layout = layout; self.tray = tray
@@ -200,7 +200,7 @@ public enum ShellUI {
     /// `titles` is the snapshot feed's (`ShellSnapshot.titles`): the model carries no titles.
     /// `attention` is `AttentionTracker.wanting` (#126): pids, since the Dock speaks per app.
     public static func state(for display: DisplayID, in world: World,
-                             layouts: LayoutCatalogue = .builtins,
+                             layouts: LayoutCatalogue,
                              titles: [WindowRef: String] = [:],
                              attention: Set<Int32> = []) -> ScreenShellState? {
         guard let screen = world.screens[display] else { return nil }

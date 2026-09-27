@@ -122,7 +122,7 @@ enum Stories {
     }
 
     static func rail(_ items: [WorkspaceRailItem], tray: [SpacialShellProtocol.WindowRef] = []) -> ScreenShellState {
-        ScreenShellState(display: "D1", isFocusedScreen: true, rail: items, tabs: [], layout: .split, tray: tray)
+        ScreenShellState(display: "D1", isFocusedScreen: true, rail: items, tabs: [], layout: .split, layouts: .builtins, tray: tray)
     }
     /// `pids` are the apps actually in the row — the rail draws one icon each and derives the
     /// category label from them, so a story without pids is a workspace of unknown apps.
@@ -192,7 +192,7 @@ enum Stories {
         let titles = [s1: "Pull requests · AskAlice/SpacialShell-MacOS", s2: "developer.apple.com — AXUIElement",
                       v: "SpatialView.swift — spacial-shell", t1: "~/code/spacial-shell — zsh", t2: "~/Downloads — zsh",
                       chat: "#general", n1: "Shopping list", n2: "Ideas"]
-        return SpatialView.state(for: d, in: world, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
+        return SpatialView.state(for: d, in: world, layouts: .builtins, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
     }
     /// #128: a placeholder tab for app `pid` — a negative pid, as `WindowRef.placeholderPid` gives.
     static func placeholder(_ pid: Int32, window: Int = 0, title: String = "", pinned: Bool = false) -> WindowTabItem {

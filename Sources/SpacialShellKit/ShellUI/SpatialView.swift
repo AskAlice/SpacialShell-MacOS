@@ -58,7 +58,7 @@ public struct SpatialState: Equatable, Sendable {
 public enum SpatialView {
     /// `viewport` is the display's tiling rect size (what the layout divides), in points, and
     /// `gap` the configured gap — so a mini-desktop is that screen at a smaller scale.
-    public static func state(for display: DisplayID, in world: World, layouts: LayoutCatalogue = .builtins,
+    public static func state(for display: DisplayID, in world: World, layouts: LayoutCatalogue,
                              titles: [WindowRef: String] = [:], viewport: CGSize, gap: CGFloat = 8) -> SpatialState? {
         guard let screen = world.screens[display], viewport.width > 0, viewport.height > 0 else { return nil }
         let rect = CGRect(origin: .zero, size: viewport)

@@ -132,7 +132,7 @@ import Foundation
         var w = base()
         (w, _) = run(w, .setWorkspaceCategory(rows(w)[0].id, .terminal))
         (w, _) = run(w, .setWorkspaceLayout(rows(w)[0].id, .split))
-        let item = ShellUI.state(for: "D1", in: w)!.rail[0]
+        let item = ShellUI.testState(for: "D1", in: w)!.rail[0]
         #expect(item.category == .terminal && item.layout == .split)
     }
 }

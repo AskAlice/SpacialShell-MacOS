@@ -12,12 +12,12 @@ import Foundation
     }
 
     @Test func railMirrorsTheStack() {
-        let s = ShellUI.state(for: "D1", in: base())!
+        let s = ShellUI.testState(for: "D1", in: base())!
         #expect(s.rail.count == 2)                                  // occupied + trailing empty
         #expect(s.rail[0].isActive && s.rail[0].windowCount == 2)
         #expect(!s.rail[1].isActive && s.rail[1].isTrailingEmpty)
         #expect(s.isFocusedScreen)
-        #expect(!ShellUI.state(for: "D2", in: base())!.isFocusedScreen)
+        #expect(!ShellUI.testState(for: "D2", in: base())!.isFocusedScreen)
     }
 
     @Test func pinnedEmptyIsNotDrawnAsTheWayDown() {
@@ -26,7 +26,7 @@ import Foundation
         w.screens["D1"]!.workspaces[0].windows = []
         w.screens["D1"]!.workspaces[0].floating = []
         w.normalize()
-        let s = ShellUI.state(for: "D1", in: w)!
+        let s = ShellUI.testState(for: "D1", in: w)!
         #expect(s.rail.first!.isPinned && !s.rail.first!.isTrailingEmpty)
         #expect(s.rail.last!.isTrailingEmpty)
     }
@@ -34,7 +34,7 @@ import Foundation
     @Test func tabsCarryFlagsForTheActiveRow() {
         var w = base()
         w.setHidden(a, true)
-        let s = ShellUI.state(for: "D1", in: w)!
+        let s = ShellUI.testState(for: "D1", in: w)!
         #expect(s.tabs.map(\.ref) == [a, b])
         #expect(s.tabs[0].isHidden && !s.tabs[0].isFocused)
         #expect(s.tabs[1].isFloating && s.tabs[1].isFocused)        // focus fell to b when a hid
@@ -45,13 +45,13 @@ import Foundation
     @Test func tabsMarkOffSpaceWindows() {
         var w = base()
         w.setOnActiveSpace(a, false)
-        let s = ShellUI.state(for: "D1", in: w)!
+        let s = ShellUI.testState(for: "D1", in: w)!
         #expect(s.tabs[0].isOffSpace && !s.tabs[0].isHidden && !s.tabs[0].isFullscreen)
         #expect(!s.tabs[1].isOffSpace)
     }
 
     @Test func unknownDisplayIsNil() {
-        #expect(ShellUI.state(for: "nope", in: base()) == nil)
+        #expect(ShellUI.testState(for: "nope", in: base()) == nil)
     }
 
     /// #29: the dimmed cheat sheet is on the focused display only, only while its workspace is
@@ -197,7 +197,7 @@ import Foundation
         var cfg = Config(); cfg.panelWidth = 48; cfg.panelHeight = 34
         func rect(_ world: World) -> Placement? {
             let insets = ["D1": ShellInsets(config: cfg, hidden: world.zen)]
-            return Reconciler.desired(world: world, displays: [display], config: LayoutConfig(gap: 8),
+            return Reconciler.desired(world: world, displays: [display], config: LayoutConfig.test(gap: 8),
                                       observed: [:], prePark: [:], parkedNow: [], zeroSliver: [],
                                       insets: insets)[a]
         }
@@ -249,8 +249,8 @@ import Foundation
         // Hidden in rail order (D1 ws0, D1 ws1, D2), then popups: p by its owner d, q last.
         #expect(ShellUI.tray(in: w) == [b, c, d, p, q])
         // The same list on every display.
-        #expect(ShellUI.state(for: "D1", in: w)!.tray == [b, c, d, p, q])
-        #expect(ShellUI.state(for: "D2", in: w)!.tray == [b, c, d, p, q])
+        #expect(ShellUI.testState(for: "D1", in: w)!.tray == [b, c, d, p, q])
+        #expect(ShellUI.testState(for: "D2", in: w)!.tray == [b, c, d, p, q])
     }
 
     @Test func emptyWhenNothingIsOutOfReach() {

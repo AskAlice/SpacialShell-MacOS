@@ -110,10 +110,10 @@ import CoreGraphics
                 Workspace(name: "C", layout: .maximize)], activeIndex: 0)],
             screenOrder: [s], focus: Focus(screen: s, window: notes),
             ephemeral: [], ignored: [], hidden: [], parents: [:], defaultLayout: .maximize)
-        let state = ShellUI.state(for: s, in: world, attention: [20, 10])!
+        let state = ShellUI.testState(for: s, in: world, attention: [20, 10])!
         #expect(state.rail.map(\.wantsAttention) == [true, true, false])
         #expect(state.tabs.map(\.wantsAttention) == [true, false])
-        #expect(ShellUI.state(for: s, in: world)!.rail.allSatisfy { !$0.wantsAttention })
+        #expect(ShellUI.testState(for: s, in: world)!.rail.allSatisfy { !$0.wantsAttention })
     }
 
     // MARK: config

@@ -32,7 +32,7 @@ import SpacialShellProtocol
         var dispatch: IPCDispatch {
             IPCDispatch(
                 version: "test",
-                wireState: { WireState(world: self.world) },
+                wireState: { WireState.test(world: self.world) },
                 run: { command in
                     self.lock.withLock {
                         let outcome = CommandRunner.run(command, on: self._world, in: .test())
@@ -183,7 +183,7 @@ import SpacialShellProtocol
         #expect(!unknown.ok && unknown.error == "unknown cmd teleport")
         #expect(!caps.contains("teleport"))
         // The state payload carries the same list the snapshot feed does.
-        #expect(WireState(world: world()).capabilities == caps)
+        #expect(WireState.test(world: world()).capabilities == caps)
     }
 
     @Test func versionAndStateAnswer() async throws {
