@@ -3,6 +3,7 @@ import Testing
 import Foundation
 import AppKit
 @testable import SpacialShellPlatform
+import SpacialShellKit
 
 @Suite struct ClassifierCorpusTests {
     /// Tests/SpacialShellPlatformTests/ClassifierCorpusTests.swift -> repo root
@@ -50,6 +51,27 @@ import AppKit
             if (try u.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true { try walk(u, f) }
             else if u.pathExtension != "md" { try f(u) }
         }
+    }
+
+    /// #176: Brave's other channels (Origin, Beta, Nightly) are Brave. Under `com.brave.Browser.origin`
+    /// the recorded PiP window was a floating tab that could not be focused; it must stay ignored,
+    /// and an ordinary window must still tile.
+    @Test(arguments: ["com.brave.Browser.origin", "com.brave.Browser.beta", "com.brave.Browser.nightly"])
+    func braveChannelsClassifyAsBrave(bundleID: String) throws {
+        func kind(_ dump: String) throws -> WindowKind {
+            let file = Self.root.appendingPathComponent("axDumps/\(dump).json5")
+            let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file), options: [.json5Allowed]) as! [String: Any]
+            let json = Json.newOrDieRecursive(raw).asDictOrDie
+            return WindowClassifier.kind(
+                axWindow: json,
+                axApp: json["Aero.AXApp"]!.asDictOrDie,
+                bundleID: bundleID,
+                activationPolicy: .regular,
+                windowLevel: json["Aero.windowLevel"].map { MacOsWindowLevel.fromJson($0) ?? dieT() },
+            )
+        }
+        #expect(try kind("brave_pip") == .ignore, "Picture in Picture is not a window")
+        #expect(try kind("brave") == .tile)
     }
 
     @Test func kindMappingIsFixed() {

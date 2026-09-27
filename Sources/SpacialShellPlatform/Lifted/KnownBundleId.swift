@@ -34,6 +34,15 @@ enum KnownBundleId: String, Equatable {
     case vscode = "com.microsoft.VSCode"
     case vscodium = "com.vscodium"
 
+    /// A bundle id as the classifier should see it: an app's other release channels get its rules
+    /// (#176: Brave Origin, `com.brave.Browser.origin`, was not Brave, so its Picture in Picture
+    /// window became a floating tab).
+    init?(bundleID: String) {
+        if let known = KnownBundleId(rawValue: bundleID) { self = known; return }
+        if bundleID.hasPrefix(Self.braveBrowser.rawValue + ".") { self = .braveBrowser; return }
+        return nil
+    }
+
     var isFirefox: Bool {
         self == .mozillaFirefox
             || self == .mozillaFirefoxDeveloperEdition

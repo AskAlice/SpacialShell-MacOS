@@ -28,7 +28,7 @@ enum WindowClassifier {
     ) -> WindowKind {
         kind(for: axWindow.getWindowType(
             axApp: axApp,
-            bundleID.flatMap { KnownBundleId(rawValue: $0) },
+            bundleID.flatMap { KnownBundleId(bundleID: $0) },
             activationPolicy,
             windowLevel,
         ))
