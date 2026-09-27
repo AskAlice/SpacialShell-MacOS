@@ -97,7 +97,12 @@ final class RailHoverController {
         shown = item.id
         shownIndex = item.index
 
-        let apps = distinctApps(item, metaFor: metaFor)
+        // #183: named as the spatial view names the row.
+        let title = AppCategories.rowTitle(
+            name: item.name,
+            category: AppCategories.rowCategory(item.category, windows: item.windows) { metaFor($0).category },
+            isTrailingEmpty: item.isTrailingEmpty)
+        let subtitle = self.subtitle(item)
         let thumbs = WindowThumbnails.shared
         // #128: a placeholder has no window to picture — and its id is its own, so a thumbnail
         // cached under the same number belongs to some real window. It shows its app's icon.
@@ -107,7 +112,7 @@ final class RailHoverController {
                                      image: ref.isPlaceholder ? nil : thumbs.image(for: ref.id))
         }
         let card = content(for: item, items: items)
-        render(title: title(item), subtitle: subtitle(item, apps: apps), content: card)
+        render(title: title, subtitle: subtitle, content: card)
         place(near: tile, railSide: railSide, bounds: bounds)
         appear("workspace \(item.index + 1)")
 
@@ -124,8 +129,7 @@ final class RailHoverController {
             guard !Task.isCancelled, let self, self.shown == item.id else { return }
             var filled = items
             for i in filled.indices where !filled[i].ref.isPlaceholder { filled[i].image = thumbs.image(for: filled[i].ref.id) }
-            self.render(title: self.title(item), subtitle: self.subtitle(item, apps: apps),
-                        content: .previews(filled))
+            self.render(title: title, subtitle: subtitle, content: .previews(filled))
         }
     }
 
@@ -370,21 +374,10 @@ final class RailHoverController {
         return .previews(items)
     }
 
-    private func title(_ item: WorkspaceRailItem) -> String {
-        item.isTrailingEmpty ? "New workspace" : "\(item.name) (\(item.index + 1))"
-    }
-
-    private func subtitle(_ item: WorkspaceRailItem, apps: [AppMeta]) -> String? {
+    /// The window count. The category is the title now (#183), so it is not repeated here.
+    private func subtitle(_ item: WorkspaceRailItem) -> String? {
         if item.isTrailingEmpty { return nil }
-        let count = item.windowCount == 1 ? "1 window" : "\(item.windowCount) windows"
-        // #112: a category the row carries (set by the user or by routing) is its identity.
-        guard let label = (item.category ?? AppCategories.summarise(apps.map(\.category)))?.label else { return count }
-        return "\(count) · \(label)"
-    }
-
-    private func distinctApps(_ item: WorkspaceRailItem, metaFor: (Int32) -> AppMeta) -> [AppMeta] {
-        var seen: Set<Int32> = []
-        return item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid) : nil }
+        return item.windowCount == 1 ? "1 window" : "\(item.windowCount) windows"
     }
 
     /// Beside the tile, on the side the rail is not: vertically centred on the tile, then nudged

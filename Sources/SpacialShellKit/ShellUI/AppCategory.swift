@@ -1,4 +1,5 @@
 import Foundation
+import SpacialShellProtocol
 
 /// What kind of work an app is for, as the rail labels a workspace.
 ///
@@ -131,5 +132,26 @@ public enum AppCategories {
         for c in known { counts[c, default: 0] += 1 }
         let best = counts.values.max()!
         return known.first { counts[$0] == best }
+    }
+}
+
+// MARK: - #183: what a workspace row is called
+
+extension AppCategories {
+    /// The category a row is drawn as: its own (#112 "Set category", or routing's #74), else the
+    /// one its apps add up to. Nil when neither says anything.
+    public static func rowCategory(_ own: AppCategory?, windows: [WindowRef],
+                                   categoryOf: (Int32) -> AppCategory?) -> AppCategory? {
+        own ?? summarise(RailTile.distinctApps(windows).map(categoryOf))
+    }
+
+    /// The title a row goes by wherever it has room for one: the spatial view's label and the
+    /// rail's hover card, which must never disagree. Its category, capitalised ("Web browsing"),
+    /// else the stored name; the trailing empty row is "New workspace". No row number: the
+    /// spatial view draws that on its own, and the card sits beside the tile it describes.
+    public static func rowTitle(name: String, category: AppCategory?, isTrailingEmpty: Bool) -> String {
+        if isTrailingEmpty { return "New workspace" }
+        guard let label = category?.label else { return name }
+        return label.prefix(1).uppercased() + label.dropFirst()
     }
 }

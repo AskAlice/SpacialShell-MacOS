@@ -54,4 +54,23 @@ import Testing
         #expect(AppCategories.summarise([.web, .coding]) == .web)
         #expect(AppCategories.summarise([.coding, .web]) == .coding)
     }
+
+    /// #183: the one name a row goes by, on the hover card and in the spatial view alike. Its
+    /// category, capitalised; else its stored name; never a row number.
+    @Test func aRowIsTitledByItsCategoryElseItsName() {
+        #expect(AppCategories.rowTitle(name: "Code", category: .web, isTrailingEmpty: false) == "Web browsing")
+        #expect(AppCategories.rowTitle(name: "Code", category: .terminal, isTrailingEmpty: false) == "Terminal")
+        #expect(AppCategories.rowTitle(name: "Code", category: nil, isTrailingEmpty: false) == "Code")
+        #expect(AppCategories.rowTitle(name: "Workspace", category: .web, isTrailingEmpty: true) == "New workspace")
+    }
+
+    /// A category the row carries is its identity; otherwise its apps decide, one vote per app.
+    @Test func aRowsCategoryIsItsOwnElseItsAppsSummarised() {
+        let windows = [WindowRef(id: 1, pid: 1), WindowRef(id: 2, pid: 1), WindowRef(id: 3, pid: 1),
+                       WindowRef(id: 4, pid: 2), WindowRef(id: 5, pid: 3)]
+        let categoryOf: (Int32) -> AppCategory? = { [1: .web, 2: .coding, 3: .coding][$0] }
+        #expect(AppCategories.rowCategory(nil, windows: windows, categoryOf: categoryOf) == .coding)
+        #expect(AppCategories.rowCategory(.media, windows: windows, categoryOf: categoryOf) == .media)
+        #expect(AppCategories.rowCategory(nil, windows: [], categoryOf: categoryOf) == nil)
+    }
 }

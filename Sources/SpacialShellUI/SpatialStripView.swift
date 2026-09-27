@@ -72,12 +72,12 @@ struct SpatialStripView: View {
     // MARK: the label
 
     private func category(_ row: SpatialRow) -> AppCategory? {
-        row.category ?? AppCategories.summarise(RailTile.distinctApps(row.windows).map { metaFor($0).category })
+        AppCategories.rowCategory(row.category, windows: row.windows) { metaFor($0).category }
     }
 
     private func label(_ row: SpatialRow) -> some View {
         let c = category(row)
-        let title = row.isTrailingEmpty ? "New workspace" : (c.map { $0.label.prefix(1).uppercased() + $0.label.dropFirst() } ?? row.name)
+        let title = AppCategories.rowTitle(name: row.name, category: c, isTrailingEmpty: row.isTrailingEmpty)
         return VStack(alignment: .trailing, spacing: 3) {
             Text("\(row.index + 1)")
                 .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())

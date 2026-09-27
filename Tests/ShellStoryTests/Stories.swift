@@ -334,7 +334,7 @@ enum Stories {
                                      name: m.name, icon: m.icon, image: image)
         }
         add("rail-hover-previews", nil, RailHoverCard(
-            title: "Code (1)", subtitle: "3 windows · coding",
+            title: "Coding", subtitle: "3 windows",
             content: .previews([preview(5, image: shot(.systemPink)),
                                 preview(3, image: shot(.systemGray)),
                                 preview(1, image: shot(.systemBlue))]),
@@ -353,7 +353,7 @@ enum Stories {
             WindowThumbnails.downscale(capture(color)).map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
         }
         add("rail-hover-cached", nil, RailHoverCard(
-            title: "Code (1)", subtitle: "3 windows · coding",
+            title: "Coding", subtitle: "3 windows",
             content: .previews([preview(5, image: cached(.systemPink)),
                                 preview(3, image: cached(.systemGray)),
                                 preview(1, image: nil)]),
@@ -361,27 +361,28 @@ enum Stories {
         // #182: a window whose app has quit — no picture, no icon, no name — still draws an app
         // glyph, never a blank grey box.
         add("rail-hover-app-gone", nil, RailHoverCard(
-            title: "Code (1)", subtitle: "2 windows · coding",
+            title: "Coding", subtitle: "2 windows",
             content: .previews([preview(5, image: nil),
                                 WindowPreviewItem(ref: WindowRef(id: 990, pid: 99), name: "App", icon: nil, image: nil)]),
             onGrantAccess: {}))
         // One window gets the big frame; the capture has not landed yet on the second tile, so
-        // this also covers the icon placeholder.
+        // this also covers the icon placeholder. #183: every card is titled by the row's category,
+        // as the spatial view titles it, and the subtitle is just the count.
         add("rail-hover-one-window", nil, RailHoverCard(
-            title: "Web (2)", subtitle: "1 window · web browsing",
+            title: "Web browsing", subtitle: "1 window",
             content: .previews([preview(1, image: shot(.systemBlue))]),
             onGrantAccess: {}))
         // More than the card draws, plus a name that has to truncate under its miniature.
         add("rail-hover-overflow", nil, RailHoverCard(
-            title: "Everything (1)", subtitle: "8 windows · coding",
+            title: "Coding", subtitle: "8 windows",
             content: .previews((0..<8).map { preview(Int32($0 % 6) + 1, image: $0 < 4 ? shot(.systemTeal) : nil) }),
             onGrantAccess: {}), truncates: true)
         // The state every Mac without the grant is in — never blank boxes.
         add("rail-hover-needs-screen-recording", nil, RailHoverCard(
-            title: "Code (1)", subtitle: "3 windows · coding",
+            title: "Coding", subtitle: "3 windows",
             content: .needsScreenRecording, onGrantAccess: {}))
         add("rail-hover-empty", nil, RailHoverCard(
-            title: "Chat (1)", subtitle: "0 windows",
+            title: "Chat", subtitle: "0 windows",
             content: .message("Nothing here yet. Drop a tab on this tile, or open something from the launcher."),
             onGrantAccess: {}))
         add("rail-hover-new-workspace", nil, RailHoverCard(

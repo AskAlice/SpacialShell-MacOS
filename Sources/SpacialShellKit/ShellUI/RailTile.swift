@@ -68,7 +68,7 @@ public enum RailTile {
     /// The category a row is drawn as: its own (#112 "Set category", or routing's), else the one
     /// its apps add up to. Nil when neither says anything.
     public static func category(of item: WorkspaceRailItem, categoryOf: (Int32) -> AppCategory?) -> AppCategory? {
-        item.category ?? AppCategories.summarise(distinctApps(item.windows).map(categoryOf))
+        AppCategories.rowCategory(item.category, windows: item.windows, categoryOf: categoryOf)
     }
 
     /// What `item` draws in `style`.
