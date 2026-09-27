@@ -15,52 +15,6 @@ public struct LayoutConfig: Sendable, Equatable {
 
 public enum Placement: Sendable, Equatable { case frame(CGRect), parked(CGPoint), untouched }
 
-/// #125 (M4 G12): a window that came back smaller than the frame we asked for — a maximum size,
-/// or an app that refuses resizes. It holds only for the frame it was learned on: a new tile is
-/// asked for in full, so a window that merely snaps to its own increments (a terminal's cell grid)
-/// is never kept small, and a window that can now grow does.
-public struct Refusal: Sendable, Equatable {
-    public var asked: CGRect
-    public var size: CGSize
-    public init(asked: CGRect, size: CGSize) { self.asked = asked; self.size = size }
-    /// The echo of our own `setFrame(asked)`: a refusal when its size doesn't equal what was
-    /// asked on either axis. Smaller is a window that can't grow to its tile; bigger (#164) is an
-    /// app minimum wider or taller than its tile. Either way it is centred on the tile.
-    public init?(asked: CGRect, got: CGRect, tolerance: CGFloat = 1) {
-        guard abs(got.width - asked.width) > tolerance || abs(got.height - asked.height) > tolerance else { return nil }
-        self.init(asked: asked, size: got.size)
-    }
-
-    /// #164: the same refusal twice: the same tile asked for, and (within a couple of points)
-    /// the same size back. Two such echoes in a row confirm a window really cannot fill its tile.
-    func sameAs(_ other: Refusal, tolerance: CGFloat = 2) -> Bool {
-        Reconciler.approx(asked, other.asked)
-            && abs(size.width - other.size.width) <= tolerance && abs(size.height - other.size.height) <= tolerance
-    }
-
-    /// #164: `frame`'s size moved toward the tile on an axis this refusal mismatched: grew
-    /// where it was smaller, or shrank where it was bigger. The window can fit better than
-    /// recorded, so the record is stale; holding the old size would fight it.
-    func grew(to frame: CGRect, tolerance: CGFloat = 1) -> Bool {
-        func toward(_ got: CGFloat, _ was: CGFloat, _ want: CGFloat) -> Bool {
-            abs(was - want) > tolerance && abs(got - want) < abs(was - want) - tolerance
-        }
-        return toward(frame.width, size.width, asked.width) || toward(frame.height, size.height, asked.height)
-    }
-
-    /// `tile`, with the window centred in it on each axis where it is smaller; nil when this
-    /// refusal was learned on another tile.
-    /// #164: centred on each axis where the size doesn't equal the tile's, smaller or bigger. A
-    /// bigger window is then kept inside `bounds` (the display's tiling area), centred on it if it
-    /// is bigger still, so an overflowing tile never runs off the display.
-    func fitted(in tile: CGRect, bounds: CGRect? = nil, tolerance: CGFloat = 1) -> CGRect? {
-        guard Reconciler.approx(asked, tile) else { return nil }
-        var f = tile
-        if abs(size.width - tile.width) > tolerance { f.origin.x = tile.midX - size.width / 2; f.size.width = size.width }
-        if abs(size.height - tile.height) > tolerance { f.origin.y = tile.midY - size.height / 2; f.size.height = size.height }
-        return bounds.map { Reconciler.keepInside(f, $0) } ?? f
-    }
-}
 public enum Write: Sendable, Equatable { case setFrame(WindowRef, CGRect), setPosition(WindowRef, CGPoint) }
 
 public enum Reconciler {
@@ -74,6 +28,7 @@ public enum Reconciler {
     static let titleBarClampTolerance: CGFloat = 40
 
     /// Spec §5, §7.4, §8. Ignored windows and placeholders (#128) are absent from the result.
+    /// `refused` and `unmovable` are what `WindowEchoes` learned from the echoes of our writes (#169).
     public static func desired(world: World, displays: [DisplayInfo], config: LayoutConfig,
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
                                parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
