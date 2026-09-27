@@ -133,8 +133,10 @@ public final class HotkeyTap: @unchecked Sendable {
         }
     }
 
+    /// `table` is empty by default: as a `Watcher`, the tap gets its bindings from `apply`, which runs
+    /// before `start`.
     public init(
-        table: [Chord: Command],
+        table: [Chord: Command] = [:],
         onCommand: @escaping @Sendable (Command) -> Void,
         onFlags: (@Sendable (CGEventFlags) -> Void)? = nil,
         onKeyDown: (@Sendable () -> Void)? = nil,
@@ -552,6 +554,15 @@ public final class HotkeyTap: @unchecked Sendable {
     func _breakerState() -> Breaker {
         lock.lock(); defer { lock.unlock() }
         return breaker
+    }
+}
+
+/// #172: the runtime's watcher lifecycle. `apply` re-binds the keys; `start` and `stop` are the
+/// tap's own. The termination gate also stops the tap directly, first thing and from any thread, so
+/// the runtime's later `stop` finds it already stopped.
+extension HotkeyTap: Watcher {
+    public func apply(_ config: Config) {
+        update(table: KeyBindings.table(for: config))
     }
 }
 

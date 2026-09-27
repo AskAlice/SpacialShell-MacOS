@@ -12,22 +12,26 @@ import SpacialShellKit
 @MainActor
 public final class OtherWindowManagerWatch {
     private let problems: ProblemCenter
+    /// The problem keys answered "Don't warn again". They live in settings.json, not in `Config`,
+    /// so `apply` asks for them.
+    private let silencedWarnings: @MainActor () -> Set<String>
     private var list: [String] = []
     private var silenced: Set<String> = []
     private var observers: [NSObjectProtocol] = []
 
-    public init(problems: ProblemCenter = .shared) {
+    public init(problems: ProblemCenter = .shared, silenced: @escaping @MainActor () -> Set<String> = { [] }) {
         self.problems = problems
+        self.silencedWarnings = silenced
     }
 
-    public func start(list: [String], silenced: Set<String>) {
+    /// Watches app launches and quits; the first scan is `apply`'s.
+    public func start() {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.scan() }
             })
         }
-        update(list: list, silenced: silenced)
     }
 
     /// A config reload or a "Don't warn again": rescans only when something changed.
@@ -71,5 +75,13 @@ public final class OtherWindowManagerWatch {
             out.append(RunningProcess(bundleID: nil, name: String(cString: name)))
         }
         return out
+    }
+}
+
+/// #172: the runtime's watcher lifecycle. `apply` runs on every config push, which is also how a
+/// "Don't warn again" arrives; `update` rescans only when the list or the silenced set changed.
+extension OtherWindowManagerWatch: Watcher {
+    public func apply(_ config: Config) {
+        update(list: config.otherWindowManagers, silenced: silencedWarnings())
     }
 }

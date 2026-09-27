@@ -38,13 +38,11 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var config = Config()
     private var backend: AXWindowBackend?
     private var store: WorldStore?
-    private var tap: HotkeyTap?
-    private var gestures: TrackpadGestures?
+    /// #172: the hotkey tap, trackpad gestures, focus follows the mouse, the Dock's attention marks
+    /// (#126) and the other-window-manager watch (#138), started stage by stage as boot reaches each.
+    private lazy var watchers = Watchers { [log] in log.error("\($0, privacy: .public)") }
+    /// Also fed by the store's pointer targets, which are not part of the world.
     private var pointerFocus: PointerFocus?
-    /// #138: warns while another window manager from `other-window-managers` runs.
-    private var otherWindowManagers: OtherWindowManagerWatch?
-    /// #126: the Dock's badges and bounces, as marks on the rail and the tabs.
-    private var attention: DockAttention?
     private var shell: ShellController?
     private var overview: OverviewController?
     private var spatial: SpatialController?
@@ -142,7 +140,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 self?.ipc?.publish(snapshot)   // #117: returns at once; the diff runs on the IPC queue
                 self?.scheduleSave(world)
                 self?.shell?.update(world: world, snapshot: snapshot)
-                self?.attention?.update(world: world)
+                self?.watchers.observe(world)
                 self?.overview?.update(world: world, snapshot: snapshot)
                 self?.spatial?.update(world: world, snapshot: snapshot)
                 self?.layouts?.update(world: world)
@@ -150,6 +148,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         }
         self.store = store
         termination.arm(store: store, backend: backend)
+        termination.arm(watchers: watchers)
 
         // The shell panels and the overview (M2). Wired before the store starts so the first
         // reconcile's onChange already reaches them; they draw nothing until that first world
@@ -239,9 +238,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 alerts.update(problems: problems)
             }
         }
-        let attention = DockAttention { shell.update(attention: $0) }
-        attention.update(config: config)
-        self.attention = attention
+        watchers.start(DockAttention { shell.update(attention: $0) }, "Dock attention", config: config)
 
         log.info("stage 6/8: starting the backend and the store")
         backend.start()
@@ -283,12 +280,11 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             backend.noteHumanInput()
             route(.focusWindowRef(ref))
         }
-        pointerFocus.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
+        watchers.start(pointerFocus, "focus-follows-mouse", config: config)
         self.pointerFocus = pointerFocus
         // The store has published already; later publishes arrive through `onPointerTargets`.
         pointerFocus.update(targets: await store.pointerTargets())
         let tap = HotkeyTap(
-            table: KeyBindings.table(for: config),
             onCommand: { command in
                 // #148: the tap thread's share of a key press — inside the tap's deadline, so it
                 // is worth watching. The command's own trace starts in `WorldStore.run`.
@@ -314,19 +310,15 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { @MainActor in spatial.holdStarted() }
             },
         )
-        self.tap = tap
         termination.arm(tap: tap)
-        do {
-            try tap.start()
-        } catch {
-            log.error("event tap failed (\(String(describing: error), privacy: .public)); hotkeys are inactive")
+        if let error = watchers.start(tap, "the hotkey tap", config: config) {
             ProblemCenter.shared.report(.hotkeysInactive(String(describing: error)))
         }
 
         // #141: trackpad swipes are Fn+W/A/S/D by another route — the same `route`, the same
         // commands, so the slide animation and command outcomes are the hotkeys' own. #160: four
         // fingers up/down are Fn+Space/⇧Space the same way. Only installed while `gestures` is on;
-        // `push` turns it on and off on config changes.
+        // `apply` turns it on and off on config changes.
         // #162: four fingers sideways drag the focused tile's edge — the store's own border-drag
         // path (#113), which a mouse drives with pointer events. The steps go through one stream,
         // so they reach the store in order: a `moved` must never overtake its `began` or `ended`.
@@ -349,15 +341,13 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             if drag.phase == .began { backend.noteHumanInput() }
             edgeDragSink.yield(drag)
         })
-        gestures.update(enabled: config.gestures, bindings: SwipeBindings(config: config))
-        self.gestures = gestures
+        watchers.start(gestures, "trackpad gestures", config: config)
 
         // #138: after the socket and the tap, so its alert queues behind theirs, errors first.
         // "Don't warn again" is remembered in settings.json, like every other window edit.
         alerts.onSilence = { [weak self] key in self?.silence(key) }
-        let otherWindowManagers = OtherWindowManagerWatch()
-        otherWindowManagers.start(list: config.otherWindowManagers, silenced: silencedWarnings)
-        self.otherWindowManagers = otherWindowManagers
+        let otherWindowManagers = OtherWindowManagerWatch(silenced: { [weak self] in self?.silencedWarnings ?? [] })
+        watchers.start(otherWindowManagers, "the other-window-manager watch", config: config)
 
         log.info("stage 8/8: config watch and signal handlers")
         watchConfig()
@@ -493,8 +483,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     /// One path for both doors into a config change — a file edit and a settings-window edit end
     /// up in exactly the same place, so neither can quietly skip a step the other does.
     private func push(previous: Config) {
-        // #138: before the guard — a "Don't warn again" changes the silenced set, not the config.
-        otherWindowManagers?.update(list: config.otherWindowManagers, silenced: silencedWarnings)
+        // #172: before the guard, on every push — each watcher acts only on its own settings, and
+        // #138's "Don't warn again" changes the silenced set, not the config.
+        watchers.apply(config)
         // #139: switched off live, pending and future writes stop; switched on, they resume.
         if persistence.enabled != config.persistState {
             persistence.enabled = config.persistState
@@ -508,11 +499,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             // AX observer and re-adopt every window mid-session.
             log.notice("ax-timeout-ms / refresh-interval-ms changed; those take effect at the next launch")
         }
-        tap?.update(table: KeyBindings.table(for: config))
-        gestures?.update(enabled: config.gestures, bindings: SwipeBindings(config: config))
-        pointerFocus?.update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
         shell?.update(config: config)
-        attention?.update(config: config)
         spatial?.update(config: config)
         cheatSheet?.update(config: config)
         layouts?.update(config: config, overrides: overrides)
@@ -617,6 +604,7 @@ final class TerminationGate: @unchecked Sendable {
     private var backend: AXWindowBackend?
     private var tap: HotkeyTap?
     private var ipc: IPCServer?
+    private var watchers: Watchers?
     private var tracing: TracerProviderSdk?
     private var didTerminate = false
     /// #139: whether the exit path writes state.json. Off with `persist-state = false` and after a
@@ -636,6 +624,12 @@ final class TerminationGate: @unchecked Sendable {
 
     func arm(ipc: IPCServer) {
         lock.lock(); self.ipc = ipc; lock.unlock()
+    }
+
+    /// #172: stopped at teardown, on the main actor. The hotkey tap among them is also armed on its
+    /// own: it has to stop first, and it can from any thread.
+    func arm(watchers: Watchers) {
+        lock.lock(); self.watchers = watchers; lock.unlock()
     }
 
     func persists(_ writes: Bool) {
@@ -664,6 +658,7 @@ final class TerminationGate: @unchecked Sendable {
         }
         didTerminate = true
         let store = self.store, backend = self.backend, tap = self.tap, ipc = self.ipc, tracing = self.tracing
+        let watchers = self.watchers
         lock.unlock()
         // #148: last, after the windows are back — the flush waits on the network, bounded by the
         // exporter's timeout. It sends the spans of this very shutdown too.
@@ -699,12 +694,12 @@ final class TerminationGate: @unchecked Sendable {
                 parked: e.parked, deadline: Self.restoreBudget)
         }
 
-        // `AXWindowBackend.stop()` is main-actor isolated. On the main thread we are already there;
-        // from the signal queue we have to hop, and the main actor is free to answer.
+        // `AXWindowBackend.stop()` and the watchers' are main-actor isolated. On the main thread we
+        // are already there; from the signal queue we have to hop, and the main actor is free to answer.
         if onMainThread {
-            MainActor.assumeIsolated { backend.stop() }
+            MainActor.assumeIsolated { watchers?.stop(); backend.stop() }
         } else {
-            run(Self.teardownBudget, onMainThread: false) { await MainActor.run { backend.stop() } }
+            run(Self.teardownBudget, onMainThread: false) { await MainActor.run { watchers?.stop(); backend.stop() } }
         }
         run(Self.teardownBudget, onMainThread: onMainThread) { await store.stop() }
         Self.log.info("terminated cleanly")

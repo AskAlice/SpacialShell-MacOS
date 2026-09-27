@@ -229,6 +229,16 @@ public final class TrackpadGestures {
     }
 }
 
+/// #172: the runtime's watcher lifecycle. `apply` installs or removes the tap, so `start` has
+/// nothing left to do.
+extension TrackpadGestures: Watcher {
+    public func apply(_ config: Config) {
+        update(enabled: config.gestures, bindings: SwipeBindings(config: config))
+    }
+
+    public func start() {}
+}
+
 /// A C callback: it cannot capture, so `TrackpadGestures` rides in `userInfo`. The source is on the
 /// main run loop, so this runs on the main thread. Listen-only: the event is returned untouched and
 /// the return value is ignored anyway.

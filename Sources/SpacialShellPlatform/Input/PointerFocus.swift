@@ -177,6 +177,17 @@ public final class PointerFocus {
     }
 }
 
+/// #172: the runtime's watcher lifecycle. `apply` installs or removes the tap, so `start` has
+/// nothing left to do. The pointer targets come from the store's own feed (`update(targets:)`),
+/// not from the world.
+extension PointerFocus: Watcher {
+    public func apply(_ config: Config) {
+        update(enabled: config.focusFollowsMouse, delayMs: config.focusFollowsMouseDelayMs)
+    }
+
+    public func start() {}
+}
+
 /// A C callback: it cannot capture, so `PointerFocus` rides in `userInfo`. The source is on the
 /// main run loop, so this runs on the main thread. Listen-only: the event goes back untouched.
 private func pointerFocusTapCallback(

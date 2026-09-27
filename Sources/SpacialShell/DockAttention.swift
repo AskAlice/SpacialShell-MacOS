@@ -4,9 +4,10 @@ import SpacialShellPlatform
 
 /// #126 (G35): the Dock poll (`DockWatcher`, platform) feeding `AttentionTracker` (Kit), and the
 /// result handed to the panels. Polls only while the marks can be seen: `dock-attention` on and the
-/// panels showing (not Zen, not `show-panels = false`).
+/// panels showing (not Zen, not `show-panels = false`). A `Watcher` (#172): `apply` and `observe`
+/// start and stop the poll between them, so `start` has nothing left to do.
 @MainActor
-final class DockAttention {
+final class DockAttention: Watcher {
     private var watcher: DockWatcher?
     private var tracker = AttentionTracker()
     private var enabled = false
@@ -18,21 +19,32 @@ final class DockAttention {
         self.onChange = onChange
     }
 
-    func update(config: Config) {
+    func apply(_ config: Config) {
         enabled = config.dockAttention && config.showPanels
-        apply()
+        poll()
     }
 
+    func start() {}
+
     /// The focused window's app has been seen; Zen hides the marks, so it stops the poll too.
-    func update(world: World) {
+    func observe(_ world: World) {
         focused = world.focus.window?.pid
         tracker.focus(focused, now: Self.now)
         panelsShown = !world.zen
-        apply()
+        poll()
         publish()
     }
 
-    private func apply() {
+    /// On quit: the poll stops, and a world still in flight does not restart it. The marks are left
+    /// as they are; the panels go with the process.
+    func stop() {
+        enabled = false
+        watcher?.stop()
+        watcher = nil
+    }
+
+    /// Starts or stops the poll to match whether the marks can be seen.
+    private func poll() {
         let on = enabled && panelsShown
         if on, watcher == nil {
             let w = DockWatcher { [weak self] sample in
