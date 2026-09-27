@@ -339,6 +339,14 @@ enum Stories {
                                 preview(3, image: shot(.systemGray)),
                                 preview(1, image: shot(.systemBlue))]),
             onGrantAccess: {}), truncates: true)
+        // #179: the pointer resting on the second preview — ringed in the accent, its name at full
+        // strength; its real window is what the screen shows meanwhile (the peek).
+        add("rail-hover-peek", nil, RailHoverCard(
+            title: "Code (1)", subtitle: "3 windows · coding",
+            content: .previews([preview(5, image: shot(.systemPink)),
+                                preview(3, image: shot(.systemGray)),
+                                preview(1, image: shot(.systemBlue))]),
+            onGrantAccess: {}, highlighted: preview(3, image: nil).ref), truncates: true)
         // #90: the first frame of a hover — thumbnails from the cache, at the cache's downscaled
         // size, and the icon placeholder only for the window the shell has never seen.
         func cached(_ color: NSColor) -> NSImage? {

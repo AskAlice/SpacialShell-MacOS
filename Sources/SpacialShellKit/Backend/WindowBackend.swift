@@ -99,6 +99,10 @@ public protocol WindowBackend: Sendable {
     func setFrame(_ ref: WindowRef, _ frame: CGRect) async -> Result<Void, BackendError>
     func setPosition(_ ref: WindowRef, _ origin: CGPoint) async -> Result<Void, BackendError>
     func raise(_ ref: WindowRef) async -> Result<Void, BackendError>
+    /// #179: bring a window to the front without activating its app or making it the main window —
+    /// the rail's peek. Focus stays where it is; `WorldStore` reads whatever focus report the raise
+    /// still causes as its own echo (`FocusEchoes.peekRaised`).
+    func raiseWithoutActivating(_ ref: WindowRef) async -> Result<Void, BackendError>
     func close(_ ref: WindowRef) async -> Result<Void, BackendError>
     /// Put a window into, or take it out of, native macOS fullscreen (`AXFullScreen`). Used to
     /// leave fullscreen before a workspace switch on that display (#49); the shell never *enters*

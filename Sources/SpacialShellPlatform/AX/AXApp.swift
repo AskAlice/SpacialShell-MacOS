@@ -547,7 +547,10 @@ final class AXApp: @unchecked Sendable {
 
     /// MacApp.swift:130-148 (`nativeFocus`). AeroSpace's fast path (skip AX when the app is
     /// already focused) depends on tree state we don't have, so we always do the AX work.
-    func raise(_ id: WindowID) async -> Result<Void, BackendError> {
+    ///
+    /// #179: `activate: false` is the rail's peek — `kAXRaiseAction` alone, which brings the window
+    /// to the front without making it main or activating its app, so focus stays where it was.
+    func raise(_ id: WindowID, activate: Bool = true) async -> Result<Void, BackendError> {
         let outcome: (found: Bool, result: Result<Void, BackendError>) = await runOnAppThread(
             fallback: { (false, .failure(.notFound)) },
         ) { [self] job in
@@ -557,11 +560,11 @@ final class AXApp: @unchecked Sendable {
             // `AXMain` is best-effort and its result is deliberately ignored, exactly as in
             // MacApp.swift:143-145: sheets and attached dialogs — our `.float` windows — answer
             // `kAXErrorAttributeUnsupported`, and that must not read as "the raise failed".
-            _ = window.ax.setChecked(Ax.isMainAttr, true)
+            if activate { _ = window.ax.setChecked(Ax.isMainAttr, true) }
             // Raise first so the window is already on top by the time we activate the app.
             return (true, AXUIElementPerformAction(window.ax, kAXRaiseAction as CFString).asBackendResult)
         }
-        if outcome.found {
+        if activate, outcome.found {
             // AeroSpace activates whenever it found the window, whatever the AX calls returned.
             // `.activateIgnoringOtherApps` is deprecated (and inert) since macOS 14.
             await MainActor.run { _ = nsApp.activate() }

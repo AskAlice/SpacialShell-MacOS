@@ -93,6 +93,11 @@ public enum Command: Sendable, Hashable {
     /// things — an `unhide`, and `WorldStore`'s off-display rescue — and never re-files anything:
     /// workspace, row, floating state and `ephemeral` membership are all left as they were.
     case recoverWindow(WindowRef)
+    /// #179: the rail hover card's preview under the pointer, shown for real (`World.peek`): the
+    /// window is placed centred on its display and raised without being focused, until
+    /// `.peek(nil)` puts it back. A sheet peeks its owner. Focus and the active rows stay put, and
+    /// every other command ends the peek, so it never outlives the hover that asked for it.
+    case peek(WindowRef?)
     /// #108: a tiled window dragged by its title bar and released over another tile. Same row: the
     /// two swap places. Another row (another display's tile): the window takes that tile's slot,
     /// and — being in the user's hand, as in #57 — focus follows it.

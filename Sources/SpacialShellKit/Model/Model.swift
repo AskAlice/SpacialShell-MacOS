@@ -117,6 +117,18 @@ public struct World: Codable, Equatable, Sendable {
     /// via `ShellInsets(config:hidden:)`, so a toggle is an ordinary command → relayout round
     /// trip. Persisted in `state.json` (`PersistedState.zen`) so it survives relaunch.
     public var zen: Bool
+    /// #179: the window a rail hover-card preview is showing for real — on screen, centred on its
+    /// display, raised without being focused — while the pointer rests on its miniature. Set only
+    /// by `.peek`; any other command, a workspace switch, and the window leaving (`normalize()`)
+    /// end it. Transient: left out of `CodingKeys`, and `PersistedState` never reads it, so a peek
+    /// never reaches `state.json`.
+    public var peek: WindowRef?
+    /// Every stored property but `peek`: a new one must be added here, or it is silently not
+    /// encoded (`PeekTests.worldCodesEveryPropertyButThePeek` fails until it is).
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case screens, screenOrder, focus, ephemeral, ignored, hidden, fullscreen, offSpace, placeholders, pinnedTabs,
+             parents, defaultLayout, zen
+    }
     public init(screens: [DisplayID: Screen], screenOrder: [DisplayID], focus: Focus,
                 ephemeral: Set<WindowRef>, ignored: Set<WindowRef>, hidden: Set<WindowRef>,
                 parents: [WindowRef: WindowRef], defaultLayout: LayoutID, zen: Bool = false) {

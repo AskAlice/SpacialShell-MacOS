@@ -422,6 +422,10 @@ public final class AXWindowBackend: WindowBackend {
         ownRaises.withLock { $0[ref.pid] = ContinuousClock.now }
         return await registry.get(ref.pid)?.raise(ref.id) ?? .failure(.notFound)
     }
+    /// #179: not recorded in `ownRaises` — nothing is activated, so there is no activation to own.
+    public nonisolated func raiseWithoutActivating(_ ref: WindowRef) async -> Result<Void, BackendError> {
+        await registry.get(ref.pid)?.raise(ref.id, activate: false) ?? .failure(.notFound)
+    }
     /// When the shell last raised a window of each pid — see `resolveActivation`.
     private nonisolated let ownRaises = OSAllocatedUnfairLock<[pid_t: ContinuousClock.Instant]>(initialState: [:])
 

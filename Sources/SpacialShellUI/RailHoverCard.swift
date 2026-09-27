@@ -37,6 +37,11 @@ struct RailHoverCard: View {
     /// A preview was clicked. The controller turns it into `.focusWindowRef`, the same command a
     /// tab click sends, so the store switches workspace and focuses the tab (#51).
     var onSelect: (SpacialShellProtocol.WindowRef) -> Void = { _ in }
+    /// #179: the preview under the pointer. It alone sits on a lighter rounded background, from
+    /// the moment the pointer is on it; the controller peeks its window once it has rested there.
+    var highlighted: SpacialShellProtocol.WindowRef?
+    /// #179: the pointer entered (true) or left (false) a preview.
+    var onHoverPreview: (SpacialShellProtocol.WindowRef, Bool) -> Void = { _, _ in }
 
     /// Past six the card stops being a glance and starts being a window list; the count on the
     /// tile already carries "a lot".
@@ -45,6 +50,11 @@ struct RailHoverCard: View {
     /// ponytail: fixed cap for the tray list too; a scroller if a dozen out-of-reach windows is normal.
     static let maxRows = 12
     static let width: CGFloat = 324
+    /// #179: how far the hovered preview's background reaches past the item, and its radius:
+    /// concentric with the card's 12 pt corners across the 4 pt it leaves inside the padding.
+    static let highlightOutset: CGFloat = 4
+    static let highlightRadius: CGFloat = 8
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -135,7 +145,15 @@ struct RailHoverCard: View {
             }
             .frame(width: width, alignment: .leading)
         }
+        // #179: the hovered preview's background, behind the miniature and its label. Drawn past
+        // the item rather than padded into it, so hovering never moves the grid.
+        .background(
+            RoundedRectangle(cornerRadius: Self.highlightRadius, style: .continuous)
+                .fill(Color.primary.opacity(highlighted == item.ref ? 0.10 : 0))
+                .padding(-Self.highlightOutset)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted == item.ref))
         .contentShape(Rectangle())
+        .onHover { onHoverPreview(item.ref, $0) }
         .onTapGesture { onSelect(item.ref) }
     }
 }

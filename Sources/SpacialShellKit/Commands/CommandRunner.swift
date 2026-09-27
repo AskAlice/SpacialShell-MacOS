@@ -9,6 +9,7 @@ public enum CommandRunner {
         var why: CommandReport?
         let (w, e) = step(command, on: input, in: env, why: &why)
         var slid = w
+        if case .peek = command {} else { slid.peek = nil }   // #179: every other command ends a peek
         slid.slideViews()   // #114: not every path normalizes, and every focus move can slide split
         if w.focus.window != input.focus.window { slid.noteFocus() }   // #137: every focus move is history
         return CommandOutcome(world: slid, effects: e,
@@ -362,6 +363,17 @@ public enum CommandRunner {
                 return (w, effects)
             }
             effects.append(.close(r))
+
+        case .peek(let r):
+            // #179: nothing moves in the model but the peek itself; the reconciler places the
+            // window and the store raises it without focusing it.
+            // A preview that cannot be shown (a placeholder, a minimized window, one in its own
+            // fullscreen Space) still ends the peek before it: the pointer has left that window.
+            let root = r.map { w.root(of: $0) }
+            if let r, let root, w.location(of: root) == nil { return fail(.unknownWindow(r)) }
+            w.peek = root.flatMap { w.canPeek($0) ? $0 : nil }
+            if root != nil, w.peek == nil { why = .noop("that window cannot be shown now") }
+            return (w, w == input ? [] : [.relayout])
 
         case .recoverWindow(let r):
             // #73: a placed window is exactly a tab click; a popup is focused *and* unhidden, since

@@ -49,6 +49,19 @@ public actor WorldStore {
     /// #170: our raises, our commands' focus moves and the human's input, and what each focus or
     /// activation report means against them (#67, #69, #84, #28). Shares the store's clock.
     private var focusEchoes: FocusEchoes
+    /// #179: the peeked window the store last raised, so each peek is raised once, and the end of
+    /// one (`world.peek` gone) hands the front back to the model's focus.
+    private var peekRaised: WindowRef?
+    /// #179: what a window a peek moved (the peeked window and its sheets) had before the peek,
+    /// until a finished pass has put it back. `frame`: its tile, its floating frame, or where it
+    /// was before it was parked — the reconciler returns a floating window there, and a window
+    /// parked after its peek keeps it as its prePark. `refusal`: the size it refused for its tile
+    /// (#164), which the peek frame's own refusal replaces in `echoes` until the peek ends.
+    private struct PeekHome { var frame: CGRect?; var refusal: Refusal?; var back = false }
+    private var peekHomes: [WindowRef: PeekHome] = [:]
+    /// #179: the peek the last pass laid out. A pass that starts or ends one does not animate its
+    /// re-tiles: the window leaves or rejoins its row by the peek, not by the layout.
+    private var shownPeek: WindowRef?
     private let now: @Sendable () -> ContinuousClock.Instant
     /// #64: draws each switch as motion; nil (tests, headless) places instantly.
     private let animator: (any SwitchAnimator)?
@@ -230,22 +243,30 @@ public actor WorldStore {
     @discardableResult
     public func run(_ command: Command) async -> CommandReport {
         guard !locked else { return .failed(.locked) }   // spec §7.7: no writes and no model changes while locked
+        // #179: every command but `.peek` ends a peek — here, so one that fails or does nothing
+        // ends it too; `bail` puts the window back on the way out of those.
+        let endsPeek: Bool = if case .peek = command { false } else { world.peek != nil }
+        if endsPeek { world.peek = nil }
+        func bail(_ report: CommandReport) async -> CommandReport {
+            if endsPeek { await reconcile() }
+            return report
+        }
         var command = command
         // #108, material-shell's M3: while a window is in the hand, Fn+W/S carries it to the row
         // above/below instead of leaving it behind.
         if let d = drag, case .focusWorkspace(let dir) = command, let loc = world.location(of: d.ref) {
             let rows = world.screens[loc.screen]!.workspaces
             let i = loc.index + (dir == .down ? 1 : -1)
-            guard rows.indices.contains(i) else { return .noop("no workspace that way") }
+            guard rows.indices.contains(i) else { return await bail(.noop("no workspace that way")) }
             command = .moveWindowRefToWorkspace(d.ref, rows[i].id)
         }
         // #113: a resize key is measured against the real tiling rect, so it edits the page the
         // #54 floor actually shows; `CommandRunner` alone only knows the model's page.
         if case .resizeWindow(let axis, let grow) = command, let rect = tilingRect(world.focus.screen) {
-            guard let (id, page, i) = world.resizePage(layouts: layouts, in: rect, gap: config.gap) else { return .noop("nothing to resize") }
+            guard let (id, page, i) = world.resizePage(layouts: layouts, in: rect, gap: config.gap) else { return await bail(.noop("nothing to resize")) }
             let (next, moved) = Resize.step(page, world.screens[world.focus.screen]?.active.portions[page.key],
                                             index: i, axis: axis, grow: grow)
-            guard moved else { return .noop(Resize.stuck(page, index: i, axis: axis)) }
+            guard moved else { return await bail(.noop(Resize.stuck(page, index: i, axis: axis))) }
             command = .setPortions(id, key: page.key, next)
         }
         let issued = now()
@@ -261,7 +282,7 @@ public actor WorldStore {
         // M2 ruling: a failed command changes nothing, so there is nothing to reconcile.
         if case .failed(let e) = outcome.report {
             Self.log.notice("command \(String(describing: command), privacy: .public) failed: \(e.description, privacy: .public)")
-            return outcome.report
+            return await bail(outcome.report)
         }
         let (next, effects) = (outcome.world, outcome.effects)
         // #98: a whole-app move is an explicit placement for that app (see `movedApps`).
@@ -381,6 +402,9 @@ public actor WorldStore {
             applyNativeFocus(r)
         case .appActivated(let pid):
             if locked { return }
+            // #179: the peek raise activates nothing, but an app that activates itself when one
+            // of its windows is raised must not pull the model onto the window being peeked.
+            if world.peek?.pid == pid, !focusEchoes.humanRecently { return }
             // #170: our own raise's activation is ignored (`FocusEchoes.activationReported`).
             switch focusEchoes.activationReported(pid: pid, world: world) {
             case .intrusion(let fs): interceptFocus(by: candidateWindow(ofPid: pid), behind: fs)
@@ -637,6 +661,10 @@ public actor WorldStore {
         if verdict == .repeated {
             Self.log.debug("native focus \(r.id, privacy: .public) unchanged")
         } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) verdict=\(String(describing: verdict), privacy: .public) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
+        // #179: while it lasts, a report of the peeked window is the peek raise's doing, whatever
+        // the queue made of it — the peek is not a focus change. Unless the human just pressed a
+        // key or a button (⌘Tab, a Dock click): then it is theirs, and the switch ends the peek.
+        if r == world.peek, !focusEchoes.humanRecently { return }
         let isEcho: Bool
         switch verdict {
         case .stale: return
@@ -959,6 +987,11 @@ public actor WorldStore {
         placements.merge(PersistedState.placements(world: world, bundleIDs: records.bundleIDs)) { _, live in live }
         generation += 1
         let gen = generation
+        // #179: the peek is over (ended, or swapped for a click on it). Settled before the first
+        // await, so a pass superseded mid-write cannot leave a later peek of the same window
+        // unraised: the model's focus goes back in front, and gets its app's focus back if the
+        // peek raise took it.
+        if peekRaised != nil, world.peek == nil { peekRaised = nil; focusEchoes.peekEnded() }
         // #148: one span per pass, one child for all its writes and one for the raise — counts, not
         // a span per window, so a burst of Fn+D stays a handful of spans a press. A pass a newer
         // one overtook is `superseded`: it returned early, and its writes are the newer pass's now.
@@ -988,10 +1021,12 @@ public actor WorldStore {
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         logUnresolvedLayouts()
+        notePeekHomes()
         var desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: records.observed, prePark: records.prePark, parkedNow: records.parked, zeroSliver: zero,
                                          insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: echoes.refused,
-                                         unmovable: echoes.unmovable)
+                                         unmovable: echoes.unmovable,
+                                         peekHome: peekHomes.compactMapValues(\.frame))
         // #165: the popups due a placement, and the requests they were placed for.
         let pendingPopups = records.pendingPopups
         let placed = Reconciler.placePopups(pendingPopups, into: &desired, world: world, displays: displays,
@@ -1026,7 +1061,11 @@ public actor WorldStore {
         defer { if animating, let animator { Task { await animator.play(trace: trace) } } }
         // #113: a border drag lays out on every move; the hand is the motion, so nothing slides.
         // #140: re-tiles only with `animate-retile`; see `MotionRules.animated`.
-        let motion = MotionRules.animated(transitions, animations: config.animations,
+        // #179: a pass that starts or ends a peek re-tiles nothing the user should see slide.
+        let peekMoved = world.peek != shownPeek
+        shownPeek = world.peek
+        let motion = MotionRules.animated(peekMoved ? transitions.filter { !$0.isRetile } : transitions,
+                                          animations: config.animations,
                                           animateRetile: config.animateRetile, grabbing: grab != nil)
         if let animator, !motion.isEmpty {
             span.setAttribute(key: "motion", value: MotionRules(motion).kind.rawValue)
@@ -1059,7 +1098,9 @@ public actor WorldStore {
                 records[r].observed = f; records[r].parked = false; records[r].prePark = nil
                 note(result, for: r)
             case .setPosition(let r, let o):
-                let pre = records[r].parked ? nil : records[r].observed
+                // #179: a window parked on its way back from a peek remembers where it was before
+                // the peek, not the peek's frame.
+                let pre = records[r].parked ? nil : peekHomes[r]?.frame ?? records[r].observed
                 parks += 1
                 let result = await backend.setPosition(r, o)
                 count(result)
@@ -1071,7 +1112,9 @@ public actor WorldStore {
             }
         }
         endWrites()
+        var raisedFocus = false
         if let f = world.focus.window, focusEchoes.recordRaise(of: f) {
+            raisedFocus = true
             let raise = startSpan("reconcile.raise", parent: span)
             raise.setAttribute(key: "window.id", value: Int(f.id))
             if let b = records[f].bundleID { raise.setAttribute(key: "bundle.id", value: b) }
@@ -1086,12 +1129,41 @@ public actor WorldStore {
                 Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
             }
         }
+        // #179: the peeked window goes in front of everything, after the focus raise, without
+        // being focused. Once per peek — moving to another preview raises that one — and again
+        // after any focus raise, which went over it.
+        if let p = world.peek, p != peekRaised || raisedFocus {
+            peekRaised = p
+            focusEchoes.peekRaised(p)
+            let result = await backend.raiseWithoutActivating(p)
+            if case .failure(let e) = result {
+                Self.log.notice("peek raise failed \(p.id, privacy: .public) \(String(describing: e), privacy: .public)")
+            }
+            if gen != generation { return }
+        }
+        // A finished pass has put every window a peek moved back where it belongs.
+        peekHomes = peekHomes.filter { !$0.value.back }
         if animating, let animator { animating = false; await animator.play(trace: trace) }
         finished = true
         publish()
         // #77: only a pass that finished speaks for what is on screen; a superseded one returned above.
         if let animator, config.animations, gen == generation {
             await animator.prefetch(predictedSwitches(insets: insets, zero: zero))
+        }
+    }
+
+    /// #179: the peeked window and its sheets remember what they had before the peek moves them;
+    /// windows no longer peeked get their tile's refusal back before this pass places them.
+    private func notePeekHomes() {
+        let group: [WindowRef] = world.peek.map { p in (world.workspace(containing: p)?.windows ?? []).filter { world.root(of: $0) == p } } ?? []
+        for w in group {
+            if peekHomes[w] != nil { peekHomes[w]!.back = false; continue }   // peeked again before it was put back
+            peekHomes[w] = PeekHome(frame: records[w].parked ? records[w].prePark ?? records[w].observed : records[w].observed,
+                                    refusal: echoes.refused[w])
+        }
+        for (w, home) in peekHomes where !home.back && !group.contains(w) {
+            echoes.restore(home.refusal, for: w)
+            peekHomes[w]!.back = true
         }
     }
 
@@ -1224,6 +1296,7 @@ public actor WorldStore {
     /// #174: `r` vanished: nothing the store knew about it outlives it, here or in the echoes.
     private func forget(_ r: WindowRef) {
         records.forget(r); echoes.forget(r); focusEchoes.vanished(r)
+        peekHomes[r] = nil   // #179
     }
 
     /// #109: a retired window is a write failure that persisted. One problem per app, rebuilt from
@@ -1232,4 +1305,9 @@ public actor WorldStore {
         let apps = Set(records.retired.map { records[$0].bundleID ?? "pid:\($0.pid)" })
         ProblemCenter.shared.replace(prefix: Problem.Key.axWritePrefix, with: apps.map { Problem.axWriteFailing(app: $0) })
     }
+
+    /// Test-only: the size `r` is known to refuse, and for which frame (#164, #179).
+    func debugRefusal(_ r: WindowRef) -> Refusal? { echoes.refused[r] }
+    /// Test-only: what the store holds for `r` (#179).
+    func debugRecord(_ r: WindowRef) -> WindowRecord { records[r] }
 }

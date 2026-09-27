@@ -32,12 +32,15 @@ public enum Reconciler {
 
     /// Spec §5, §7.4, §8. Ignored windows and placeholders (#128) are absent from the result.
     /// `refused` and `unmovable` are what `WindowEchoes` learned from the echoes of our writes (#169).
+    /// `peekHome` (#179): where each window a peek moved was before it — a floating window goes
+    /// back there once the peek ends, since nothing else would ever move it back.
     public static func desired(world: World, displays: [DisplayInfo], config: LayoutConfig,
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
                                parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
                                insets: [DisplayID: ShellInsets] = [:],
                                suspended: Set<WindowRef> = [], refused: [WindowRef: Refusal] = [:],
-                               unmovable: Set<WindowRef> = []) -> [WindowRef: Placement] {
+                               unmovable: Set<WindowRef> = [],
+                               peekHome: [WindowRef: CGRect] = [:]) -> [WindowRef: Placement] {
         var out: [WindowRef: Placement] = [:]
         let byId = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
         for (sid, screen) in world.screens {
@@ -65,11 +68,21 @@ public enum Reconciler {
                         out[w] = .untouched; continue
                     }
                     if let p = world.parents[w], World.isAttached(w, parent: p, in: ws) { attached.append((w, world.root(of: w))); continue }
+                    // #179: the peeked window, whatever its row, tiled or floating: centred on its
+                    // display's tiling area, un-parked. A window that refuses that size (#164)
+                    // is centred at its own.
+                    if w == world.peek {
+                        let f = peekFrame(in: rect)
+                        out[w] = .frame(refused[w]?.fitted(in: f, bounds: rect) ?? f)
+                        continue
+                    }
                     if !active { out[w] = park(w); continue }
                     if ws.floating.contains(w) {
                         if parkedNow.contains(w) {
                             let restored = prePark[w] ?? centered(size: observed[w]?.size ?? fallbackSize, in: rect)
                             out[w] = .frame(restored)
+                        } else if let home = peekHome[w] {
+                            out[w] = .frame(home)   // #179: back from a peek, to where it was
                         } else if let o = observed[w], mostlyOn(o, displays) != sid {
                             // The model filed it on this display (a move-to-screen, a spill) but
                             // it is sitting on another: carry it here, centred. Floating windows
@@ -190,6 +203,15 @@ public enum Reconciler {
         f.origin.x = clamp(frame.minX, frame.width, bounds.minX, bounds.maxX, leading: false)
         f.origin.y = clamp(frame.minY, frame.height, bounds.minY, bounds.maxY, leading: topAlignTall)
         return f
+    }
+
+    /// #179: how much of its display's tiling area a peeked window is given.
+    public static let peekScale = CGSize(width: 0.8, height: 0.85)
+
+    /// #179: where a peeked window goes: centred in `rect` (the display's tiling area) at `peekScale`.
+    public static func peekFrame(in rect: CGRect) -> CGRect {
+        centered(size: CGSize(width: (rect.width * peekScale.width).rounded(), height: (rect.height * peekScale.height).rounded()),
+                 in: rect)
     }
 
     static func centered(size: CGSize, in rect: CGRect) -> CGRect {

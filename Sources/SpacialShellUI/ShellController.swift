@@ -34,6 +34,8 @@ public final class ShellController: NSObject {
     private let appMeta: AppMetaCache
     /// One card for the whole shell, not one per display: only one pointer exists.
     private let hover: RailHoverController
+    /// #179: hides everything but a peeked preview's window, for as long as the model says it is peeked.
+    private let peekBackdrop = PeekBackdrop()
     private let emptySheet = EmptyCheatSheetController()
     /// #10: the cog's layout popover — one for the shell, open on at most one display.
     private let layoutPopover: LayoutPopoverController
@@ -78,6 +80,8 @@ public final class ShellController: NSObject {
         appMeta.note(placeholders: world.placeholders)   // #128: icons for apps that are not running
         WindowThumbnails.shared.retain(world.allWindowIDs)   // #90: a closed window's thumbnail goes with it
         ThumbnailRefresher.shared.update(world: world, railShown: config.showPanels && !world.zen)   // #142
+        peekBackdrop.update(peek: world.peek, display: world.peek.flatMap(world.screenContaining))
+        hover.modelPeeked(world.peek)
         render()
     }
 

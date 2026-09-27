@@ -15,6 +15,10 @@ import SpacialShellProtocol
 /// hover delay re-captures what is stale and swaps it in. Leaving the tile cancels that capture and
 /// hides the window. No stream and no timer, so a rail nobody is pointing at costs nothing but the
 /// thumbnails' memory.
+///
+/// #179: resting the pointer on a preview rings it and, after `peekDwell`, peeks its window —
+/// `.peek`, the real window shown centred with everything else hidden — until the pointer leaves
+/// it, another preview takes over (a swap, never a restore in between), or the card goes.
 @MainActor
 final class RailHoverController {
     private let window = PanelWindow()
@@ -28,15 +32,28 @@ final class RailHoverController {
     private var hideTask: Task<Void, Never>?
     private var pointerInCard = false
     private let send: @Sendable (Command) -> Void
+    /// The card as last drawn, so a highlight change redraws it exactly as it is.
+    private var drawn: (title: String, subtitle: String?, content: RailHoverCard.Content) = ("", nil, .message(""))
+    /// #179: the preview under the pointer, and the window this card last asked to peek (nil once
+    /// it asked for the peek to end).
+    private var highlighted: SpacialShellProtocol.WindowRef?
+    private var peeking: SpacialShellProtocol.WindowRef?
+    private var peekTask: Task<Void, Never>?
+    private let peekDwell: Duration
 
     /// Long enough that sweeping the rail to reach the tile you want does not fire a capture per
     /// tile on the way; the same 250 ms the design system gives every other hover label.
     private static let hoverDelay = Duration.milliseconds(250)
     /// The pointer needs a moment to cross the gap from tile to card without the card vanishing.
     private static let hideGrace = Duration.milliseconds(180)
+    /// #179: how long the pointer rests on a preview before its window is peeked, and on nothing
+    /// before the peek ends — so crossing the card moves no windows, and crossing the gap between
+    /// two previews swaps the peek without putting the first window back in between.
+    static let peekDwell = Duration.milliseconds(150)
 
-    init(send: @escaping @Sendable (Command) -> Void) {
+    init(send: @escaping @Sendable (Command) -> Void, peekDwell: Duration = RailHoverController.peekDwell) {
         self.send = send
+        self.peekDwell = peekDwell
         host = NSHostingView(rootView: RailHoverCard(title: "", subtitle: nil,
                                                      content: .message(""), onGrantAccess: {}))
         window.contentView = host
@@ -51,6 +68,7 @@ final class RailHoverController {
         hideTask?.cancel(); hideTask = nil
         guard shown != item.id else { return }
         captureTask?.cancel()
+        endPeek()   // #179: a peek belongs to the workspace the card was about
         shown = item.id
 
         let apps = distinctApps(item, metaFor: metaFor)
@@ -92,6 +110,7 @@ final class RailHoverController {
         hideTask?.cancel(); hideTask = nil
         guard shown != Self.trayID else { return }
         captureTask?.cancel()
+        endPeek()
         shown = Self.trayID
 
         let items = refs.map { ref in
@@ -120,6 +139,7 @@ final class RailHoverController {
         hideTask?.cancel(); hideTask = nil
         guard shown != Self.problemsID else { return }
         captureTask?.cancel()
+        endPeek()
         shown = Self.problemsID
         render(title: problems.count == 1 ? "1 problem" : "\(problems.count) problems",
                subtitle: "Each clears itself once it is fixed", content: .problems(problems))
@@ -148,6 +168,7 @@ final class RailHoverController {
     func hideNow() {
         captureTask?.cancel(); captureTask = nil
         hideTask?.cancel(); hideTask = nil
+        endPeek()
         shown = nil
         pointerInCard = false
         window.orderOut(nil)
@@ -161,10 +182,63 @@ final class RailHoverController {
     ///
     /// A tray row sends `.recoverWindow` instead (#73): it also un-minimizes a popup and brings one
     /// back from off every display, and like the tab click it never re-files the window.
+    ///
+    /// #179: the click ends a peek by itself (every command but `.peek` does), and the window it
+    /// focuses stays on screen; no `.peek(nil)` follows it to race the focus.
     func select(_ ref: SpacialShellProtocol.WindowRef) {
+        peekTask?.cancel(); peekTask = nil
+        peeking = nil
         send(shown == Self.trayID ? .recoverWindow(ref) : .focusWindowRef(ref))
         hideNow()
     }
+
+    /// #179: the pointer entered or left a preview. Entering rings it at once and peeks its window
+    /// after `peekDwell`; leaving takes the ring off and ends the peek after the same dwell, unless
+    /// another preview is entered first — then that one's peek replaces it directly. A late exit
+    /// from a preview the pointer has already left for another is ignored.
+    func previewHovered(_ ref: SpacialShellProtocol.WindowRef, inside: Bool) {
+        if inside {
+            highlighted = ref
+        } else {
+            guard highlighted == ref else { return }
+            highlighted = nil
+        }
+        redraw()
+        schedulePeek(highlighted)
+    }
+
+    private func schedulePeek(_ ref: SpacialShellProtocol.WindowRef?) {
+        peekTask?.cancel(); peekTask = nil
+        // Nothing to end. A preview is always asked for again, even the one peeked: a hotkey may
+        // have ended that peek in the model since.
+        guard ref != nil || peeking != nil else { return }
+        peekTask = Task { [weak self, peekDwell] in
+            try? await Task.sleep(for: peekDwell)
+            guard !Task.isCancelled, let self else { return }
+            self.peekTask = nil
+            self.peeking = ref
+            self.send(.peek(ref))
+        }
+    }
+
+    /// #179: the model's peek, on every publish. One this card no longer wants, and is not about
+    /// to ask for, is ended: commands leave for the store in separate tasks, so a `.peek` can land
+    /// after the click or the `.peek(nil)` that should have ended it, and a `.peek(nil)` sent while
+    /// the screen was locked was refused.
+    func modelPeeked(_ peek: SpacialShellProtocol.WindowRef?) {
+        guard peek != nil, peeking == nil, peekTask == nil else { return }
+        send(.peek(nil))
+    }
+
+    /// Ends a peek now, without the dwell: the card is going, or is about something else now.
+    private func endPeek() {
+        peekTask?.cancel(); peekTask = nil
+        highlighted = nil
+        if peeking != nil { peeking = nil; send(.peek(nil)) }
+    }
+
+    /// The preview ringed and the window peeked, for tests.
+    var peekState: (highlighted: SpacialShellProtocol.WindowRef?, peeking: SpacialShellProtocol.WindowRef?) { (highlighted, peeking) }
 
     /// The workspace the card is about, for tests; nil when hidden.
     var shownWorkspace: UUID? { shown }
@@ -172,15 +246,22 @@ final class RailHoverController {
     // MARK: - drawing
 
     private func render(title: String, subtitle: String?, content: RailHoverCard.Content) {
+        drawn = (title, subtitle, content)
+        redraw()
+    }
+
+    private func redraw() {
         host.rootView = RailHoverCard(
-            title: title, subtitle: subtitle, content: content,
+            title: drawn.title, subtitle: drawn.subtitle, content: drawn.content,
             onGrantAccess: { ScreenRecordingAccess.request() },
             onHoverCard: { [weak self] inside in
                 guard let self else { return }
                 self.pointerInCard = inside
                 if inside { self.hideTask?.cancel() } else { self.hideAfterGrace() }
             },
-            onSelect: { [weak self] in self?.select($0) })
+            onSelect: { [weak self] in self?.select($0) },
+            highlighted: highlighted,
+            onHoverPreview: { [weak self] ref, inside in self?.previewHovered(ref, inside: inside) })
         host.layoutSubtreeIfNeeded()
     }
 

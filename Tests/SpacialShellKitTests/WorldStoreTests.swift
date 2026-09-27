@@ -1329,7 +1329,7 @@ extension Snapshot {
 }
 func touches(_ c: FakeBackend.Call, _ r: WindowRef) -> Bool {
     switch c {
-    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .close(let x), .setFullscreen(let x, _), .unhide(let x): return x == r
+    case .setFrame(let x, _), .setPosition(let x, _), .raise(let x), .raiseWithoutActivating(let x), .close(let x), .setFullscreen(let x, _), .unhide(let x): return x == r
     case .warpPointer, .launch: return false
     }
 }

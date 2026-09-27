@@ -157,6 +157,10 @@ public struct WindowEchoes: Sendable {
         return true
     }
 
+    /// #179: `r` goes back to what it refused before a peek asked it for another frame (nil: it
+    /// refused nothing) — a refusal holds for one frame, and the peek's would replace its tile's.
+    public mutating func restore(_ refusal: Refusal?, for r: WindowRef) { refused[r] = refusal; suspected[r] = nil }
+
     /// `r` vanished or was retired: nothing learned about it outlives it.
     public mutating func forget(_ r: WindowRef) {
         intents.forget(r); refused[r] = nil; suspected[r] = nil; probes[r] = nil; unmovable.remove(r)

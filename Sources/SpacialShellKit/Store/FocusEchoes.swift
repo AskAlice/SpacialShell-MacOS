@@ -82,6 +82,18 @@ public struct FocusEchoes: Sendable {
         return true
     }
 
+    /// #179: the store raised `p` for a peek, without activating its app or focusing it. A raise
+    /// in the app's own window order can still make `p` that app's focused window, and macOS then
+    /// reports it, possibly after the peek has ended: queued like any raise, so that report is our
+    /// own echo of a window the model has not focused — `.stale`, never a human choosing `p`. Only
+    /// the focus stream: nothing is activated, so no activation echo is due. `lastRaised` is left
+    /// alone; the peek is not the model's focus.
+    public mutating func peekRaised(_ p: WindowRef) { pendingFocus.append((p, now())) }
+
+    /// #179: the peek is over. The model's focus is raised again on the next pass, even if it was
+    /// the window raised last: the peek raise may have taken its app's focus, and it went over it.
+    public mutating func peekEnded() { lastRaised = nil }
+
     /// #84: a command just moved the model's focus to `f`.
     public mutating func commanded(_ f: WindowRef) { commandedFocus = (f, now()) }
 

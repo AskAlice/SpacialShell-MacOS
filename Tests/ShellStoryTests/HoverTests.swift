@@ -82,4 +82,92 @@ import SwiftUI
         #expect(sent.commands == [.focusWindowRef(WindowRef(id: 1, pid: 1))])
         #expect(hover.shownWorkspace == nil)
     }
+
+    final class Sent: @unchecked Sendable { var commands: [Command] = [] }
+    static let dwell = Duration.milliseconds(40)
+    func settle() async { try? await Task.sleep(for: Self.dwell * 3) }
+    func shownCard(_ sent: Sent) -> (RailHoverController, WorkspaceRailItem) {
+        let hover = RailHoverController(send: { sent.commands.append($0) }, peekDwell: Self.dwell)
+        let item = railState().rail[0]
+        hover.show(item: item, tile: NSRect(x: 0, y: 400, width: 48, height: 48), railSide: .left,
+                   bounds: NSRect(x: 0, y: 0, width: 1440, height: 900), metaFor: meta)
+        return (hover, item)
+    }
+
+    /// #179: resting on a preview rings it at once and peeks its window after the dwell; leaving it
+    /// ends the peek after the same dwell.
+    @Test func restingOnAPreviewHighlightsItThenPeeksItsWindow() async {
+        let sent = Sent()
+        let (hover, _) = shownCard(sent)
+        let x = WindowRef(id: 1, pid: 1)
+        hover.previewHovered(x, inside: true)
+        #expect(hover.peekState.highlighted == x)
+        #expect(sent.commands.isEmpty, "nothing moves before the dwell")
+        await settle()
+        #expect(sent.commands == [.peek(x)])
+        hover.previewHovered(x, inside: false)
+        #expect(hover.peekState.highlighted == nil)
+        await settle()
+        #expect(sent.commands == [.peek(x), .peek(nil)])
+    }
+
+    /// Crossing the card fires nothing; moving to another preview swaps the peek directly.
+    @Test func crossingPreviewsSwapsThePeekWithoutRestoringInBetween() async {
+        let sent = Sent()
+        let (hover, _) = shownCard(sent)
+        let x = WindowRef(id: 1, pid: 1), y = WindowRef(id: 2, pid: 2), z = WindowRef(id: 3, pid: 3)
+        hover.previewHovered(x, inside: true); hover.previewHovered(x, inside: false)
+        hover.previewHovered(y, inside: true); hover.previewHovered(y, inside: false)
+        #expect(sent.commands.isEmpty, "a sweep across the card peeks nothing")
+        hover.previewHovered(z, inside: true)
+        await settle()
+        #expect(sent.commands == [.peek(z)])
+        hover.previewHovered(z, inside: false)
+        hover.previewHovered(y, inside: true)
+        hover.previewHovered(z, inside: false)   // a late exit from the one already left
+        await settle()
+        #expect(sent.commands == [.peek(z), .peek(y)], "a swap, with no .peek(nil) in between")
+        #expect(hover.peekState.highlighted == y)
+    }
+
+    /// The card going ends the peek at once; a click focuses the window and sends nothing after it.
+    @Test func closingTheCardEndsThePeekAndAClickLeavesTheWindowFocused() async {
+        let sent = Sent()
+        let (hover, _) = shownCard(sent)
+        let x = WindowRef(id: 1, pid: 1)
+        hover.previewHovered(x, inside: true)
+        await settle()
+        hover.hideNow()
+        #expect(sent.commands == [.peek(x), .peek(nil)])
+
+        let clicked = Sent()
+        let (again, _) = shownCard(clicked)
+        again.previewHovered(x, inside: true)
+        await settle()
+        again.select(x)
+        await settle()
+        #expect(clicked.commands == [.peek(x), .focusWindowRef(x)])
+        #expect(again.peekState.highlighted == nil && again.peekState.peeking == nil)
+    }
+
+    /// Commands reach the store in separate tasks, so a `.peek` can land after the click that
+    /// should have ended it (and a `.peek(nil)` sent while locked is refused): a published peek the
+    /// card no longer wants, and is not about to ask for, is ended.
+    @Test func aPeekTheCardNoLongerWantsIsEnded() async {
+        let sent = Sent()
+        let (hover, _) = shownCard(sent)
+        let x = WindowRef(id: 1, pid: 1), y = WindowRef(id: 2, pid: 2)
+        hover.previewHovered(x, inside: true)
+        await settle()
+        hover.modelPeeked(x)                      // wanted
+        hover.previewHovered(x, inside: false); hover.previewHovered(y, inside: true)
+        hover.modelPeeked(x)                      // y's peek is on its way
+        #expect(sent.commands == [.peek(x)])
+        await settle()
+        hover.select(y)
+        hover.modelPeeked(y)                      // the late `.peek(y)`, after the click
+        #expect(sent.commands == [.peek(x), .peek(y), .focusWindowRef(y), .peek(nil)])
+        hover.modelPeeked(nil)
+        #expect(sent.commands.count == 4)
+    }
 }

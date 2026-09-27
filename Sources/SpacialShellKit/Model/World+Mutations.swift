@@ -278,6 +278,7 @@ extension World {
     public mutating func activate(index: Int, on screen: DisplayID) {
         guard (screens[screen]?.workspaces.indices)?.contains(index) == true else { return }
         rememberActive(on: screen, before: index)
+        peek = nil   // #179: a workspace switch ends a peek
         var s = screens[screen]!
         s.activeIndex = index
         screens[screen] = s
@@ -331,9 +332,17 @@ extension World {
         normalize()
     }
 
+    /// #179: whether `w` can be peeked: a real window placed in a row, that the reconciler may
+    /// frame — not minimized or app-hidden, not in its own fullscreen Space, not on another Space.
+    public func canPeek(_ w: WindowRef) -> Bool {
+        !w.isPlaceholder && location(of: w) != nil
+            && !hidden.contains(w) && !fullscreen.contains(w) && !offSpace.contains(w)
+    }
+
     /// Restores invariants 4 and 5 after any mutation. Idempotent.
     public mutating func normalize() {
         defer { slideViews() }
+        if let p = peek, !canPeek(p) { peek = nil }   // #179: a peeked window that vanished or hid ends the peek
         for id in screens.keys {
             var s = screens[id]!
             let activeId = s.workspaces.indices.contains(s.activeIndex) ? s.workspaces[s.activeIndex].id : nil
