@@ -44,7 +44,7 @@ public struct WindowEchoes: Sendable {
         public var dragging: WindowRef?
         /// #108: the window is a tile a drop can land on (framed by the last reconcile).
         public var isTile: Bool
-        /// #57: human input arrived within `WorldStore.humanInputWindow`.
+        /// #57: human input arrived within `FocusEchoes.humanInputWindow`.
         public var humanRecently: Bool
         public var world: World
         public var displays: [DisplayInfo]
@@ -187,9 +187,9 @@ public struct WindowEchoes: Sendable {
     /// its own window) is left to the reconciler, which puts the window where its tab is: the model wins.
     ///
     /// "The user dragged it" is judged from what the store has: human input within
-    /// `humanInputWindow` (the platform reports mouse-drags as input, so a long drag stays fresh),
-    /// a frame whose size did not change (a drag never resizes; macOS clamping one of our own
-    /// writes to a minimum size does), and a window that was on screen to be dragged — tiled or
+    /// `FocusEchoes.humanInputWindow` (the platform reports mouse-drags as input, so a long drag
+    /// stays fresh), a frame whose size did not change (a drag never resizes; macOS clamping one of
+    /// our own writes to a minimum size does), and a window that was on screen to be dragged — tiled or
     /// floating in its display's active workspace, not parked, hidden or fullscreen. The display is
     /// the one under the frame's centre.
     /// ponytail: input-within-a-second, not a true drag signal — an app moving its own window just

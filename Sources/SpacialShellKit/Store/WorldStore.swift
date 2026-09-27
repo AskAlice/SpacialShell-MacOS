@@ -70,45 +70,15 @@ public actor WorldStore {
     /// or a retired window would look changed on the very next snapshot and we would fight it forever.
     private var lastSeen: [WindowRef: CGRect] = [:]
     private var failures: [WindowRef: Int] = [:]
-    private var lastRaised: WindowRef?
-    /// Raises whose echoes have not arrived yet, oldest first — one queue per echo stream, since
-    /// every raise is reported twice, as a focus change and as an app activation (#69).
-    ///
-    /// Fast switching raises X then Y before macOS reports X. With only `lastRaised` to go on,
-    /// X's late echo read as a human choosing X, surfaced it, and that raise echoed late in turn —
-    /// two apps trading focus ~10×/s. So a report matching a queued raise is our own echo; and
-    /// since macOS reports raises in order, it also retires every raise queued before it, whose
-    /// echo has either landed or never will. A report matching nothing queued is a human.
-    private var pendingFocusEchoes: [(ref: WindowRef, at: ContinuousClock.Instant)] = []
-    private var pendingActivationEchoes: [(ref: WindowRef, at: ContinuousClock.Instant)] = []
-    /// Backstop for echoes that never come (raising the app already in front activates nothing):
-    /// past this, a report of that window is a human choice again, so #56 keeps surfacing it.
-    private static let echoWindow = Duration.seconds(1)
-    /// #28: a focus change this soon after a key press or a click is the human's doing and goes
-    /// through untouched; later than this, while a fullscreen window is in front, it is a window
-    /// grabbing focus by itself. Long enough for ⌘Tab or a Dock click to land as an activation,
-    /// short enough that an app waking up a second later is not mistaken for the user.
-    static let humanInputWindow = Duration.seconds(1)
-    private var lastHumanInput: ContinuousClock.Instant?
-    /// #28: focus requests held back behind a fullscreen window on a display with nowhere else to
-    /// go, oldest first, each with the fullscreen window it was held behind. Drained by
-    /// `drainDeferredFocus` once that window leaves fullscreen.
-    private var deferredFocus: [(requester: WindowRef, behind: WindowRef)] = []
-    /// The shell's own activations (a rename alert, Settings) come from a click on its own panels,
-    /// which the global mouse monitor never sees. They are never intrusions.
-    private let ownPid = ProcessInfo.processInfo.processIdentifier
+    /// #170: our raises, our commands' focus moves and the human's input, and what each focus or
+    /// activation report means against them (#67, #69, #84, #28). Shares the store's clock.
+    private var focusEchoes: FocusEchoes
     private let now: @Sendable () -> ContinuousClock.Instant
     /// #64: draws each switch as motion; nil (tests, headless) places instantly.
     private let animator: (any SwitchAnimator)?
     /// What each display's tiling showed at the end of the last reconcile — the "before" of the
     /// next switch.
     private var lastShown: [DisplayID: ShownRow] = [:]
-    /// What the last snapshot said macOS had focused. Focus that has not moved since is an echo,
-    /// not news — see `applyNativeFocus`. Same idea as `WindowEchoes`, which does this for frames.
-    private var lastNativeFocus: WindowRef?
-    /// #84: the window a command just moved focus to, and when. macOS keeps reporting the window
-    /// it had until our raise lands; see `applyNativeFocus`.
-    private var commandedFocus: (ref: WindowRef, at: ContinuousClock.Instant)?
     private var locked = false
     /// Bumped by every `reconcile()`; an in-flight pass abandons itself once a newer pass has started.
     /// Only a *newer reconcile* invalidates a plan — early-return event paths (intent echoes, locked,
@@ -192,6 +162,7 @@ public actor WorldStore {
         self.onBorder = onBorder
         self.onPointerTargets = onPointerTargets
         self.now = now
+        self.focusEchoes = FocusEchoes(now: now)
         self.tracerProvider = tracerProvider
         self.animator = animator
         self.layouts = LayoutCatalogue(config: config)
@@ -322,7 +293,7 @@ public actor WorldStore {
             movedApps.insert(bundle)
         }
         world = next
-        if let f = world.focus.window, f != before.window { commandedFocus = (f, now()) }
+        if let f = world.focus.window, f != before.window { focusEchoes.commanded(f) }
         Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
         for e in effects {
             switch e {
@@ -368,7 +339,7 @@ public actor WorldStore {
             pointerDown = nil; endDrag(); if grab?.bySwipe == false { dropGrab() }
             eventSpan = tracedSnapshot(s)
         case .pointerDown(let p):
-            pointerDown = p; lastHumanInput = now()
+            pointerDown = p; focusEchoes.humanInput()
             if grab?.bySwipe == true { return }   // four fingers have the edge; the button waits
             // #113: a press on a shared edge grabs it, instead of anything else a press can start.
             if !locked, let b = borders.first(where: { $0.border.contains(p) }) {
@@ -404,7 +375,7 @@ public actor WorldStore {
             let kind: WindowEchoes.Context.Event = if case .windowMoved = event { .moved } else { .resized }
             let verdict = echoes.interpret(r, frame: f, WindowEchoes.Context(
                 event: kind, was: was, locked: locked, grabbing: grab != nil, pointerDown: pointerDown,
-                dragging: drag?.ref, isTile: tiles[r] != nil, humanRecently: humanRecently,
+                dragging: drag?.ref, isTile: tiles[r] != nil, humanRecently: focusEchoes.humanRecently,
                 world: world, displays: displays, parked: parked))
             observed[r] = f
             if verdict.learned.contains(.sheetUnmovable) { logUnmovable(r) }
@@ -429,19 +400,14 @@ public actor WorldStore {
             applyNativeFocus(r)
         case .appActivated(let pid):
             if locked { return }
-            // Raising a window activates its app, and macOS reports that back as an activation
-            // like any other. Acting on it would raise again, and again. Nothing is lost by
-            // ignoring it: the app we just raised is the one already on screen.
-            if consumeEcho(&pendingActivationEchoes, { $0.pid == pid }) || pid == lastRaised?.pid { return }
-            // The fullscreen window's own app activating is no Space switch, and the check below
-            // already finds it on screen; only another app can pull the user out.
-            if let fs = fullscreenInFront, fs.pid != pid, pid != ownPid, !humanRecently {
-                interceptFocus(by: candidateWindow(ofPid: pid), behind: fs)
-            } else {
-                surfaceActivatedApp(pid)
+            // #170: our own raise's activation is ignored (`FocusEchoes.activationReported`).
+            switch focusEchoes.activationReported(pid: pid, world: world) {
+            case .intrusion(let fs): interceptFocus(by: candidateWindow(ofPid: pid), behind: fs)
+            case .change: surfaceActivatedApp(pid)
+            case .ownEcho, .repeated, .stale: return
             }
         case .humanInput:
-            lastHumanInput = now(); return
+            focusEchoes.humanInput(); return
         case .windowTitleChanged(let r, let title):
             // Not spatial: no sweep, no reconcile, no span. Only a window a refresh has already
             // seen, and only a real change reaches `publish`'s dedupe.
@@ -580,7 +546,7 @@ public actor WorldStore {
                 forgetPopup(gone)
                 retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil
-                failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
+                failures[gone] = nil; focusEchoes.vanished(gone)
             }
             if vanished > 0 { publishWriteProblems() }
         }
@@ -649,16 +615,6 @@ public actor WorldStore {
     /// So an activation surfaces a window of that app itself. The workspace's anchor wins where
     /// there is one — it is the window the user last used there — and the reconcile that follows
     /// unparks it.
-    /// True when a report is the echo of a queued raise; retires that raise and every older one.
-    private func consumeEcho(_ queue: inout [(ref: WindowRef, at: ContinuousClock.Instant)],
-                             _ matches: (WindowRef) -> Bool) -> Bool {
-        let t = now()
-        queue.removeAll { t - $0.at >= Self.echoWindow }
-        guard let i = queue.firstIndex(where: { matches($0.ref) }) else { return false }
-        queue.removeFirst(i + 1)
-        return true
-    }
-
     private func surfaceActivatedApp(_ pid: Int32) {
         // Already showing a window of this app: nothing to surface. The test is per display, not
         // "does this app own the single global focus" — with more than one screen two apps are on
@@ -697,35 +653,20 @@ public actor WorldStore {
         if world.ignored.contains(r), retired[r] != nil {
             revive(r, frame: observed[r] ?? retired[r]!.frame, reason: "focused")
         }
-        let ownEcho = consumeEcho(&pendingFocusEchoes, { $0 == r })
-        let unchanged = r == lastNativeFocus
-        let isEcho = ownEcho || unchanged
-        lastNativeFocus = r
+        // #170: our own raise's echo, a repeat, the past (#67, #69, #84), the user, or an intrusion (#28).
+        let verdict = focusEchoes.focusReported(r, world: world)
         // #68: the backstop snapshot re-reports an unchanged focus every refresh; at .notice that
         // pushed every interesting line out of a `log show --last 5m` window. Changes stay loud.
-        if unchanged {
+        if verdict == .repeated {
             Self.log.debug("native focus \(r.id, privacy: .public) unchanged")
-        } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) echo=\(isEcho) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
-        // #84: right after a command moved focus, macOS re-reports the window it *had* (unchanged)
-        // until our raise lands. That is the past, not the user: honouring it pulled focus back a
-        // tab ~50 ms after Fn+D and restarted the slide. A *change* (the user clicked something)
-        // still goes through, and so does an unchanged report once the echo window has passed —
-        // then macOS really did not move, and the model follows it.
-        if unchanged, let c = commandedFocus, c.ref != r, world.focus.window == c.ref,
-           now() - c.at < Self.echoWindow { return }
-        // #28. A repeated report of a requester already intercepted is *not* skipped as an echo:
-        // it means macOS still has it in front, so the fullscreen window goes back again. Windows
-        // the model does not manage (ignored, unknown) are left alone, exactly as below.
-        if !ownEcho, let fs = fullscreenInFront, r != fs, r.pid != ownPid, !humanRecently,
-           world.ephemeral.contains(r) || world.location(of: r) != nil {
-            interceptFocus(by: r, behind: fs)
-            return
+        } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) verdict=\(String(describing: verdict), privacy: .public) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
+        let isEcho: Bool
+        switch verdict {
+        case .stale: return
+        case .intrusion(let fs): interceptFocus(by: r, behind: fs); return
+        case .ownEcho, .repeated: isEcho = true
+        case .change: isEcho = false
         }
-        // Our own raise of `r` reporting back after the model has already moved on (a quick Fn+D
-        // after Fn+A) is history, not news — in *any* row. Only cross-row echoes were dropped
-        // below, so a late echo inside the row pulled focus back a tab and the next echo pushed it
-        // forward again: fast tab switching stuttered and restarted its slides (#67).
-        if ownEcho && world.focus.window != r { return }
         if world.ephemeral.contains(r) { world.focus.window = r; return }
         guard let loc = world.location(of: r), !world.hidden.contains(r) else { return }
         // An unchanged native focus is news about nothing, and must never drag the active
@@ -753,79 +694,31 @@ public actor WorldStore {
 
     // MARK: fullscreen focus protection (#28)
 
-    private var humanRecently: Bool {
-        guard let t = lastHumanInput else { return false }
-        return now() - t < Self.humanInputWindow
-    }
-
-    /// The fullscreen window the user is in, if any — the model's answer to "is this display
-    /// showing a fullscreen Space?".
-    ///
-    /// `AXFullScreen` cannot answer it: a window keeps reporting fullscreen after the user switches
-    /// away from its Space. The model's focus can. It follows every native focus report, so the
-    /// moment the user goes anywhere else — another Space, window or display — it stops naming the
-    /// fullscreen window; while it still does, that window is what macOS last put in front (or
-    /// what we just raised back there). So: the focused window, if the model has it fullscreen.
-    private var fullscreenInFront: WindowRef? {
-        guard let f = world.focus.window, world.fullscreen.contains(f) else { return nil }
-        return f
-    }
-
-    /// Whether a display the user is *not* on is showing a fullscreen Space. macOS reports one
-    /// focused window, not one per display, so that display's own focus stands in: its active
-    /// workspace's anchor, the window last focused there.
-    ///
-    /// ponytail: a stale anchor (the user swiped that display off its fullscreen Space and focused
-    /// nothing there since) reads as covered. That errs towards deferring rather than moving — the
-    /// safe side. Upgrade path: per-display current-Space ids from the platform.
-    private func showsFullscreen(_ d: DisplayID) -> Bool {
-        guard let a = world.screens[d]?.active.anchor else { return false }
-        return world.fullscreen.contains(a)
-    }
-
-    /// `requester` asked for focus with no human behind it while `fs` is in front (#28). Send it to
-    /// a display that is not showing a fullscreen Space — into that display's active workspace,
-    /// where a new window would land — preferring the display it is already on; with none, hold
-    /// the request until `fs` leaves fullscreen. Either way `fs` goes back in front: macOS has no
-    /// veto for a window manager, so protection can only be this reactive put-back.
-    ///
-    /// ponytail: an app that re-activates itself every time it loses focus will trade places with
-    /// `fs` for as long as it keeps trying. Upgrade path: give up on a requester after N rounds.
+    /// `requester` asked for focus with no human behind it while `fs` is in front: it goes where
+    /// `FocusEchoes.intercept` decides (another display's active row, or held until fullscreen
+    /// ends), and `fs` goes back in front.
     private func interceptFocus(by requester: WindowRef?, behind fs: WindowRef) {
-        guard let fsScreen = world.screenContaining(fs) else { return }
+        guard let i = focusEchoes.intercept(requester, behind: fs, world: world) else { return }
         if let r = requester {
-            let free = world.screenOrder.filter { $0 != fsScreen && !showsFullscreen($0) }
-            let own = world.screenContaining(r)
-            // ponytail: an ephemeral window has no workspace to land in, so it is deferred even
-            // when a display is free. Upgrade path: centre it on the free display instead.
-            if own != nil, let dest = free.first(where: { $0 == own }) ?? free.first,
-               let target = world.screens[dest]?.active.id {
+            switch i.requester {
+            case .move(let dest, let target)?:
                 world = CommandRunner.run(.moveWindowRefToWorkspace(r, target), on: world, in: commandEnvironment).world
                 Self.log.notice("fullscreen guard: moved \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
-            } else {
-                deferredFocus.removeAll { $0.requester == r }
-                deferredFocus.append((r, fs))
+            case .deferred?:
                 Self.log.notice("fullscreen guard: deferred \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) behind \(fs.id, privacy: .public)")
+            case nil: break
             }
         }
-        world.focus = Focus(screen: fsScreen, window: fs)
+        world.focus = Focus(screen: i.screen, window: fs)
         world.normalize()
-        // Raise it even if it was the last window we raised: macOS has raised the requester since.
-        lastRaised = nil
     }
 
-    /// Hands out held-back focus (#28). Requests held behind a window that has left fullscreen, or
-    /// gone away, are settled at once: the newest whose window still exists gets the focus — but
-    /// only if the user is still on the window fullscreen ended in. One who has already gone
-    /// somewhere else has moved on, and the request is dropped; its window keeps its tab.
+    /// Hands out held-back focus (#28) once the window it was held behind has left fullscreen
+    /// (`FocusEchoes.drainDeferred`).
     private func drainDeferredFocus() {
-        let ended = deferredFocus.filter { !world.fullscreen.contains($0.behind) }
-        guard !ended.isEmpty else { return }
-        deferredFocus.removeAll { !world.fullscreen.contains($0.behind) }
-        guard let next = ended.last(where: { world.location(of: $0.requester) != nil || world.ephemeral.contains($0.requester) }),
-              world.focus.window == next.behind || world.location(of: next.behind) == nil else { return }
-        Self.log.notice("fullscreen guard: fullscreen ended, focusing deferred \(next.requester.id, privacy: .public)")
-        focus(next.requester)
+        guard let next = focusEchoes.drainDeferred(world: world) else { return }
+        Self.log.notice("fullscreen guard: fullscreen ended, focusing deferred \(next.id, privacy: .public)")
+        focus(next)
     }
 
     /// Points the drop indicator at `target` (nil hides it), telling the panel only on a change.
@@ -927,13 +820,13 @@ public actor WorldStore {
                         latest: .unit(Resize.swiped(from: start, travel: drag.travel, trailing: trailing)),
                         applied: nil, anchor: anchor)
             Self.log.notice("swipe edge \(line, privacy: .public) of \(page.key, privacy: .public) from \(start, privacy: .public)")
-            lastHumanInput = now()
+            focusEchoes.humanInput()
             if pump == nil { pump = Task { await self.pumpGrab() } }
             return .done
         case .moved:
             guard let g = grab, let start = g.swipeStart else { return .noop("no edge in the hand") }
             grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel, trailing: g.swipeTrailing))
-            lastHumanInput = now()
+            focusEchoes.humanInput()
             if pump == nil { pump = Task { await self.pumpGrab() } }
             return .done
         case .ended:
@@ -1185,10 +1078,7 @@ public actor WorldStore {
             }
         }
         endWrites()
-        if let f = world.focus.window, f != lastRaised {
-            lastRaised = f
-            pendingFocusEchoes.append((f, now()))
-            pendingActivationEchoes.append((f, now()))
+        if let f = world.focus.window, focusEchoes.recordRaise(of: f) {
             let raise = startSpan("reconcile.raise", parent: span)
             raise.setAttribute(key: "window.id", value: Int(f.id))
             if let b = bundleIDs[f] { raise.setAttribute(key: "bundle.id", value: b) }
@@ -1330,7 +1220,7 @@ public actor WorldStore {
             world.remove(r); world.ignored.insert(r)
             observed[r] = nil; prePark[r] = nil; parked.remove(r); echoes.forget(r)
             forgetPopup(r)
-            if lastRaised == r { lastRaised = nil }
+            focusEchoes.retired(r)
             publishWriteProblems()
         }
     }
