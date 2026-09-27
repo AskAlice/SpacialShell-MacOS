@@ -20,6 +20,8 @@ struct WorkspacePanelView: View {
     var openLayouts: () -> Void = {}
     /// Stories only: draw this tab as hovered, since a snapshot has no pointer (#180).
     var hoverPreview: SpacialShellProtocol.WindowRef? = nil
+    /// Stories only: draw this tab's × as under the pointer (#180).
+    var closeHoverPreview: SpacialShellProtocol.WindowRef? = nil
 
     /// Where a dragged tab would land, while it is being dragged.
     private enum DropSlot: Equatable {
@@ -37,11 +39,11 @@ struct WorkspacePanelView: View {
     /// 11.5 pt text, enough to tell "Terminal" from "Mail". Tabs squeeze toward it before anything
     /// else happens; past it the row scrolls instead of truncating names to "…" (#14).
     static let minTabWidth: CGFloat = 88
-    /// The focused tab also carries its close button (8 pt glyph + 5 spacing), and a semibold
+    /// The focused tab also carries its close button (16 pt hit circle + 5 spacing), and a semibold
     /// name; without this it would be the one tab you can't read — "Ter…".
     /// An icon-only tab (#116) has no text to keep readable: its floor is the icon and padding.
     private func minWidth(_ tab: WindowTabItem) -> CGFloat {
-        (style == .icon ? Self.minIconTabWidth : Self.minTabWidth) + (tab.isFocused ? 16 : 0)
+        (style == .icon ? Self.minIconTabWidth : Self.minTabWidth) + (tab.isFocused ? 21 : 0)
     }
     static let minIconTabWidth: CGFloat = 34
     /// The design system's tab-width ceiling: a long title truncates, it does not take the bar.
@@ -175,13 +177,7 @@ struct WorkspacePanelView: View {
                 Image(systemName: "macwindow.on.rectangle").font(.system(size: 8, weight: .semibold)).opacity(0.6)
             }
             if tab.isFocused {
-                Button {
-                    send(.closeWindowRef(tab.ref))
-                } label: {
-                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).opacity(0.6)
-                }
-                .panelButton()
-                .help("Close window")
+                TabCloseButton(highlighted: closeHoverPreview == tab.ref) { send(.closeWindowRef(tab.ref)) }
             }
             if sizing == .equal { Spacer(minLength: 0) }
         }
@@ -227,20 +223,16 @@ struct WorkspacePanelView: View {
         // title so the tab's width, and the row, never move as the pointer passes.
         .overlay(alignment: .trailing) {
             if !tab.isFocused, tab.canClose, (hoveredTab ?? hoverPreview) == tab.ref {
-                Button {
-                    send(.closeWindowRef(tab.ref))
-                } label: {
-                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
-                        .frame(width: 16, height: 16)
-                        .background(Circle().fill(.background.opacity(0.92)))
-                }
-                .panelButton()
-                .help("Close window")
-                .padding(.trailing, 5)
+                TabCloseButton(backed: true, highlighted: closeHoverPreview == tab.ref) { send(.closeWindowRef(tab.ref)) }
+                    .padding(.trailing, 5)
+                    .transition(.opacity)
             }
         }
         .onHover { inside in
-            if inside { hoveredTab = tab.ref } else if hoveredTab == tab.ref { hoveredTab = nil }
+            // A quick fade, not a pop (#180); none at all under Reduce Motion.
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) {
+                if inside { hoveredTab = tab.ref } else if hoveredTab == tab.ref { hoveredTab = nil }
+            }
         }
         // #116: the whole title, however the tab truncates or hides it. The system tooltip keeps
         // its own delay; the rail's hover card (#6) is a separate surface and waits for nothing.
@@ -325,6 +317,44 @@ private struct WidthCap: ViewModifier {
         }
         func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
             subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        }
+    }
+}
+
+/// A tab's × (#180): the focused tab's, always shown, and the one a hovered tab reveals. The
+/// pointer over the glyph itself lights a round fill behind it, so it reads as the button it is,
+/// focused tab or not. `backed` gives the hover × an opaque disc so it stays legible drawn over
+/// the end of a title.
+private struct TabCloseButton: View {
+    let backed: Bool
+    let action: () -> Void
+    @State private var hovered: Bool
+
+    /// `highlighted` is the starting hover state: stories set it, since a snapshot has no pointer.
+    init(backed: Bool = false, highlighted: Bool = false, action: @escaping () -> Void) {
+        self.backed = backed
+        self.action = action
+        _hovered = State(initialValue: highlighted)
+    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                .opacity(hovered ? 0.9 : 0.6)
+                .frame(width: 16, height: 16)
+                .background {
+                    ZStack {
+                        if backed { Circle().fill(.background.opacity(0.92)) }
+                        Circle().fill(Color.primary.opacity(hovered ? 0.16 : 0))
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .panelButton()
+        .help("Close window")
+        .onHover { inside in
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) { hovered = inside }
         }
     }
 }

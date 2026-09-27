@@ -452,6 +452,10 @@ enum Stories {
         add("bar-hover-close", barGeometry, WorkspacePanelView(
             state: tabs(hoverRow), metaFor: meta, sizing: .fit, send: send,
             hoverPreview: hoverRow[1].ref))
+        // #180: the pointer on the focused tab's × lights it, like any other button.
+        add("bar-close-hover-focused", barGeometry, WorkspacePanelView(
+            state: tabs(hoverRow), metaFor: meta, sizing: .fit, send: send,
+            closeHoverPreview: hoverRow[0].ref))
         add("bar-floating-hidden", barGeometry, WorkspacePanelView(
             state: tabs([tab(1, focused: true), tab(2, floating: true), tab(3, hidden: true), tab(4)]),
             metaFor: meta, sizing: .fit, send: send))
