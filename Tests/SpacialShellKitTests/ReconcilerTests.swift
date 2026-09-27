@@ -36,7 +36,7 @@ import Foundation
         if let f = w.focus.window { if case .frame = d[f] {} else { Issue.record("focused \(f) must stay on screen") } }
     }
     @Test func inactiveWorkspaceWindowsAreParked() {
-        var w = world(); w = CommandRunner.apply(.moveWindowToWorkspace(.down), to: w).0   // a → ws1 (active), b stays ws0
+        var w = world(); w = CommandRunner.apply(.moveWindowToWorkspace(.down), to: w, in: .test()).0   // a → ws1 (active), b stays ws0
         let d = Reconciler.desired(world: w, displays: [d1], config: cfg, observed: obs, prePark: [:], parkedNow: [], zeroSliver: [])
         #expect(d[b] == .parked(CGPoint(x: 999, y: 699)))
         if case .frame = d[a]! {} else { Issue.record("a should be framed") }

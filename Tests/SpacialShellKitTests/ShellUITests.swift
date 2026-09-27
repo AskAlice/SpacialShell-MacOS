@@ -92,7 +92,7 @@ import Foundation
         return w   // focus a on D1[0]
     }
     func run(_ w: World, _ c: Command) -> (World, [Effect]) {
-        let r = CommandRunner.apply(c, to: w)
+        let r = CommandRunner.apply(c, to: w, in: .test())
         #expect(r.0.invariantViolations().isEmpty, "after \(c): \(r.0.invariantViolations())")
         return r
     }
@@ -203,7 +203,7 @@ import Foundation
         }
         // panel-width 48, panel-height 34, gap 8, height−1:
         #expect(rect(w) == .frame(CGRect(x: 56, y: 67, width: 936, height: 524)))
-        w = CommandRunner.apply(.toggleShellUI, to: w).0
+        w = CommandRunner.apply(.toggleShellUI, to: w, in: .test()).0
         #expect(w.zen)
         #expect(rect(w) == .frame(CGRect(x: 8, y: 33, width: 984, height: 558)))
     }
@@ -268,7 +268,7 @@ import Foundation
         func rows(_ w: World) -> [[WindowRef]] { w.screenOrder.flatMap { w.screens[$0]!.workspaces.map(\.windows) } }
         func pins(_ w: World) -> [Set<WindowRef>] { w.screenOrder.flatMap { w.screens[$0]!.workspaces.map(\.floating) } }
         for r in [b, c, d, p, q] {
-            let (out, effects) = CommandRunner.apply(.recoverWindow(r), to: w)
+            let (out, effects) = CommandRunner.apply(.recoverWindow(r), to: w, in: .test())
             #expect(out.invariantViolations().isEmpty)
             for s in everyone {
                 #expect(out.location(of: s)?.screen == w.location(of: s)?.screen
@@ -286,10 +286,10 @@ import Foundation
     @Test func recoveryUnhides() {
         var w = world()
         w.setHidden(c, true)
-        let (out, effects) = CommandRunner.apply(.recoverWindow(c), to: w)
-        #expect(out == CommandRunner.apply(.focusWindowRef(c), to: w).0)
+        let (out, effects) = CommandRunner.apply(.recoverWindow(c), to: w, in: .test())
+        #expect(out == CommandRunner.apply(.focusWindowRef(c), to: w, in: .test()).0)
         #expect(!out.hidden.contains(c) && effects.contains(.unhide(c)))
-        #expect(CommandRunner.apply(.recoverWindow(p), to: w).1 == [.unhide(p), .focus(p)])
-        #expect(CommandRunner.apply(.recoverWindow(x), to: w).1.isEmpty)   // not the tray's to offer
+        #expect(CommandRunner.apply(.recoverWindow(p), to: w, in: .test()).1 == [.unhide(p), .focus(p)])
+        #expect(CommandRunner.apply(.recoverWindow(x), to: w, in: .test()).1.isEmpty)   // not the tray's to offer
     }
 }

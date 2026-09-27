@@ -304,7 +304,7 @@ import SpacialShellProtocol
     @Test func layoutSurfaceCommandsAreNoOpsInTheModel() {
         let w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         for c in [Command.editLayout(nil, workspace: nil), .setDefaultLayout(.grid), .showLayoutOnBar(.grid, false)] {
-            let (after, effects) = CommandRunner.apply(c, to: w)
+            let (after, effects) = CommandRunner.apply(c, to: w, in: .test())
             #expect(after == w && effects.isEmpty)
         }
     }

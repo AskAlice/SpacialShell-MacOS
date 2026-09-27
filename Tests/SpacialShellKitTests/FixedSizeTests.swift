@@ -78,7 +78,7 @@ import Foundation
     /// window that only snapped to its own increments (a terminal's cell grid) is never stuck small.
     @Test func aNewTileIsAskedForInFull() {
         var w = one(); w.adopt(b, kind: .tile, on: "D1")
-        w = CommandRunner.apply(.setWorkspaceLayout(w.screens["D1"]!.active.id, .column), to: w).0
+        w = CommandRunner.apply(.setWorkspaceLayout(w.screens["D1"]!.active.id, .column), to: w, in: .test()).0
         let d = desired(w, refused: [a: Refusal(asked: tile, size: CGSize(width: 400, height: 300))])
         guard case .frame(let f)? = d[a] else { Issue.record("a framed"); return }
         #expect(f.width > 400 && f.minX == 10, "the column tile, whole")

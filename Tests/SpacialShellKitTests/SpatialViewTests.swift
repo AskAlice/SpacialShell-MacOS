@@ -91,8 +91,8 @@ import CoreGraphics
         #expect(Command.toggleSpatialView.isAppLayer)
         // The runner normalises any world it is given, so the no-op is judged against the overview's.
         let before = world()
-        let out = CommandRunner.run(.toggleSpatialView, on: before)
-        #expect(out.world == CommandRunner.run(.toggleOverview, on: before).world && out.effects.isEmpty)
+        let out = CommandRunner.run(.toggleSpatialView, on: before, in: .test())
+        #expect(out.world == CommandRunner.run(.toggleOverview, on: before, in: .test()).world && out.effects.isEmpty)
         #expect(CheatSheet.rows(for: Config()).contains { $0.commandName == "toggle-spatial-view" && $0.chords == ["Fn+Z"] })
     }
 }

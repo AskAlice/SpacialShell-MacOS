@@ -10,7 +10,7 @@ import Foundation
     func world() -> World {
         var w = World.empty(screens: ["D1", "D2"], defaultLayout: .maximize)
         for (r, s) in [(a, "D1"), (b, "D1"), (c, "D1"), (d, "D2")] { w.adopt(r, kind: .tile, on: DisplayID(s)) }
-        w = CommandRunner.apply(.moveWindowRefToWorkspace(c, w.screens["D1"]!.workspaces[1].id, follow: false), to: w).0
+        w = CommandRunner.apply(.moveWindowRefToWorkspace(c, w.screens["D1"]!.workspaces[1].id, follow: false), to: w, in: .test()).0
         w.focus = Focus(screen: "D1", window: a)
         return w
     }

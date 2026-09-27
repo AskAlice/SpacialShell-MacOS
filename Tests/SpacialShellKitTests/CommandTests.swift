@@ -10,7 +10,7 @@ import Foundation
         return w   // focus a on D1[0]
     }
     func run(_ w: World, _ c: Command) -> (World, [Effect]) {
-        let r = CommandRunner.apply(c, to: w)
+        let r = CommandRunner.apply(c, to: w, in: .test())
         #expect(r.0.invariantViolations().isEmpty, "after \(c): \(r.0.invariantViolations())")
         return r
     }
@@ -87,7 +87,7 @@ import Foundation
         (w, _) = run(w, .moveWindow(.right))
         #expect(w.screens["D1"]!.active.windows == [b, c, a] && w.focus.window == a)
         // At the edge of the only display: a no-op that changes nothing.
-        let (out, effects) = CommandRunner.apply(.moveWindow(.right), to: w)
+        let (out, effects) = CommandRunner.apply(.moveWindow(.right), to: w, in: .test())
         #expect(out == w && effects.isEmpty)
     }
     /// Under `maximize` only the focused window is painted, and the focus travels with the window
@@ -115,7 +115,7 @@ import Foundation
     /// refused move would turn "nudge the leftmost window further left" into a layout change.
     @Test func refusedMoveDoesNotPromoteTheLayout() {
         for w in [single(), twoDisplays()] {           // `a` is leftmost on the leftmost display
-            let (out, effects) = CommandRunner.apply(.moveWindow(.left), to: w)
+            let (out, effects) = CommandRunner.apply(.moveWindow(.left), to: w, in: .test())
             #expect(out == w && effects.isEmpty)
             #expect(out.screens["D1"]!.active.layout == .maximize)
         }
@@ -152,7 +152,7 @@ import Foundation
     @Test func outermostDisplayIsANoop() {
         var w = twoDisplays()
         (w, _) = run(w, .focusWindowRef(d))           // D2 is the rightmost display
-        let (out, effects) = CommandRunner.apply(.moveWindow(.right), to: w)
+        let (out, effects) = CommandRunner.apply(.moveWindow(.right), to: w, in: .test())
         #expect(out == w && effects.isEmpty)
     }
 
@@ -199,13 +199,13 @@ import Foundation
     @Test func dragToTheWorkspaceItIsAlreadyInChangesNothing() {
         let w = base()
         let here = w.screens["D1"]!.workspaces[0].id
-        let (out, effects) = CommandRunner.apply(.moveWindowRefToWorkspace(a, here), to: w)
+        let (out, effects) = CommandRunner.apply(.moveWindowRefToWorkspace(a, here), to: w, in: .test())
         #expect(out == w && effects.isEmpty)
     }
 
     @Test func dragToAnUnknownWorkspaceIsARefusal() {
         let w = base()
-        let (out, effects) = CommandRunner.apply(.moveWindowRefToWorkspace(a, UUID()), to: w)
+        let (out, effects) = CommandRunner.apply(.moveWindowRefToWorkspace(a, UUID()), to: w, in: .test())
         #expect(out == w && effects.isEmpty)
     }
 
@@ -232,7 +232,7 @@ import Foundation
     @Test func dragToReorderOntoItselfChangesNothing() {
         let w = base()
         for cmd: Command in [.moveWindowRefBefore(a, a), .moveWindowRefBefore(a, b)] {
-            let (out, effects) = CommandRunner.apply(cmd, to: w)
+            let (out, effects) = CommandRunner.apply(cmd, to: w, in: .test())
             #expect(out == w && effects.isEmpty, "\(cmd) should be a no-op")
         }
     }
@@ -425,7 +425,7 @@ import Foundation
         let w = stack()
         let id = w.screens["D1"]!.workspaces[1].id
         for cmd: Command in [.moveWorkspace(id, toIndex: 1), .moveWorkspace(UUID(), toIndex: 0)] {
-            let (out, effects) = CommandRunner.apply(cmd, to: w)
+            let (out, effects) = CommandRunner.apply(cmd, to: w, in: .test())
             #expect(out == w && effects.isEmpty, "\(cmd) should be a no-op")
         }
     }
@@ -516,7 +516,7 @@ import Foundation
         (w, _) = run(w, .toggleFloatRef(c))
         #expect(w.screens["D1"]!.active.floating == [c] && w.focus.window == a)
         (w, _) = run(w, .toggleFloatRef(c)); #expect(w.screens["D1"]!.active.floating.isEmpty)
-        #expect(CommandRunner.run(.toggleFloatRef(d), on: w).report == .failed(.unknownWindow(d)))
+        #expect(CommandRunner.run(.toggleFloatRef(d), on: w, in: .test()).report == .failed(.unknownWindow(d)))
     }
     @Test func toggleShellUIFlipsZen() {
         let (w, e) = run(base(), .toggleShellUI)

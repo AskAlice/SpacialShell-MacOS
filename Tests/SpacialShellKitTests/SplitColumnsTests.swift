@@ -21,7 +21,7 @@ import Foundation
                                      in: rect ?? big, gap: 0, portions: ws.portions, split: ws.split(in: row))
         return fs.indices.filter { fs[$0] != nil }
     }
-    func run(_ c: Command, _ w: World) -> World { CommandRunner.apply(c, to: w).0 }
+    func run(_ c: Command, _ w: World) -> World { CommandRunner.apply(c, to: w, in: .test()).0 }
 
     @Test func slideHoldsTheFocusedWindowAsCloseToTheHintAsItCan() {
         #expect(SplitView.slide(0, focused: 1, k: 2, count: 5) == 0, "inside the view: nothing moves")
@@ -67,15 +67,15 @@ import Foundation
     @Test func columnCommandsClampAndOnlyAdjustOnASplitRow() {
         var w = world()
         let id = w.screens["D1"]!.active.id
-        var o = CommandRunner.run(.adjustSplitColumns(-1), on: w)
+        var o = CommandRunner.run(.adjustSplitColumns(-1), on: w, in: .test())
         #expect(o.report == .noop("split already shows 2 columns"))
-        o = CommandRunner.run(.adjustSplitColumns(1), on: w)
+        o = CommandRunner.run(.adjustSplitColumns(1), on: w, in: .test())
         #expect(o.effects == [.relayout] && o.world.screens["D1"]!.active.splitColumns == 3)
         w = run(.setSplitColumns(id, 99), w)
         #expect(w.screens["D1"]!.active.splitColumns == SplitView.columnRange.upperBound)
         #expect(shown(w) == [0, 1, 2, 3, 4])
-        #expect(CommandRunner.run(.adjustSplitColumns(1), on: world(.column)).report == .noop("the layout is not split"))
-        #expect(CommandRunner.run(.setSplitColumns(UUID(), 3), on: w).report != .done)
+        #expect(CommandRunner.run(.adjustSplitColumns(1), on: world(.column), in: .test()).report == .noop("the layout is not split"))
+        #expect(CommandRunner.run(.setSplitColumns(UUID(), 3), on: w, in: .test()).report != .done)
         #expect(KeyBindings.command(named: "split-columns-more") == .adjustSplitColumns(1))
         #expect(KeyBindings.command(named: "split-columns-fewer") == .adjustSplitColumns(-1))
         #expect(!KeyBindings.table(for: Config()).values.contains(.adjustSplitColumns(1)), "unbound by default")

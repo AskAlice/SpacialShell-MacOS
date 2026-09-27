@@ -35,7 +35,7 @@ import SpacialShellProtocol
                 wireState: { WireState(world: self.world) },
                 run: { command in
                     self.lock.withLock {
-                        let outcome = CommandRunner.run(command, on: self._world)
+                        let outcome = CommandRunner.run(command, on: self._world, in: .test())
                         self._world = outcome.world
                         return outcome.report
                     }

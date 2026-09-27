@@ -13,7 +13,7 @@ import SpacialShellProtocol
         w.adopt(a, kind: .tile, on: "D1"); w.adopt(b, kind: .tile, on: "D1")
         return w   // focus a on D1[0]; D1 has rows [a b] and the trailing "+"
     }
-    func report(_ c: Command, _ w: World? = nil) -> CommandReport { CommandRunner.run(c, on: w ?? base()).report }
+    func report(_ c: Command, _ w: World? = nil) -> CommandReport { CommandRunner.run(c, on: w ?? base(), in: .test()).report }
 
     @Test func aCommandThatRanIsDone() {
         #expect(report(.focusWindow(.right)) == .done)
@@ -46,13 +46,10 @@ import SpacialShellProtocol
         #expect(report(.toggleOverview) == .noop("nothing to do"))   // app-layer: the model's fallback
     }
 
-    @Test func aFailureChangesNothingAndApplyIsTheSameShim() {
+    @Test func aFailureChangesNothing() {
         let w0 = base()   // one world: `base()` mints fresh workspace ids
-        let o = CommandRunner.run(.focusWorkspaceIndex(9), on: w0)
+        let o = CommandRunner.run(.focusWorkspaceIndex(9), on: w0, in: .test())
         #expect(o.world == w0 && o.effects.isEmpty)
-        let (w, e) = CommandRunner.apply(.focusWindow(.right), to: w0)
-        let r = CommandRunner.run(.focusWindow(.right), on: w0)
-        #expect(w == r.world && e == r.effects)
     }
 
     // MARK: - the IPC reply
@@ -87,7 +84,7 @@ import SpacialShellProtocol
         let server = IPCServer(path: path) { request in
             let name = request.args["command"]?.stringValue ?? ""
             guard let command = KeyBindings.commandNames[name] else { return .failure(id: request.id, "unknown command \"\(name)\"") }
-            return CommandRunner.run(command, on: world).report.response(id: request.id)
+            return CommandRunner.run(command, on: world, in: .test()).report.response(id: request.id)
         }
         try server.start()
         defer { server.stop() }

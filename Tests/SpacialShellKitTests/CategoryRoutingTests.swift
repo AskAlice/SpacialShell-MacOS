@@ -140,7 +140,7 @@ import CoreGraphics
     @Test mutating func aHandSortedStackIsNeverResorted() {
         var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
         open(&w, .web); let terminal = open(&w, .terminal)!
-        (w, _) = CommandRunner.apply(.moveWorkspace(terminal, toIndex: 0), to: w)
+        (w, _) = CommandRunner.apply(.moveWorkspace(terminal, toIndex: 0), to: w, in: .test())
         #expect(categories(w) == [.terminal, .web])
         #expect(open(&w, .terminal) == terminal, "the moved row is still found by its marker")
         open(&w, .coding)                                   // after the last earlier row (web)
@@ -157,8 +157,8 @@ import CoreGraphics
         var w = World.seeded(screens: ["D1"], config: c)
         let web = open(&w, .web)!, other = open(&w, nil)!, terminal = open(&w, .terminal)!
         #expect(w.screens["D1"]!.workspaces.dropLast().map(\.id).first == web)
-        (w, _) = CommandRunner.apply(.moveWorkspace(terminal, toIndex: 0), to: w)
-        (w, _) = CommandRunner.apply(.moveWorkspace(other, toIndex: 1), to: w)
+        (w, _) = CommandRunner.apply(.moveWorkspace(terminal, toIndex: 0), to: w, in: .test())
+        (w, _) = CommandRunner.apply(.moveWorkspace(other, toIndex: 1), to: w, in: .test())
         w.activate(index: w.location(ofWorkspace: other)!.index, on: "D1")
         #expect(categories(w) == [.terminal, nil, .web, nil])                       // terminal, other, web, Code
         let s = PersistedState(world: w, placements: ["a": web, "b": other, "c": terminal])

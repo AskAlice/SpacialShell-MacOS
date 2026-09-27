@@ -348,11 +348,11 @@ import SpacialShellProtocol
         var c = Config(); c.layouts = [columnZones(2)]; c.layoutBar = [.maximize, "test"]
         let cat = LayoutCatalogue(config: c)
         var w = World.empty(screens: ["D1"], defaultLayout: .grid)
-        w = CommandRunner.apply(.cycleLayout, to: w, layouts: cat).0
+        w = CommandRunner.apply(.cycleLayout, to: w, in: .test(layouts: cat)).0
         #expect(w.screens["D1"]!.active.layout == .maximize)
-        w = CommandRunner.apply(.cycleLayout, to: w, layouts: cat).0
+        w = CommandRunner.apply(.cycleLayout, to: w, in: .test(layouts: cat)).0
         #expect(w.screens["D1"]!.active.layout == "test")
-        w = CommandRunner.apply(.cycleLayout, to: w, layouts: cat).0
+        w = CommandRunner.apply(.cycleLayout, to: w, in: .test(layouts: cat)).0
         #expect(w.screens["D1"]!.active.layout == .maximize)
     }
 
@@ -364,8 +364,8 @@ import SpacialShellProtocol
         for (id, expected) in [("one", LayoutID.split), ("test", "test"), ("maximize", .split), ("column", .column)] as [(LayoutID, LayoutID)] {
             var w = World.empty(screens: ["D1"], defaultLayout: id)
             w.adopt(WindowRef(id: 1, pid: 1), kind: .tile, on: "D1"); w.adopt(WindowRef(id: 2, pid: 1), kind: .tile, on: "D1")
-            w = CommandRunner.apply(.focusWindowRef(WindowRef(id: 1, pid: 1)), to: w, layouts: cat).0
-            w = CommandRunner.apply(.moveWindow(.right), to: w, layouts: cat).0
+            w = CommandRunner.apply(.focusWindowRef(WindowRef(id: 1, pid: 1)), to: w, in: .test(layouts: cat)).0
+            w = CommandRunner.apply(.moveWindow(.right), to: w, in: .test(layouts: cat)).0
             #expect(w.screens["D1"]!.active.windows.first == WindowRef(id: 2, pid: 1))   // the move happened
             #expect(w.screens["D1"]!.active.layout == expected, "\(id.rawValue)")
         }

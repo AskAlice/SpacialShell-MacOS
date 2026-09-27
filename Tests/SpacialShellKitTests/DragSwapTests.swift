@@ -15,7 +15,7 @@ import Foundation
         return w
     }
     func run(_ w: World, _ cmd: Command) -> (World, [Effect]) {
-        let r = CommandRunner.apply(cmd, to: w)
+        let r = CommandRunner.apply(cmd, to: w, in: .test())
         #expect(r.0.invariantViolations().isEmpty, "after \(cmd): \(r.0.invariantViolations())")
         return r
     }
@@ -39,7 +39,7 @@ import Foundation
         var w0 = world()
         w0.setFloating(c, true)
         for cmd: Command in [.dropWindow(a, onto: a), .dropWindow(a, onto: c), .dropWindow(c, onto: a)] {
-            let (w, e) = CommandRunner.apply(cmd, to: w0)
+            let (w, e) = CommandRunner.apply(cmd, to: w0, in: .test())
             #expect(w == w0 && e.isEmpty, "\(cmd)")
         }
     }

@@ -183,8 +183,8 @@ import Foundation
     /// A dialog on an owner in an inactive (parked) row waits for its row to be shown.
     @Test func aParkedPopupKeepsItsRequest() {
         var w = world()
-        w = CommandRunner.apply(.focusWindowRef(s), to: w).0
-        w = CommandRunner.apply(.focusWorkspace(.down), to: w).0
+        w = CommandRunner.apply(.focusWindowRef(s), to: w, in: .test()).0
+        w = CommandRunner.apply(.focusWorkspace(.down), to: w, in: .test()).0
         let (_, placed) = place([s: PopupRequest(.place)], w, observed: [b: CGRect(x: 10, y: 35, width: 485, height: 654),
                                                                            s: CGRect(x: 50, y: 63, width: 300, height: 180)])
         #expect(placed.isEmpty)

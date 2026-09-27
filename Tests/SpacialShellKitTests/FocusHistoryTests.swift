@@ -13,7 +13,7 @@ import SpacialShellProtocol
     func row(visiting order: [WindowRef]) -> World {
         var w = World.empty(screens: ["D1"], defaultLayout: .split)
         for r in [a, b, c, d] { w.adopt(r, kind: .tile, on: "D1") }
-        for r in order { w = CommandRunner.apply(.focusWindowRef(r), to: w).0 }
+        for r in order { w = CommandRunner.apply(.focusWindowRef(r), to: w, in: .test()).0 }
         return w
     }
     var history: (World) -> [WindowRef] { { $0.screens["D1"]!.workspaces[0].focusHistory } }
@@ -27,7 +27,7 @@ import SpacialShellProtocol
         let e = WindowRef(id: 5, pid: 1), f = WindowRef(id: 6, pid: 1)
         var w = row(visiting: [])
         w.adopt(e, kind: .tile, on: "D1"); w.adopt(f, kind: .tile, on: "D1")
-        for r in [b, c, d, e, f] { w = CommandRunner.apply(.focusWindowRef(r), to: w).0 }
+        for r in [b, c, d, e, f] { w = CommandRunner.apply(.focusWindowRef(r), to: w, in: .test()).0 }
         #expect(history(w) == [f, e, d, c, b])
         #expect(World.focusHistoryLimit == 5)
     }
@@ -35,7 +35,7 @@ import SpacialShellProtocol
     /// Keys, clicks and macOS's own focus reports all go through `normalize()` or `CommandRunner`,
     /// so each is recorded — here, Fn+D.
     @Test func keyboardFocusIsRecordedToo() {
-        let w = CommandRunner.apply(.focusWindow(.right), to: row(visiting: [])).0
+        let w = CommandRunner.apply(.focusWindow(.right), to: row(visiting: []), in: .test()).0
         #expect(history(w).prefix(2) == [b, a])
     }
 
@@ -71,7 +71,7 @@ import SpacialShellProtocol
     @Test func aWindowThatLeavesTheRowLeavesItsHistory() {
         let w = row(visiting: [b, c])
         let other = w.screens["D1"]!.workspaces[1].id
-        let moved = CommandRunner.apply(.moveWindowRefToWorkspace(b, other, follow: false), to: w).0
+        let moved = CommandRunner.apply(.moveWindowRefToWorkspace(b, other, follow: false), to: w, in: .test()).0
         #expect(!history(moved).contains(b))
         #expect(moved.screens["D1"]!.workspaces.first { $0.id == other }!.focusHistory.isEmpty)   // never focused there
     }
@@ -80,11 +80,11 @@ import SpacialShellProtocol
 
     @Test func previousWindowTogglesBetweenTheLastTwo() {
         var w = row(visiting: [b, d])
-        w = CommandRunner.apply(.focusPreviousWindow, to: w).0
+        w = CommandRunner.apply(.focusPreviousWindow, to: w, in: .test()).0
         #expect(w.focus.window == b)
-        w = CommandRunner.apply(.focusPreviousWindow, to: w).0
+        w = CommandRunner.apply(.focusPreviousWindow, to: w, in: .test()).0
         #expect(w.focus.window == d)
-        w = CommandRunner.apply(.focusPreviousWindow, to: w).0
+        w = CommandRunner.apply(.focusPreviousWindow, to: w, in: .test()).0
         #expect(w.focus.window == b)
         #expect(w.invariantViolations().isEmpty)
     }
@@ -92,7 +92,7 @@ import SpacialShellProtocol
     @Test func previousWindowWithNothingBeforeIsANoop() {
         var w = World.empty(screens: ["D1"], defaultLayout: .split)
         w.adopt(a, kind: .tile, on: "D1")
-        let r = CommandRunner.run(.focusPreviousWindow, on: w)
+        let r = CommandRunner.run(.focusPreviousWindow, on: w, in: .test())
         #expect(r.world.focus.window == a)
         if case .noop = r.report {} else { Issue.record("expected a no-op, got \(r.report)") }
     }
@@ -100,7 +100,7 @@ import SpacialShellProtocol
     @Test func previousWindowBringsAMinimizedOneBack() {
         var w = row(visiting: [b, d])
         w.setHidden(b, true)
-        let (next, effects) = CommandRunner.apply(.focusPreviousWindow, to: w)
+        let (next, effects) = CommandRunner.apply(.focusPreviousWindow, to: w, in: .test())
         #expect(next.focus.window == b && !next.hidden.contains(b))
         #expect(effects.contains(.unhide(b)))
     }
@@ -111,9 +111,9 @@ import SpacialShellProtocol
         var w = row(visiting: [b, d])
         let p = w.addPlaceholder(Placeholder(bundleID: "com.p", title: ""), to: w.screens["D1"]!.workspaces[0].id)!
         w.normalize()
-        w = CommandRunner.apply(.focusWindowRef(p), to: w).0         // a click launches; it does not focus
+        w = CommandRunner.apply(.focusWindowRef(p), to: w, in: .test()).0         // a click launches; it does not focus
         #expect(!history(w).contains(p) && w.focus.window == d)
-        #expect(CommandRunner.apply(.focusPreviousWindow, to: w).0.focus.window == b)
+        #expect(CommandRunner.apply(.focusPreviousWindow, to: w, in: .test()).0.focus.window == b)
         // Placeholder history entries (a hand-built world) are dropped, never focused.
         w.screens["D1"]!.workspaces[0].focusHistory = [d, p, b]
         w.normalize()
@@ -130,10 +130,10 @@ import SpacialShellProtocol
         var w = row(visiting: [c, b])                    // history b, c, a
         let sheet = WindowRef(id: 9, pid: 1)
         w.adopt(sheet, kind: .float, on: "D1", parent: b)
-        w = CommandRunner.apply(.focusWindowRef(sheet), to: w).0
+        w = CommandRunner.apply(.focusWindowRef(sheet), to: w, in: .test()).0
         #expect(w.owner(of: sheet) == b)
         #expect(!history(w).contains(sheet) && history(w).first == b)
-        #expect(CommandRunner.apply(.focusPreviousWindow, to: w).0.focus.window == c)
+        #expect(CommandRunner.apply(.focusPreviousWindow, to: w, in: .test()).0.focus.window == c)
         w.remove(sheet)
         #expect(w.focus.window == b)
         #expect(w.invariantViolations().isEmpty)

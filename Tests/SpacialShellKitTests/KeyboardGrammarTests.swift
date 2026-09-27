@@ -19,7 +19,7 @@ import Testing
     }
     func run(_ w: World, _ cmd: Command, layouts: LayoutCatalogue = .builtins, displays: [DisplayInfo] = [],
              wrap: Bool = false) -> (World, [Effect]) {
-        let r = CommandRunner.apply(cmd, to: w, layouts: layouts, displays: displays, workspaceWrap: wrap)
+        let r = CommandRunner.apply(cmd, to: w, in: .test(layouts: layouts, displays: displays, workspaceWrap: wrap))
         #expect(r.0.invariantViolations().isEmpty, "after \(cmd): \(r.0.invariantViolations())")
         return r
     }
@@ -108,7 +108,7 @@ import Testing
         return w
     }
     func move(_ w: World, _ dir: Direction, order: [AppCategory] = []) -> CommandOutcome {
-        let o = CommandRunner.run(.moveWorkspaceToScreenDirection(dir), on: w, displays: sideBySide, categoryOrder: order)
+        let o = CommandRunner.run(.moveWorkspaceToScreenDirection(dir), on: w, in: .test(displays: sideBySide, categoryOrder: order))
         #expect(o.world.invariantViolations().isEmpty, "\(o.world.invariantViolations())")
         for (id, s) in o.world.screens {   // exactly one trailing empty row on every display
             #expect(s.workspaces.last!.isEmpty && s.workspaces.filter(\.isEmpty).count == 1, "\(id)")
@@ -151,7 +151,7 @@ import Testing
     @Test func moveWorkspaceNoOps() {
         let w = twoDisplays()
         #expect(move(w, .left).report == .noop("no display that way"))
-        #expect(CommandRunner.run(.moveWorkspaceToScreenDirection(.right), on: w).report == .noop("no display that way"),
+        #expect(CommandRunner.run(.moveWorkspaceToScreenDirection(.right), on: w, in: .test()).report == .noop("no display that way"),
                 "no display frames, no move")
         var trailing = w
         trailing.activate(index: 2, on: "D1")

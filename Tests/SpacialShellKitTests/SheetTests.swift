@@ -39,16 +39,16 @@ import Foundation
 
     /// The layout's focused index is the owner's, so focusing a sheet never flips the page.
     @Test func focusingTheSheetAnchorsTheOwner() {
-        let w = CommandRunner.apply(.focusWindowRef(s), to: world()).0
+        let w = CommandRunner.apply(.focusWindowRef(s), to: world(), in: .test()).0
         #expect(w.focus.window == s && ws(w).anchor == a)
     }
 
     @Test func theKeysWalkTheTabsNotTheSheet() {
-        var w = CommandRunner.apply(.focusWindow(.right), to: world()).0
+        var w = CommandRunner.apply(.focusWindow(.right), to: world(), in: .test()).0
         #expect(w.focus.window == b, "from the sheet, right is the owner's right")
-        w = CommandRunner.apply(.focusWindow(.left), to: w).0
+        w = CommandRunner.apply(.focusWindow(.left), to: w, in: .test()).0
         #expect(w.focus.window == a)
-        #expect(CommandRunner.apply(.focusTab(2), to: world()).0.focus.window == b)
+        #expect(CommandRunner.apply(.focusTab(2), to: world(), in: .test()).0.focus.window == b)
     }
 
     @Test func closingTheSheetReturnsFocusToTheOwner() {
@@ -60,12 +60,12 @@ import Foundation
     }
 
     @Test func movingTheSheetMovesItsOwnerAndMovingTheOwnerTakesTheSheet() {
-        let fromSheet = CommandRunner.apply(.moveWindowToWorkspace(.down), to: world()).0
+        let fromSheet = CommandRunner.apply(.moveWindowToWorkspace(.down), to: world(), in: .test()).0
         #expect(ws(fromSheet).windows == [a, s] && ws(fromSheet).floating == [s])
         #expect(fromSheet.screens["D1"]!.workspaces[0].windows == [b])
         #expect(fromSheet.owner(of: s) == a)
         var w = world(); w.focus.window = a; w.normalize()
-        let fromOwner = CommandRunner.apply(.moveWindowToWorkspace(.down), to: w).0
+        let fromOwner = CommandRunner.apply(.moveWindowToWorkspace(.down), to: w, in: .test()).0
         #expect(ws(fromOwner).windows == [a, s] && fromOwner.focus.window == a)
     }
 
@@ -98,13 +98,13 @@ import Foundation
     @Test func theSheetParksWithItsOwner() {
         let tileA = CGRect(x: 10, y: 35, width: 485, height: 654)
         let sheet = CGRect(x: 50, y: 63, width: 300, height: 180)
-        let w = CommandRunner.apply(.focusWorkspace(.down), to: world()).0   // a's row is now inactive
+        let w = CommandRunner.apply(.focusWorkspace(.down), to: world(), in: .test()).0   // a's row is now inactive
         let d = desired(w, observed: [a: tileA, s: sheet])
         guard case .parked(let pa)? = d[a], case .parked(let ps)? = d[s] else { Issue.record("both parked"); return }
         #expect(ps == CGPoint(x: pa.x + 40, y: pa.y + 28))
         // Back again: the offset comes from where they were before parking, not from the corner
         // macOS clamped them into.
-        let back = CommandRunner.apply(.focusWorkspace(.up), to: w).0
+        let back = CommandRunner.apply(.focusWorkspace(.up), to: w, in: .test()).0
         let corner = CGRect(x: 999, y: 660, width: 485, height: 654)
         let r = desired(back, observed: [a: corner, s: CGRect(x: 999, y: 660, width: 300, height: 180)],
                         parkedNow: [a, s], prePark: [a: tileA, s: sheet])

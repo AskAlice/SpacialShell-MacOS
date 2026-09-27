@@ -139,15 +139,15 @@ import Foundation
     }
 
     @Test func resizeBalanceAndSetPortionsCommands() {
-        var (w, e) = CommandRunner.apply(.resizeWindow(.width, grow: true), to: world())
+        var (w, e) = CommandRunner.apply(.resizeWindow(.width, grow: true), to: world(), in: .test())
         #expect(e == [.relayout] && near(w.screens["D1"]!.active.portions["split#2"]!.x, [0.55]))
-        (w, e) = CommandRunner.apply(.balance, to: w)
+        (w, e) = CommandRunner.apply(.balance, to: w, in: .test())
         #expect(e == [.relayout] && w.screens["D1"]!.active.portions.isEmpty)
-        #expect(CommandRunner.apply(.balance, to: w).1.isEmpty, "nothing to balance")
-        #expect(CommandRunner.apply(.resizeWindow(.width, grow: true), to: world(.maximize)).1.isEmpty, "maximize does not resize")
+        #expect(CommandRunner.apply(.balance, to: w, in: .test()).1.isEmpty, "nothing to balance")
+        #expect(CommandRunner.apply(.resizeWindow(.width, grow: true), to: world(.maximize), in: .test()).1.isEmpty, "maximize does not resize")
         let id = w.screens["D1"]!.active.id
-        (w, _) = CommandRunner.apply(.setPortions(id, key: "split#2", Portions(x: [0.3])), to: w)
-        (w, e) = CommandRunner.apply(.setPortions(id, key: "split#2", nil), to: w)
+        (w, _) = CommandRunner.apply(.setPortions(id, key: "split#2", Portions(x: [0.3])), to: w, in: .test())
+        (w, e) = CommandRunner.apply(.setPortions(id, key: "split#2", nil), to: w, in: .test())
         #expect(e == [.relayout] && w.screens["D1"]!.active.portions.isEmpty)
         #expect(w.invariantViolations().isEmpty)
     }
@@ -156,14 +156,14 @@ import Foundation
     /// says why rather than claiming a limit.
     @Test func maximizeResizeIsANoopWithAReason() {
         for grow in [true, false] {
-            let out = CommandRunner.run(.resizeWindow(.width, grow: grow), on: world(.maximize))
+            let out = CommandRunner.run(.resizeWindow(.width, grow: grow), on: world(.maximize), in: .test())
             #expect(out.report == .noop("the focused tile has no edge to move sideways in this layout"))
             #expect(out.effects.isEmpty && out.world.screens["D1"]!.active.portions.isEmpty)
         }
         // A real limit keeps its own reason.
         var w = world()
-        for _ in 0..<20 { w = CommandRunner.apply(.resizeWindow(.width, grow: false), to: w).0 }
-        #expect(CommandRunner.run(.resizeWindow(.width, grow: false), on: w).report == .noop("already at the limit"))
+        for _ in 0..<20 { w = CommandRunner.apply(.resizeWindow(.width, grow: false), to: w, in: .test()).0 }
+        #expect(CommandRunner.run(.resizeWindow(.width, grow: false), on: w, in: .test()).report == .noop("already at the limit"))
     }
 
     @Test func theChordsFollowThePreset() {

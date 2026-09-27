@@ -15,10 +15,10 @@ import Foundation
             let id = w.landing(remembered: nil, crowdOn: nil, routeOn: "D1", category: nil, order: order)
             w.adopt(r, kind: .tile, on: "D1", workspace: id)
         }
-        return CommandRunner.apply(.focusWindowRef(b), to: w).0
+        return CommandRunner.apply(.focusWindowRef(b), to: w, in: .test()).0
     }
     func run(_ w: World, _ cmd: Command) -> (World, [Effect]) {
-        let r = CommandRunner.apply(cmd, to: w)
+        let r = CommandRunner.apply(cmd, to: w, in: .test())
         #expect(r.0.invariantViolations().isEmpty, "after \(cmd): \(r.0.invariantViolations())")
         return r
     }

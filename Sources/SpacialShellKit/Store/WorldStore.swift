@@ -11,7 +11,7 @@ public actor WorldStore {
     private let backend: any WindowBackend
     private var config: Config { didSet { layouts = LayoutCatalogue(config: config) } }
     /// #9: the layout ids' meaning, rebuilt whenever the config is — the one place every
-    /// `Reconciler.desired` and `CommandRunner.apply` call here gets it from.
+    /// `Reconciler.desired` call and `commandEnvironment` here gets it from.
     private var layouts: LayoutCatalogue
     /// Unresolved layout ids already logged: once per id, not once per reconcile (design §8).
     private var loggedUnresolved: Set<LayoutID> = []
@@ -24,6 +24,12 @@ public actor WorldStore {
     private var publishGeneration: UInt64 = 0
 
     private var displays: [DisplayInfo] = []
+    /// #171: what every command run here reads besides the world, from the config, layouts and
+    /// displays as they stand. Computed, so it cannot fall behind any of them; the one place a
+    /// `CommandRunner.run` call here gets its environment from.
+    private var commandEnvironment: CommandEnvironment {
+        CommandEnvironment(config: config, layouts: layouts, displays: displays)
+    }
     private var observed: [WindowRef: CGRect] = [:]
     private var prePark: [WindowRef: CGRect] = [:]
     /// #125: windows that came back smaller than the tile we asked for; the reconciler centres them.
@@ -309,8 +315,7 @@ public actor WorldStore {
         span.setAttribute(key: "command", value: String(detail.prefix { $0 != "(" }))
         span.setAttribute(key: "command.detail", value: detail)
         let before = world.focus
-        let outcome = CommandRunner.run(command, on: world, layouts: layouts, displays: displays,
-                                        workspaceWrap: config.workspaceWrap, categoryOrder: config.categoryOrder)
+        let outcome = CommandRunner.run(command, on: world, in: commandEnvironment)
         // M2 ruling: a failed command changes nothing, so there is nothing to reconcile.
         if case .failed(let e) = outcome.report {
             Self.log.notice("command \(String(describing: command), privacy: .public) failed: \(e.description, privacy: .public)")
@@ -805,7 +810,7 @@ public actor WorldStore {
             // when a display is free. Upgrade path: centre it on the free display instead.
             if own != nil, let dest = free.first(where: { $0 == own }) ?? free.first,
                let target = world.screens[dest]?.active.id {
-                world = CommandRunner.apply(.moveWindowRefToWorkspace(r, target), to: world).0
+                world = CommandRunner.run(.moveWindowRefToWorkspace(r, target), on: world, in: commandEnvironment).world
                 Self.log.notice("fullscreen guard: moved \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
             } else {
                 deferredFocus.removeAll { $0.requester == r }
@@ -854,7 +859,7 @@ public actor WorldStore {
               let loc = world.location(of: r), world.screens[loc.screen]!.activeIndex == loc.index,
               let dest = displays.first(where: { $0.frame.contains(CGPoint(x: f.midX, y: f.midY)) })?.id,
               dest != loc.screen, let target = world.screens[dest]?.active.id else { return false }
-        world = CommandRunner.apply(.moveWindowRefToWorkspace(r, target), to: world).0
+        world = CommandRunner.run(.moveWindowRefToWorkspace(r, target), on: world, in: commandEnvironment).world
         Self.log.notice("dragged \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
         return true
     }
@@ -932,9 +937,9 @@ public actor WorldStore {
         case .unit(let u): u
         }
         let next = Resize.drag(page, ws.portions[g.key], axis: g.axis, line: g.line, to: u)
-        let (w, effects) = CommandRunner.apply(.setPortions(g.workspace, key: g.key, next), to: world, layouts: layouts)
-        guard !effects.isEmpty else { return false }
-        world = w
+        let o = CommandRunner.run(.setPortions(g.workspace, key: g.key, next), on: world, in: commandEnvironment)
+        guard !o.effects.isEmpty else { return false }
+        world = o.world
         return true
     }
 
@@ -1295,9 +1300,9 @@ public actor WorldStore {
     /// world, the real reconciler, and the planner against `lastShown` — the same path `run` takes,
     /// so the prediction is exactly what the next `prepare` will ask for. Nothing is written.
     private func predictedSwitches(insets: [DisplayID: ShellInsets], zero: Set<WindowRef>) -> [[Transition]] {
-        Self.predictedCommands.map { command in
-            let next = CommandRunner.apply(command, to: world, layouts: layouts, displays: displays,
-                                          workspaceWrap: config.workspaceWrap).0
+        let env = commandEnvironment
+        return Self.predictedCommands.map { command in
+            let next = CommandRunner.run(command, on: world, in: env).world
             let desired = Reconciler.desired(world: next, displays: displays, config: layoutConfig,
                                              observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
                                              insets: insets, refused: refused, unmovable: unmovable)

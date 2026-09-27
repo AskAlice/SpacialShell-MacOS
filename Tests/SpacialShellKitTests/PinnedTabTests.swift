@@ -13,34 +13,34 @@ import SpacialShellProtocol
     func row() -> World {
         var w = World.empty(screens: ["D1"], defaultLayout: .split)
         for r in [a, b, c] { w.adopt(r, kind: .tile, on: "D1") }
-        return CommandRunner.apply(.focusWindowRef(b), to: w).0
+        return CommandRunner.apply(.focusWindowRef(b), to: w, in: .test()).0
     }
 
     // MARK: pin / unpin
 
     @Test func theTabMenuPinsAndUnpinsAnyTab() {
         var w = row()
-        w = CommandRunner.apply(.togglePinRef(c), to: w).0
+        w = CommandRunner.apply(.togglePinRef(c), to: w, in: .test()).0
         #expect(w.pinnedTabs == [c] && w.focus.window == b)             // focus and rows stay put
-        w = CommandRunner.apply(.togglePinRef(c), to: w).0
+        w = CommandRunner.apply(.togglePinRef(c), to: w, in: .test()).0
         #expect(w.pinnedTabs.isEmpty)
         #expect(w.invariantViolations().isEmpty)
     }
 
     @Test func togglePinActsOnTheFocusedWindowAndHasAName() {
-        let w = CommandRunner.apply(.togglePin, to: row()).0
+        let w = CommandRunner.apply(.togglePin, to: row(), in: .test()).0
         #expect(w.pinnedTabs == [b])
         #expect(KeyBindings.command(named: "toggle-pin") == .togglePin)
         #expect(KeyBindings.chords(for: .togglePin, config: Config()).isEmpty)   // unbound by default
         var empty = World.empty(screens: ["D1"], defaultLayout: .split)
         empty.normalize()
-        #expect(CommandRunner.run(.togglePin, on: empty).report == .failed(.noFocusedWindow))
+        #expect(CommandRunner.run(.togglePin, on: empty, in: .test()).report == .failed(.noFocusedWindow))
     }
 
     // MARK: a pinned window that closes leaves a placeholder
 
     @Test func aClosedPinnedWindowLeavesAPlaceholderInItsSlot() {
-        var w = CommandRunner.apply(.togglePinRef(b), to: row()).0
+        var w = CommandRunner.apply(.togglePinRef(b), to: row(), in: .test()).0
         w.setFloating(b, true)
         let left = w.leavePlaceholder(for: b, bundleID: "com.notes", title: "Groceries")
         guard let p = left else { Issue.record("no placeholder left"); return }
@@ -61,20 +61,20 @@ import SpacialShellProtocol
     }
 
     @Test func aPinnedPlaceholderCannotBeClosedUntilUnpinned() {
-        var w = CommandRunner.apply(.togglePinRef(b), to: row()).0
+        var w = CommandRunner.apply(.togglePinRef(b), to: row(), in: .test()).0
         let p = w.leavePlaceholder(for: b, bundleID: "com.notes", title: "")!
-        let refused = CommandRunner.run(.closeWindowRef(p), on: w)
+        let refused = CommandRunner.run(.closeWindowRef(p), on: w, in: .test())
         #expect(refused.world.placeholders[p] != nil)
         if case .noop = refused.report {} else { Issue.record("closing a pinned placeholder: \(refused.report)") }
-        w = CommandRunner.apply(.togglePinRef(p), to: w).0
-        w = CommandRunner.apply(.closeWindowRef(p), to: w).0
+        w = CommandRunner.apply(.togglePinRef(p), to: w, in: .test()).0
+        w = CommandRunner.apply(.closeWindowRef(p), to: w, in: .test()).0
         #expect(w.placeholders.isEmpty && w.screens["D1"]!.workspaces[0].windows == [a, c])
         #expect(w.invariantViolations().isEmpty)
     }
 
     /// The pin belongs to the slot: the window that comes back into it is pinned too.
     @Test func thePinStaysWithTheSlotWhenItsWindowComesBack() {
-        var w = CommandRunner.apply(.togglePinRef(b), to: row()).0
+        var w = CommandRunner.apply(.togglePinRef(b), to: row(), in: .test()).0
         let p = w.leavePlaceholder(for: b, bundleID: "com.notes", title: "")!
         let back = WindowRef(id: 9, pid: 9)
         w.fill(p, with: back, kind: .tile)
@@ -114,7 +114,7 @@ import SpacialShellProtocol
     // MARK: persistence
 
     @Test func pinsSurviveARelaunch() throws {
-        let w = CommandRunner.apply(.togglePinRef(b), to: row()).0
+        let w = CommandRunner.apply(.togglePinRef(b), to: row(), in: .test()).0
         let state = PersistedState(world: w, bundleIDs: [a: "com.a", b: "com.b", c: "com.c"])
         let back = try JSONDecoder().decode(PersistedState.self, from: try JSONEncoder().encode(state))
         #expect(back.screens["D1"]!.workspaces[0].windows?.map(\.pinned) == [nil, true, nil])
@@ -149,12 +149,12 @@ import SpacialShellProtocol
 
     @Test func aPlaceholderSwapsWithATileInItsRow() {
         let (w, p) = withPlaceholder()
-        let (next, effects) = CommandRunner.apply(.dropWindow(p, onto: a), to: w)
+        let (next, effects) = CommandRunner.apply(.dropWindow(p, onto: a), to: w, in: .test())
         #expect(next.screens["D1"]!.workspaces[0].windows == [p, b, c, a])
         #expect(next.focus.window == b && !effects.contains(.focus(p)))  // focus has nothing to follow
         #expect(next.invariantViolations().isEmpty)
         // …and a window dropped onto a placeholder swaps with it, following as ever.
-        let (back, _) = CommandRunner.apply(.dropWindow(a, onto: p), to: w)
+        let (back, _) = CommandRunner.apply(.dropWindow(a, onto: p), to: w, in: .test())
         #expect(back.screens["D1"]!.workspaces[0].windows == [p, b, c, a] && back.focus.window == a)
         #expect(back.invariantViolations().isEmpty)
     }
@@ -164,24 +164,24 @@ import SpacialShellProtocol
         w.adopt(a, kind: .tile, on: "D1"); w.adopt(c, kind: .tile, on: "D2")
         let p = w.addPlaceholder(Placeholder(bundleID: "com.p", title: ""), to: w.screens["D1"]!.workspaces[0].id)!
         w.normalize()
-        let (next, _) = CommandRunner.apply(.dropWindow(p, onto: c), to: w)
+        let (next, _) = CommandRunner.apply(.dropWindow(p, onto: c), to: w, in: .test())
         #expect(next.screens["D2"]!.workspaces[0].windows == [p, c])
         #expect(next.screens["D1"]!.workspaces[0].windows == [a])
         #expect(next.focus == w.focus)
         #expect(next.invariantViolations().isEmpty)
         // The tab drag to the other display's bar and the rail drop, as windows do (#32, #95).
-        let bar = CommandRunner.apply(.moveWindowRefBefore(p, c), to: w).0
+        let bar = CommandRunner.apply(.moveWindowRefBefore(p, c), to: w, in: .test()).0
         #expect(bar.screens["D2"]!.workspaces[0].windows == [p, c] && bar.focus == w.focus)
-        let rail = CommandRunner.apply(.moveWindowRefToWorkspace(p, w.screens["D2"]!.workspaces[0].id, follow: false), to: w).0
+        let rail = CommandRunner.apply(.moveWindowRefToWorkspace(p, w.screens["D2"]!.workspaces[0].id, follow: false), to: w, in: .test()).0
         #expect(rail.screens["D2"]!.workspaces[0].windows == [c, p] && rail.invariantViolations().isEmpty)
     }
 
     // MARK: the UI state
 
     @Test func tabsSayWhetherTheyArePinnedAndClosable() {
-        var w = CommandRunner.apply(.togglePinRef(b), to: row()).0
+        var w = CommandRunner.apply(.togglePinRef(b), to: row(), in: .test()).0
         _ = w.leavePlaceholder(for: b, bundleID: "com.notes", title: "")
-        w = CommandRunner.apply(.togglePinRef(c), to: w).0
+        w = CommandRunner.apply(.togglePinRef(c), to: w, in: .test()).0
         let tabs = ShellUI.state(for: "D1", in: w)!.tabs
         #expect(tabs.map(\.isPinned) == [false, true, true])
         #expect(tabs.map(\.canClose) == [true, false, true])

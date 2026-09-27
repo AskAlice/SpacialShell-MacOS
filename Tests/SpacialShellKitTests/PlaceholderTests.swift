@@ -127,7 +127,7 @@ import SpacialShellProtocol
     @Test func clickingAPlaceholderLaunchesItsAppAndMarksIt() {
         let a = WindowRef(id: 1, pid: 1)
         let (w, refs) = world(live: [a], saved: [("com.term", "t")])
-        let (next, effects) = CommandRunner.apply(.focusWindowRef(refs[0]), to: w)
+        let (next, effects) = CommandRunner.apply(.focusWindowRef(refs[0]), to: w, in: .test())
         #expect(effects.contains(.launch("com.term")))
         #expect(next.placeholders[refs[0]]?.launching == true)
         #expect(next.focus.window == a)                                  // focus stays on a window
@@ -137,7 +137,7 @@ import SpacialShellProtocol
     @Test func closingAPlaceholderForgetsItsSlot() {
         let a = WindowRef(id: 1, pid: 1)
         let (w, refs) = world(live: [a], saved: [("com.term", "t")])
-        let (next, effects) = CommandRunner.apply(.closeWindowRef(refs[0]), to: w)
+        let (next, effects) = CommandRunner.apply(.closeWindowRef(refs[0]), to: w, in: .test())
         #expect(!effects.contains(.close(refs[0])))                      // nothing to ask the backend
         #expect(next.placeholders.isEmpty && next.screens["D1"]!.workspaces[0].windows == [a])
         #expect(next.invariantViolations().isEmpty)
@@ -147,14 +147,14 @@ import SpacialShellProtocol
         let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1)
         var (w, _) = world(live: [a], saved: [("com.term", "t")])
         w.adopt(b, kind: .tile, on: "D1")                              // row: a, placeholder, b
-        let (next, _) = CommandRunner.apply(.focusWindow(.right), to: w)
+        let (next, _) = CommandRunner.apply(.focusWindow(.right), to: w, in: .test())
         #expect(next.focus.window == b)
     }
 
     @Test func tabNOnAPlaceholderOpensIt() {
         let a = WindowRef(id: 1, pid: 1)
         let (w, _) = world(live: [a], saved: [("com.term", "t")])
-        let (_, effects) = CommandRunner.apply(.focusTab(2), to: w)
+        let (_, effects) = CommandRunner.apply(.focusTab(2), to: w, in: .test())
         #expect(effects.contains(.launch("com.term")))
     }
 
@@ -164,12 +164,12 @@ import SpacialShellProtocol
         var (w, refs) = world(live: [a], saved: [("com.term", "t")])
         let other = w.screens["D1"]!.workspaces[1].id                   // the trailing "+" row
         for follow in [false, true] {
-            let (next, _) = CommandRunner.apply(.moveWindowRefToWorkspace(refs[0], other, follow: follow), to: w)
+            let (next, _) = CommandRunner.apply(.moveWindowRefToWorkspace(refs[0], other, follow: follow), to: w, in: .test())
             #expect(next.workspace(containing: refs[0])?.id == other)
             #expect(next.focus.window == a && next.screens["D1"]!.activeIndex == 0)
             #expect(next.invariantViolations().isEmpty)
         }
-        w = CommandRunner.apply(.moveWindowRefBefore(refs[0], a), to: w).0
+        w = CommandRunner.apply(.moveWindowRefBefore(refs[0], a), to: w, in: .test()).0
         #expect(w.screens["D1"]!.workspaces[0].windows == [refs[0], a])
     }
 
@@ -177,7 +177,7 @@ import SpacialShellProtocol
     @Test func aPlaceholderDoesNotFloat() {
         let a = WindowRef(id: 1, pid: 1)
         let (w, refs) = world(live: [a], saved: [("com.term", "t")])
-        #expect(CommandRunner.run(.toggleFloatRef(refs[0]), on: w).world == w)
+        #expect(CommandRunner.run(.toggleFloatRef(refs[0]), on: w, in: .test()).world == w)
     }
 
     // MARK: persistence

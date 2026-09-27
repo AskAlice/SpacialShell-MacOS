@@ -46,7 +46,7 @@ import Foundation
                 if let r = live.randomElement(using: &rng) { w.remove(r); live.removeAll { $0 == r } }
             case .hide: if let r = live.randomElement(using: &rng) { w.setHidden(r, true) }
             case .unhide: if let r = live.randomElement(using: &rng) { w.setHidden(r, false) }
-            case .cmd(let c): w = CommandRunner.apply(c, to: w).0
+            case .cmd(let c): w = CommandRunner.apply(c, to: w, in: .test()).0
             case .screens(let s): w.setScreens(s, main: "D1")
             }
             let v = w.invariantViolations()
@@ -97,7 +97,7 @@ import Foundation
                 if let r = live.randomElement(using: &rng) { w.remove(r); live.removeAll { $0 == r } }
             case .hide: if let r = live.randomElement(using: &rng) { w.setHidden(r, true) }
             case .unhide: if let r = live.randomElement(using: &rng) { w.setHidden(r, false) }
-            case .cmd(let c): w = CommandRunner.apply(c, to: w).0
+            case .cmd(let c): w = CommandRunner.apply(c, to: w, in: .test()).0
             case .screens: break   // the display list is fixed here; `desired` needs it to match
             }
             // A fullscreen window every so often: macOS owns its frame, and the reconciler must

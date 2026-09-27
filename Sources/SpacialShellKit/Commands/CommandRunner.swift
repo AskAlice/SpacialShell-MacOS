@@ -1,27 +1,13 @@
 import Foundation
 
 public enum CommandRunner {
-    /// `layouts` gives the layout ids meaning: what `cycleLayout` rings through and how many
-    /// windows a layout shows (#9). Defaults to the built-ins.
-    /// `displays` (#118): the real display frames the directional display commands resolve
-    /// against; without them those commands are no-ops. `workspaceWrap` (#120): `workspace-wrap`.
-    /// `categoryOrder` (#136): `category-order`, where a workspace moved to another display lands.
-    public static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue = .builtins,
-                             displays: [DisplayInfo] = [], workspaceWrap: Bool = false,
-                             categoryOrder: [AppCategory] = []) -> (World, [Effect]) {
-        let o = run(command, on: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
-                    categoryOrder: categoryOrder)
-        return (o.world, o.effects)
-    }
-
-    /// #109: `apply` plus why a command did nothing. A path that sets no reason is `.done` when it
-    /// changed the world or emitted an effect, else a generic no-op.
-    public static func run(_ command: Command, on input: World, layouts: LayoutCatalogue = .builtins,
-                           displays: [DisplayInfo] = [], workspaceWrap: Bool = false,
-                           categoryOrder: [AppCategory] = []) -> CommandOutcome {
+    /// Runs `command` against `input`. `env` is everything else a command reads (#171); it goes to
+    /// every command this one hands off to unchanged, and so does the report (#166).
+    /// #109: the report says why a command did nothing. A path that sets no reason is `.done` when
+    /// it changed the world or emitted an effect, else a generic no-op.
+    public static func run(_ command: Command, on input: World, in env: CommandEnvironment) -> CommandOutcome {
         var why: CommandReport?
-        let (w, e) = apply(command, to: input, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
-                           categoryOrder: categoryOrder, why: &why)
+        let (w, e) = step(command, on: input, in: env, why: &why)
         var slid = w
         slid.slideViews()   // #114: not every path normalizes, and every focus move can slide split
         if w.focus.window != input.focus.window { slid.noteFocus() }   // #137: every focus move is history
@@ -29,8 +15,10 @@ public enum CommandRunner {
                               report: why ?? (e.isEmpty && w == input ? .noop("nothing to do") : .done))
     }
 
-    static func apply(_ command: Command, to input: World, layouts: LayoutCatalogue, displays: [DisplayInfo],
-                      workspaceWrap: Bool, categoryOrder: [AppCategory], why: inout CommandReport?) -> (World, [Effect]) {
+    /// One command, and the one it hands off to if it does. Every hand-off comes back here with
+    /// the same `env` and the same `why`.
+    private static func step(_ command: Command, on input: World, in env: CommandEnvironment,
+                             why: inout CommandReport?) -> (World, [Effect]) {
         var w = input
         var effects: [Effect] = []
         /// #109: the silent `(w, [])` returns, with their reason.
@@ -166,7 +154,7 @@ public enum CommandRunner {
             // #120 (G3), opt-in: Fn+W on the first row goes to the last non-empty one, and Fn+S
             // from the last non-empty row (or below it) goes to the first. The trailing "+" row is
             // then reached by the rail's "+" and by Fn+Shift+S, not by stepping onto it.
-            if workspaceWrap, let last = screen.workspaces.lastIndex(where: { !$0.isEmpty }) {
+            if env.workspaceWrap, let last = screen.workspaces.lastIndex(where: { !$0.isEmpty }) {
                 if dir == .up, screen.activeIndex == 0 { target = last }
                 if dir == .down, screen.activeIndex >= last { target = 0 }
             }
@@ -221,7 +209,7 @@ public enum CommandRunner {
             // #9 generalises "maximize" to "any layout that shows fewer than two here" (a one-zone
             // drawn layout gets the same courtesy).
             // Placed after the bounds guard: a refused move must change nothing, layout included.
-            if LayoutEngine.capacity(layouts.resolve(ws.layout).def, count: ws.windows.count) < 2 { ws.layout = .split }
+            if LayoutEngine.capacity(env.layouts.resolve(ws.layout).def, count: ws.windows.count) < 2 { ws.layout = .split }
             w.screens[sid]!.workspaces[screen.activeIndex] = ws
             effects.append(.relayout)
 
@@ -315,7 +303,7 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .cycleLayout:
-            w.screens[sid]!.workspaces[screen.activeIndex].layout = layouts.next(after: screen.active.layout)
+            w.screens[sid]!.workspaces[screen.activeIndex].layout = env.layouts.next(after: screen.active.layout)
             effects.append(.relayout)
 
         case .toggleShellUI:
@@ -378,7 +366,7 @@ public enum CommandRunner {
         case .recoverWindow(let r):
             // #73: a placed window is exactly a tab click; a popup is focused *and* unhidden, since
             // nothing else in the model would ever un-minimize it. The rescue is the store's.
-            guard w.ephemeral.contains(r) else { return apply(.focusWindowRef(r), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap, categoryOrder: categoryOrder, why: &why) }
+            guard w.ephemeral.contains(r) else { return step(.focusWindowRef(r), on: w, in: env, why: &why) }
             w.focus.window = r
             return (w, [.unhide(r), .focus(r)])
 
@@ -406,11 +394,11 @@ public enum CommandRunner {
         case .resizeWindow(let axis, let grow):
             // #113. Without geometry the page is the one the model sees (no #54 floor); the store
             // turns the key press into `setPortions` against the real tiling rect first.
-            guard let (id, page, i) = w.resizePage(layouts: layouts) else { return noop("nothing to resize") }
+            guard let (id, page, i) = w.resizePage(layouts: env.layouts) else { return noop("nothing to resize") }
             let current = screen.active.portions[page.key]
             let (next, moved) = Resize.step(page, current, index: i, axis: axis, grow: grow)
             guard moved else { return noop(Resize.stuck(page, index: i, axis: axis)) }
-            return apply(.setPortions(id, key: page.key, next), to: w, layouts: layouts)
+            return step(.setPortions(id, key: page.key, next), on: w, in: env, why: &why)
 
         case .balance:
             guard !screen.active.portions.isEmpty else { return (w, []) }
@@ -418,15 +406,17 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .setPortions(let id, let key, let p):
-            guard let loc = w.location(ofWorkspace: id),
-                  w.screens[loc.screen]!.workspaces[loc.index].portions[key] != p else { return (w, []) }
+            // #166: `resizeWindow` hands off to here, so these reasons are the resize's too.
+            guard let loc = w.location(ofWorkspace: id) else { return fail(.unknownWorkspace(id.uuidString)) }
+            guard w.screens[loc.screen]!.workspaces[loc.index].portions[key] != p else {
+                return noop("the tiles are already that size")
+            }
             w.screens[loc.screen]!.workspaces[loc.index].portions[key] = p
             effects.append(.relayout)
 
         case .adjustSplitColumns(let d):
-            guard layouts.resolve(screen.active.layout).def.id == .split else { return noop("the layout is not split") }
-            return apply(.setSplitColumns(screen.active.id, screen.active.splitColumns + d), to: w, layouts: layouts,
-                         displays: displays, workspaceWrap: workspaceWrap, categoryOrder: categoryOrder, why: &why)
+            guard env.layouts.resolve(screen.active.layout).def.id == .split else { return noop("the layout is not split") }
+            return step(.setSplitColumns(screen.active.id, screen.active.splitColumns + d), on: w, in: env, why: &why)
 
         case .setSplitColumns(let id, let n):
             guard let loc = w.location(ofWorkspace: id) else { return fail(.unknownWorkspace(id.uuidString)) }
@@ -466,7 +456,7 @@ public enum CommandRunner {
         // #118–#120, the M4 keyboard grammar.
         case .focusScreenDirection(let dir):
             // As `focusScreen`, but the display is the one that way on the desk (#118).
-            guard let target = DisplayNeighbours.neighbour(of: sid, dir, in: displays), w.screens[target] != nil
+            guard let target = DisplayNeighbours.neighbour(of: sid, dir, in: env.displays), w.screens[target] != nil
             else { return (w, []) }
             w.focus = Focus(screen: target, window: nil)
             w.normalize()
@@ -476,7 +466,7 @@ public enum CommandRunner {
         case .moveWindowToScreenDirection(let dir):
             // As `moveWindowToScreen`: onto that display's active row, and focus follows (#118).
             guard let f = w.focus.window, screen.active.windows.contains(f),
-                  let target = DisplayNeighbours.neighbour(of: sid, dir, in: displays), let dest = w.screens[target],
+                  let target = DisplayNeighbours.neighbour(of: sid, dir, in: env.displays), let dest = w.screens[target],
                   move(f, to: (target, dest.activeIndex)) else { return (w, []) }
             effects.append(.focus(f)); effects.append(.relayout)
 
@@ -486,7 +476,7 @@ public enum CommandRunner {
             // just above the target's trailing empty row; focus follows. The source activates the
             // row above it (below, if it was the first), as `removeWorkspace` does.
             let from = screen.activeIndex
-            guard let target = DisplayNeighbours.neighbour(of: sid, dir, in: displays), w.screens[target] != nil
+            guard let target = DisplayNeighbours.neighbour(of: sid, dir, in: env.displays), w.screens[target] != nil
             else { return noop("no display that way") }
             guard !w.isTrailingEmpty((sid, from)) else { return noop("the empty workspace stays") }
             guard screen.workspaces.indices.contains(where: { $0 != from && !screen.workspaces[$0].isEmpty })
@@ -499,7 +489,7 @@ public enum CommandRunner {
                     w.screens[target]!.workspaces[i].category = nil
                 }
             }
-            let at = World.categoryRank(row, categoryOrder).map { w.categoryRowIndex(on: target, rank: $0, order: categoryOrder) }
+            let at = World.categoryRank(row, env.categoryOrder).map { w.categoryRowIndex(on: target, rank: $0, order: env.categoryOrder) }
                 ?? w.screens[target]!.workspaces.count - 1
             w.screens[target]!.workspaces.insert(row, at: at)
             if w.screens[target]!.activeIndex >= at { w.screens[target]!.activeIndex += 1 }
@@ -508,13 +498,13 @@ public enum CommandRunner {
             effects.append(.relayout)
 
         case .cycleLayoutReverse:
-            w.screens[sid]!.workspaces[screen.activeIndex].layout = layouts.previous(before: screen.active.layout)
+            w.screens[sid]!.workspaces[screen.activeIndex].layout = env.layouts.previous(before: screen.active.layout)
             effects.append(.relayout)
 
         case .setLayout(let id):
             // #119: a binding naming a layout that is gone (or never was) must not leave the
             // workspace on a missing id — that is a warning badge, not a layout.
-            guard layouts[id] != nil, screen.active.layout != id else { return (w, []) }
+            guard env.layouts[id] != nil, screen.active.layout != id else { return (w, []) }
             w.screens[sid]!.workspaces[screen.activeIndex].layout = id
             effects.append(.relayout)
 
@@ -536,8 +526,7 @@ public enum CommandRunner {
             let r = row[min(max(n, 1), row.count) - 1]
             // #128: tab N as drawn; a placeholder there is clicked, which opens its app.
             if r.isPlaceholder {
-                return apply(.focusWindowRef(r), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
-                             categoryOrder: categoryOrder, why: &why)
+                return step(.focusWindowRef(r), on: w, in: env, why: &why)
             }
             if w.hidden.contains(r) { w.hidden.remove(r); effects.append(.unhide(r)) }
             setFocus(r); effects.append(.relayout)
@@ -555,8 +544,7 @@ public enum CommandRunner {
 
         case .togglePin:
             guard let f = w.focus.window, screen.active.windows.contains(f) else { return fail(.noFocusedWindow) }
-            return apply(.togglePinRef(f), to: w, layouts: layouts, displays: displays, workspaceWrap: workspaceWrap,
-                         categoryOrder: categoryOrder, why: &why)
+            return step(.togglePinRef(f), on: w, in: env, why: &why)
 
         case .toggleFloatRef(let r):
             guard let loc = w.location(of: r) else { return fail(.unknownWindow(r)) }
