@@ -271,6 +271,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // main actor. Spawning a task that hops there later is fine; blocking on it is not.
         // `onFlags` never consumes events: holding the bare modifier shows the cheat sheet.
         let cheatSheet = CheatSheetController(config: config)
+        // #185: never over the spatial view.
+        cheatSheet.isSuppressed = { [weak spatial] in spatial?.isOpen ?? false }
+        spatial.onOpen = { [weak cheatSheet] in cheatSheet?.spatialOpened() }
         self.cheatSheet = cheatSheet
         // #135: focus follows the mouse, opt-in. A completed dwell is a click on that window's tab:
         // the same `route`, the same `.focusWindowRef`. Made before the hotkey tap so a key press

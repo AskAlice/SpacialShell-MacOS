@@ -28,6 +28,8 @@ public final class SpatialController {
     private var world: World?
     private var titles: [SpacialShellProtocol.WindowRef: String] = [:]
     public private(set) var isOpen = false
+    /// #185: told when the view opens, so the cheat sheet gets out of its way.
+    public var onOpen: () -> Void = {}
     /// Opened by holding the workspace keys: it closes when the modifier is let go.
     private var held = false
     /// #181: what the last thumbnail refresh was asked for — the display, the row the camera
@@ -77,6 +79,7 @@ public final class SpatialController {
         guard world != nil else { return }
         self.held = held
         isOpen = true
+        onOpen()
         render()
         panel.orderFrontRegardless()
     }

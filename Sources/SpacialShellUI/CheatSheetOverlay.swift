@@ -18,6 +18,9 @@ public final class CheatSheetController {
     private var config: Config
     private var showTask: Task<Void, Never>?
     private var shown = false
+    private var gate = CheatSheetGate()
+    /// #185: true while the spatial view is open; the sheet never shows over it.
+    public var isSuppressed: () -> Bool = { false }
 
     public init(config: Config) {
         self.config = config
@@ -32,25 +35,36 @@ public final class CheatSheetController {
     /// Fed from the tap thread via a main-actor hop. The modifier of interest is the preset's:
     /// bare Fn under the `fn` preset, bare ⌃⌥ under `ctrl-alt`.
     public func flagsChanged(_ flags: CGEventFlags) {
-        let bare: Bool =
-            switch config.keybindingPreset {
-            case .fn:
-                flags.contains(.maskSecondaryFn)
-                    && flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate, .maskShift])
-            case .ctrlAlt:
-                flags.contains(.maskControl) && flags.contains(.maskAlternate)
-                    && flags.isDisjoint(with: [.maskCommand, .maskShift, .maskSecondaryFn])
-            }
-        if bare {
+        if gate.modifier(bare: isBare(flags), suppressed: isSuppressed()) {
             guard showTask == nil, !shown else { return }
             showTask = Task { [weak self] in
                 try? await Task.sleep(for: Self.holdDelay)
-                guard !Task.isCancelled else { return }
-                self?.present()
+                guard !Task.isCancelled, let self else { return }
+                // The spatial view may have opened during the wait: this hold is then spent.
+                guard !self.isSuppressed() else { self.gate.spatialOpened(modifierHeld: true); return }
+                self.present()
             }
         } else {
             showTask?.cancel(); showTask = nil
             dismiss()
+        }
+    }
+
+    /// #185: the spatial view opened. Any sheet goes, and a hold in progress is spent.
+    public func spatialOpened() {
+        showTask?.cancel(); showTask = nil
+        dismiss()
+        gate.spatialOpened(modifierHeld: isBare(CGEventSource.flagsState(.combinedSessionState)))
+    }
+
+    private func isBare(_ flags: CGEventFlags) -> Bool {
+        switch config.keybindingPreset {
+        case .fn:
+            flags.contains(.maskSecondaryFn)
+                && flags.isDisjoint(with: [.maskCommand, .maskControl, .maskAlternate, .maskShift])
+        case .ctrlAlt:
+            flags.contains(.maskControl) && flags.contains(.maskAlternate)
+                && flags.isDisjoint(with: [.maskCommand, .maskShift, .maskSecondaryFn])
         }
     }
 
