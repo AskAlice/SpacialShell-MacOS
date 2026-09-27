@@ -48,7 +48,7 @@ import OpenTelemetryApi
     @Test func retiredWhileParkedWindowIsExportedAsStranded() async {
         // Two windows, maximize layout: `a` is the anchor, `b` is parked in the corner.
         let (store, be) = await make(snap([win(a), win(b)], focused: a))
-        #expect(await store.debugSideTables().parked.contains(b))
+        #expect(await store.exportForTermination().parked.contains(b))
         await be.fail(b)
         for y in [100.0, 200.0, 300.0] {
             await store.apply(.windowMoved(b, CGRect(x: y, y: y, width: 300, height: 200)))
@@ -304,7 +304,7 @@ import OpenTelemetryApi
     @Test func bootDoesNotRescueDeliberatelyParkedWindows() async {
         let (store, be) = await make(snap([win(a), win(b)], focused: a))
         await store.run(.moveWindowToWorkspace(.down))          // a → ws1; b stays parked in ws0
-        #expect(await store.debugSideTables().parked.contains(b))
+        #expect(await store.exportForTermination().parked.contains(b))
         await be.reset()
         await store.run(.rescueWindows)
         let framed = await be.calls.contains { call in
@@ -357,7 +357,7 @@ import OpenTelemetryApi
         let other = WindowRef(id: 3, pid: 9)      // a second app, so the row is not trivially active
         let (store, be) = await make(snap([win(a), win(other, bundle: "com.other")], focused: a))
         await store.run(.moveWindowToWorkspace(.down))        // a → ws1, so `other` is left parked in ws0
-        #expect(await store.debugSideTables().parked.contains(other))
+        #expect(await store.exportForTermination().parked.contains(other))
         #expect(await store.world.screens["D1"]!.activeIndex == 1)
         await be.reset()
 
@@ -740,8 +740,9 @@ import OpenTelemetryApi
         await run.value
         let w = await store.world
         #expect(w.location(of: a) == nil && !w.ignored.contains(a))
-        let tables = await store.debugSideTables()
-        #expect(!tables.parked.contains(a) && tables.prePark[a] == nil && tables.observed[a] == nil)
+        // Each write records `observed` and `parked` together with `prePark`: none came back for `a`.
+        let export = await store.exportForTermination()
+        #expect(!export.parked.contains(a) && export.observed[a] == nil)
         #expect(await !be.calls.contains(.setPosition(a, CGPoint(x: 999, y: 699))))   // stale write never issued
     }
     @Test func intentEchoDoesNotAbortInFlightPlan() async {
@@ -771,6 +772,84 @@ import OpenTelemetryApi
         let calls = await be.calls
         #expect(!calls.contains { touches($0, a) })
     }
+
+    // MARK: #174: one record per window
+
+    /// Vanishes `r`, then shows it again at `frame`: the same ref, re-adopted as a new window.
+    func vanishAndReturn(_ store: WorldStore, _ be: FakeBackend, _ others: [WindowSnapshot], _ back: WindowSnapshot) async {
+        await store.apply(.snapshot(snap(others, focused: others.first?.ref)))
+        #expect(await store.world.location(of: back.ref) == nil, "it did not vanish")
+        await be.reset()
+        await store.apply(.snapshot(snap(others + [back], focused: others.first?.ref)))
+    }
+
+    /// Two of the three strikes, then it vanishes: the window that comes back under the same ref
+    /// starts from none. One more failed write must not retire it.
+    @Test func aVanishedWindowLeavesNoFailureCount() async {
+        let (store, be) = await make(snap([win(a)], focused: a))
+        await be.fail(a)
+        for y in [100.0, 200.0] { await store.apply(.windowMoved(a, CGRect(x: y, y: y, width: 984, height: 658))) }
+        #expect(await !store.world.ignored.contains(a))
+        await vanishAndReturn(store, be, [], win(a, CGRect(x: 50, y: 50, width: 300, height: 200)))
+        #expect(await be.calls.contains(.setFrame(a, CGRect(x: 8, y: 33, width: 984, height: 658))), "no write failed")
+        #expect(await !store.world.ignored.contains(a), "a stale failure count retired it")
+        #expect(await store.world.location(of: a) != nil)
+    }
+
+    /// Parked in an inactive row, then it vanishes: the window that comes back under the same ref
+    /// is not parked, and is not "restored" to the frame the old one had before it was parked.
+    @Test func aVanishedWindowLeavesNoParkedFrame() async {
+        let f = WindowRef(id: 3, pid: 1)
+        let before = CGRect(x: 100, y: 100, width: 300, height: 200)
+        let (store, be) = await make(snap([win(a), win(f, before, kind: .float, bundle: nil)], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))          // a → ws1; `f` floats in ws0, parked
+        #expect(await store.exportForTermination().parked.contains(f))
+        await vanishAndReturn(store, be, [win(a, CGRect(x: 8, y: 33, width: 984, height: 658))],
+                              win(f, CGRect(x: 400, y: 300, width: 300, height: 200), kind: .float, bundle: nil))
+        let export = await store.exportForTermination()
+        #expect(!export.parked.contains(f) && export.observed[f] == CGRect(x: 400, y: 300, width: 300, height: 200))
+        #expect(await !be.calls.contains(.setFrame(f, before)), "restored from a stale pre-park frame")
+    }
+
+    /// A window learned as fixed-size, then it vanishes: the window that comes back under the same
+    /// ref is asked for the whole tile, not centred at the old one's size.
+    @Test func aVanishedWindowLeavesNoRefusal() async {
+        let (store, be) = await make(snap([win(a)], focused: a))
+        let full = CGRect(x: 8, y: 33, width: 984, height: 658), small = CGRect(x: 8, y: 33, width: 400, height: 300)
+        await store.apply(.windowResized(a, small))
+        await store.apply(.windowResized(a, small))             // confirmed: centred from now on
+        await vanishAndReturn(store, be, [], win(a, CGRect(x: 50, y: 50, width: 300, height: 200)))
+        #expect(await be.calls.filter { if case .setFrame = $0 { true } else { false } } == [.setFrame(a, full)])
+    }
+
+    /// A vanished window's app and title go with it: nothing about it is saved or exported.
+    @Test func aVanishedWindowLeavesNothingToExport() async {
+        let (store, _) = await make(snap([win(a), win(b)], focused: a))
+        await store.apply(.snapshot(snap([win(a)], focused: a)))
+        let export = await store.exportForTermination()
+        #expect(export.bundleIDs[b] == nil && export.titles[b] == nil && export.observed[b] == nil)
+        #expect(!export.parked.contains(b) && export.stranded[b] == nil)
+        let tables = await store.currentWindowTables()
+        #expect(tables.bundleIDs[b] == nil && tables.titles[b] == nil)
+    }
+
+    /// Retiring drops what the shell knew from placing a window and keeps who it is: its app and
+    /// title, and (retired while parked) where it belongs, for the termination restore. Vanishing
+    /// afterwards drops the rest.
+    @Test func aRetiredWindowKeepsItsIdentityUntilItVanishes() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))   // maximize: `b` parked
+        await be.fail(b)
+        for y in [100.0, 200.0, 300.0] { await store.apply(.windowMoved(b, CGRect(x: y, y: y, width: 300, height: 200))) }
+        #expect(await store.world.ignored.contains(b))
+        var export = await store.exportForTermination()
+        #expect(export.observed[b] == nil && !export.parked.contains(b))
+        #expect(export.stranded[b] != nil && export.bundleIDs[b] == "com.x" && export.titles[b] == "t")
+        await store.apply(.snapshot(snap([win(a)], focused: a)))
+        export = await store.exportForTermination()
+        #expect(export.stranded[b] == nil && export.bundleIDs[b] == nil && export.titles[b] == nil)
+        #expect(await !store.world.ignored.contains(b))
+    }
+
     @Test func commandsAreIgnoredWhileLocked() async {
         let (store, be) = await make(snap([win(a), win(b)], focused: a))
         await store.apply(.screenLocked)

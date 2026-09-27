@@ -30,26 +30,12 @@ public actor WorldStore {
     private var commandEnvironment: CommandEnvironment {
         CommandEnvironment(config: config, layouts: layouts, displays: displays)
     }
-    private var observed: [WindowRef: CGRect] = [:]
-    private var prePark: [WindowRef: CGRect] = [:]
+    /// #174: what the store knows of each window beyond the model, one record per window, so a
+    /// vanished window is forgotten in one place (`forget`) and a retired one in one other (`retire`).
+    private var records = WindowRecords()
     /// #169: our writes, and what their echoes taught us — refusals (#125, #164) and unmovable
     /// sheets (#165). Every move or resize report is read here first.
     private var echoes = WindowEchoes()
-    /// #165: dialogs and popups due a placement on the next pass: at first appearance, and again
-    /// when the displays change. Nothing else ever moves them, so one the user moved stays put.
-    private var pendingPopups: [WindowRef: PopupRequest] = [:]
-    /// #165: every window adopted as a dialog or popup, so a display change can clamp them all.
-    private var popups: Set<WindowRef> = []
-    /// Spec §7.4 + §11. A window retired to `ignored` after three failed writes *while parked* is
-    /// unreachable by the reconciler for good, so nothing would ever unpark it — the one way a
-    /// window can be permanently stranded in a corner. Its last known real frame is kept here
-    /// purely so the termination restore can put it back.
-    private var stranded: [WindowRef: CGRect] = [:]
-    private var parked: Set<WindowRef> = []
-    private var bundleIDs: [WindowRef: String] = [:]
-    /// #110: the snapshot's `title` per window, kept current by every refresh and by
-    /// `kAXTitleChanged`. Never put on a span or a log line: titles are the user's content (#148).
-    private var titles: [WindowRef: String] = [:]
     /// #110: `appName` by pid, replaced wholesale by each refresh's app list.
     private var appNames: [Int32: String] = [:]
     /// Where each app's windows belong: bundle id → workspace id. Seeded from the state file at
@@ -60,16 +46,6 @@ public actor WorldStore {
     /// an explicit choice, so it beats category routing (#74) for their new windows from then on.
     /// ponytail: nothing clears it yet; "reset placement" is meant to, and does not exist yet.
     private var movedApps: Set<String>
-    /// Spec §11 as amended 2026-09-15: retirement lasts only "until it changes", so a retired
-    /// window's last known state is kept to recognise the change that brings it back (#36).
-    /// `wentAway`: seen on another Space since retirement — coming back is a change too (#55).
-    private struct Retired { var frame: CGRect; var fullscreen: Bool; var wentAway = false }
-    private var retired: [WindowRef: Retired] = [:]
-    /// The frame each window had in the last *snapshot* — reality, unlike `observed`, which holds the
-    /// frame we asked for and which a failed write never delivered. "Changed" is judged against this,
-    /// or a retired window would look changed on the very next snapshot and we would fight it forever.
-    private var lastSeen: [WindowRef: CGRect] = [:]
-    private var failures: [WindowRef: Int] = [:]
     /// #170: our raises, our commands' focus moves and the human's input, and what each focus or
     /// activation report means against them (#67, #69, #84, #28). Shares the store's clock.
     private var focusEchoes: FocusEchoes
@@ -108,7 +84,8 @@ public actor WorldStore {
     /// the tile it would land on. The reconciler leaves it where the hand has it until the drop.
     private struct Drag { let ref: WindowRef; let grab: CGVector; var target: WindowRef? }
     private var drag: Drag?
-    /// Every tile a drop can land on, as the last reconcile framed it (`DropTarget.tiles`).
+    /// Every tile a drop can land on, as the last reconcile framed it (`DropTarget.tiles`). Not in
+    /// `WindowRecord` (#174): rebuilt whole by every pass, so a vanished window is gone from the next.
     private var tiles: [WindowRef: CGRect] = [:]
     /// #108: the drop target's frame (top-left global) for the indicator panel; nil hides it.
     private let onDropTarget: @Sendable (CGRect?) -> Void
@@ -146,7 +123,8 @@ public actor WorldStore {
     private let onPointerTargets: @Sendable (PointerTargets) -> Void
     private var lastTargets: PointerTargets?
     /// #135: which window is over which, front to back, as far as the model can tell: the order
-    /// focus landed on them (`PointerTargets.restack`). Kept on every publish.
+    /// focus landed on them (`PointerTargets.restack`). Kept on every publish, which drops windows
+    /// the model no longer has; an order across windows, not a fact of one, so not in `WindowRecord`.
     private var stacking: [WindowRef] = []
 
     public init(backend: any WindowBackend, config: Config, world: World?, zeroSliverBundleIDs: Set<String>,
@@ -197,19 +175,19 @@ public actor WorldStore {
     /// parking corner, and only parked windows are in one — a tiled window is already somewhere
     /// the user can reach, and centring it on the way out just scrambles their screen.
     public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>, bundleIDs: [WindowRef: String], titles: [WindowRef: String]) {
-        (world, displays, observed, stranded, parked, placements, movedApps, bundleIDs, titles)
+        (world, displays, records.observed, records.stranded, records.parked, placements, movedApps, records.bundleIDs, records.titles)
     }
     /// The placement memory to persist — see `PersistedState.placements`.
     public func currentPlacements() -> [String: UUID] { placements }
     /// #128: each live window's app and title — what `PersistedState` saves of a window so it can
     /// come back as a placeholder in its slot.
-    public func currentWindowTables() -> (bundleIDs: [WindowRef: String], titles: [WindowRef: String]) { (bundleIDs, titles) }
+    public func currentWindowTables() -> (bundleIDs: [WindowRef: String], titles: [WindowRef: String]) { (records.bundleIDs, records.titles) }
     /// See `PersistedState.movedApps`.
     public func currentMovedApps() -> Set<String> { movedApps }
     /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
     /// window belongs to, whether the shell has it parked, and the last frame it observed.
     public func wireState() -> WireState {
-        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed, layouts: layouts,
+        WireState(world: world, bundleIDs: records.bundleIDs, parked: records.parked, observed: records.observed, layouts: layouts,
                   problems: ProblemCenter.shared.current)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }
@@ -222,13 +200,13 @@ public actor WorldStore {
 
     private func makeSnapshot(generation: UInt64) -> ShellSnapshot {
         ShellSnapshot(world: world, generation: generation, displays: displays, config: config, layouts: layouts,
-                      titles: titles, appNames: appNames, bundleIDs: bundleIDs, locked: locked)
+                      titles: records.titles, appNames: appNames, bundleIDs: records.bundleIDs, locked: locked)
     }
 
     private func publish() {
         // #135: frames can change with the world unchanged (a resize drag), so this has its own dedupe.
         stacking = PointerTargets.restack(stacking, focused: world.focus.window, world: world)
-        let targets = PointerTargets(world: world, shown: lastShown, observed: observed, displays: displays, config: config,
+        let targets = PointerTargets(world: world, shown: lastShown, observed: records.observed, displays: displays, config: config,
                                      stacking: stacking)
         if targets != lastTargets { lastTargets = targets; onPointerTargets(targets) }
         let snapshot = makeSnapshot(generation: publishGeneration + 1)
@@ -289,7 +267,7 @@ public actor WorldStore {
         case .moveAppRefToWorkspace(let r, _): r.pid
         default: nil
         }
-        if let movedPid, next != world, let bundle = bundleIDs.first(where: { $0.key.pid == movedPid })?.value {
+        if let movedPid, next != world, let bundle = records.bundleIDs.first(where: { $0.key.pid == movedPid })?.value {
             movedApps.insert(bundle)
         }
         world = next
@@ -299,7 +277,7 @@ public actor WorldStore {
             switch e {
             case .close(let r): _ = await backend.close(r)
             case .exitFullscreen(let r):
-                Self.log.notice("exit fullscreen \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) before workspace switch")
+                Self.log.notice("exit fullscreen \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) before workspace switch")
                 _ = await backend.setFullscreen(r, false)
             // #48: the model already calls it visible, so make that true before the reconciler
             // places it — otherwise the frame lands on a window macOS still has put away.
@@ -313,7 +291,7 @@ public actor WorldStore {
         await reconcile(parent: span, since: issued)
         // #107: after the reconcile, so the focused window's frame is the one it now has.
         if config.pointerWarp, world.focus.screen != before.screen,
-           let p = PointerWarp.target(after: command, from: before.screen, world: world, frames: observed,
+           let p = PointerWarp.target(after: command, from: before.screen, world: world, frames: records.observed,
                                       displays: displays, pointer: await backend.pointerLocation()) {
             await backend.warpPointer(to: p)
         }
@@ -371,13 +349,13 @@ public actor WorldStore {
             if let command = drop(d.ref, at: p) { await run(command); return }
         case .windowMoved(let r, let f), .windowResized(let r, let f):
             // #169: `WindowEchoes` says what the report is; the store only acts on it.
-            let was = observed[r]
+            let was = records[r].observed
             let kind: WindowEchoes.Context.Event = if case .windowMoved = event { .moved } else { .resized }
             let verdict = echoes.interpret(r, frame: f, WindowEchoes.Context(
                 event: kind, was: was, locked: locked, grabbing: grab != nil, pointerDown: pointerDown,
                 dragging: drag?.ref, isTile: tiles[r] != nil, humanRecently: focusEchoes.humanRecently,
-                world: world, displays: displays, parked: parked))
-            observed[r] = f
+                world: world, displays: displays, parked: records.parked))
+            records[r].observed = f
             if verdict.learned.contains(.sheetUnmovable) { logUnmovable(r) }
             switch verdict.action {
             case .ownEcho, .hold, .leave: return
@@ -385,14 +363,14 @@ public actor WorldStore {
                 // #108: suspended until the mouse-up; each move re-aims the drop indicator.
                 if let start {
                     drag = Drag(ref: r, grab: start)
-                    Self.log.notice("drag \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public)")
+                    Self.log.notice("drag \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public)")
                 }
                 guard let d = drag else { return }
                 aim(DropTarget.tile(at: CGPoint(x: f.minX + d.grab.dx, y: f.minY + d.grab.dy), dragging: r, in: tiles))
                 return
             case .rehome(let dest, let target):
                 world = CommandRunner.run(.moveWindowRefToWorkspace(r, target), on: world, in: commandEnvironment).world
-                Self.log.notice("dragged \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
+                Self.log.notice("dragged \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
             case .moveOwner, .snapBack: break   // the reconcile below moves the owner, or puts it back
             }
         case .focusChanged(let r):
@@ -411,8 +389,8 @@ public actor WorldStore {
         case .windowTitleChanged(let r, let title):
             // Not spatial: no sweep, no reconcile, no span. Only a window a refresh has already
             // seen, and only a real change reaches `publish`'s dedupe.
-            guard let was = titles[r], was != title else { return }
-            titles[r] = title
+            guard let was = records[r].title, was != title else { return }
+            records[r].title = title
             if !locked { publish() }
             return
         case .screenLocked:
@@ -467,16 +445,16 @@ public actor WorldStore {
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
-            defer { lastSeen[w.ref] = w.frame }
+            defer { records[w.ref].lastSeen = w.frame }
             if echoes.settle(w.ref, seenAt: w.frame) { logUnmovable(w.ref) }
-            observed[w.ref] = w.frame
-            bundleIDs[w.ref] = w.bundleID
-            titles[w.ref] = w.title
+            records[w.ref].observed = w.frame
+            records[w.ref].bundleID = w.bundleID
+            records[w.ref].title = w.title
             // Spec §11 "until it changes": a retired window that has moved, resized or changed
             // fullscreen state is alive and ours again — `ignored` is not a one-way door (#36). So
             // is one back on the active Space after time away: its frame never changed (#55).
-            if !w.onActiveSpace, world.ignored.contains(w.ref) { retired[w.ref]?.wentAway = true }
-            if world.ignored.contains(w.ref), let was = retired[w.ref],
+            if !w.onActiveSpace, world.ignored.contains(w.ref) { records[w.ref].retired?.wentAway = true }
+            if world.ignored.contains(w.ref), let was = records[w.ref].retired,
                !Reconciler.approx(was.frame, w.frame) || was.fullscreen != w.isFullscreen
                 || (was.wentAway && w.onActiveSpace) {
                 revive(w.ref, frame: w.frame, reason: "changed")
@@ -513,7 +491,7 @@ public actor WorldStore {
                 world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent, workspace: landing)
                 adopted += 1
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
-                if let popup { pendingPopups[w.ref] = popup; popups.insert(w.ref) }
+                if let popup { records[w.ref].pendingPopup = popup; records[w.ref].isPopup = true }
             }
             let nowHidden = w.isMinimized || hiddenApps.contains(w.ref.pid)
             rehomeIfMacOSOwnsFrame(w, hidden: nowHidden)
@@ -537,23 +515,19 @@ public actor WorldStore {
                 .union(world.ephemeral).union(world.ignored)
             for gone in all.subtracting(present) {
                 vanished += 1
-                Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.bundleIDs[gone] ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
+                Self.log.notice("vanished \(gone.id, privacy: .public) pid=\(gone.pid) \(self.records[gone].bundleID ?? "-", privacy: .public) wasIgnored=\(self.world.ignored.contains(gone))")
                 // #129: a pinned window leaves a placeholder in its slot instead of its tab going.
-                if let b = bundleIDs[gone], world.leavePlaceholder(for: gone, bundleID: b, title: titles[gone] ?? "") != nil {
+                if let b = records[gone].bundleID, world.leavePlaceholder(for: gone, bundleID: b, title: records[gone].title ?? "") != nil {
                     Self.log.notice("pinned \(gone.id, privacy: .public) \(b, privacy: .public) closed: placeholder left in its slot")
                 } else { world.remove(gone) }
-                observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; echoes.forget(gone)
-                forgetPopup(gone)
-                retired[gone] = nil; lastSeen[gone] = nil
-                stranded[gone] = nil
-                failures[gone] = nil; focusEchoes.vanished(gone)
+                forget(gone)
             }
             if vanished > 0 { publishWriteProblems() }
         }
         // #165: a display came, went or changed size: every popup is clamped back inside its
         // display once. A popup still waiting for its first placement keeps that instead.
         if displaysChanged {
-            for r in popups where pendingPopups[r] == nil { pendingPopups[r] = PopupRequest(.clamp) }
+            for r in records.popups where records[r].pendingPopup == nil { records[r].pendingPopup = PopupRequest(.clamp) }
         }
         // Reservations only have to survive the gap between `PersistedState.restore` and the first
         // snapshot: restore holds a workspace open for each remembered placement so its window can
@@ -624,7 +598,7 @@ public actor WorldStore {
         // workspaces forever.
         if world.screens.values.contains(where: { world.visible(in: $0.active).contains { $0.pid == pid } }) { return }
         guard let target = candidateWindow(ofPid: pid), let loc = world.location(of: target) else { return }
-        Self.log.notice("surface \(target.id, privacy: .public) pid=\(pid) \(self.bundleIDs[target] ?? "-", privacy: .public) after app activation")
+        Self.log.notice("surface \(target.id, privacy: .public) pid=\(pid) \(self.records[target].bundleID ?? "-", privacy: .public) after app activation")
         world.focus.screen = loc.screen
         if world.screens[loc.screen]?.activeIndex != loc.index { world.activate(index: loc.index, on: loc.screen) }
         world.focus.window = target
@@ -650,8 +624,8 @@ public actor WorldStore {
         guard let r else { return }
         // The focused-window invariant (#36): a window macOS reports as focused is by definition
         // managed, so a retired one comes back rather than sitting "just under everything".
-        if world.ignored.contains(r), retired[r] != nil {
-            revive(r, frame: observed[r] ?? retired[r]!.frame, reason: "focused")
+        if world.ignored.contains(r), let was = records[r].retired {
+            revive(r, frame: records[r].observed ?? was.frame, reason: "focused")
         }
         // #170: our own raise's echo, a repeat, the past (#67, #69, #84), the user, or an intrusion (#28).
         let verdict = focusEchoes.focusReported(r, world: world)
@@ -659,7 +633,7 @@ public actor WorldStore {
         // pushed every interesting line out of a `log show --last 5m` window. Changes stay loud.
         if verdict == .repeated {
             Self.log.debug("native focus \(r.id, privacy: .public) unchanged")
-        } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) verdict=\(String(describing: verdict), privacy: .public) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
+        } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) verdict=\(String(describing: verdict), privacy: .public) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
         let isEcho: Bool
         switch verdict {
         case .stale: return
@@ -703,9 +677,9 @@ public actor WorldStore {
             switch i.requester {
             case .move(let dest, let target)?:
                 world = CommandRunner.run(.moveWindowRefToWorkspace(r, target), on: world, in: commandEnvironment).world
-                Self.log.notice("fullscreen guard: moved \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
+                Self.log.notice("fullscreen guard: moved \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) to \(String(dest.prefix(8)), privacy: .public)")
             case .deferred?:
-                Self.log.notice("fullscreen guard: deferred \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) behind \(fs.id, privacy: .public)")
+                Self.log.notice("fullscreen guard: deferred \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) behind \(fs.id, privacy: .public)")
             case nil: break
             }
         }
@@ -878,11 +852,11 @@ public actor WorldStore {
     /// Puts a retired window back in the model (spec §11 "until it changes"). The app's remembered
     /// workspace still applies, exactly as at first adoption.
     private func revive(_ r: WindowRef, frame: CGRect, reason: StaticString) {
-        guard retired[r] != nil else { return }
-        retired[r] = nil
+        guard records[r].retired != nil else { return }
+        records[r].retired = nil
         world.ignored.remove(r)
-        failures[r] = nil
-        let bundle = bundleIDs[r]
+        records[r].failures = 0
+        let bundle = records[r].bundleID
         let kind = config.kindOverride(bundleID: bundle, title: "") ?? .tile
         world.adopt(r, kind: kind, on: screenFor(frame), workspace: bundle.flatMap { placements[$0] })
         Self.log.notice("revive \(r.id, privacy: .public) pid=\(r.pid) \(bundle ?? "-", privacy: .public) \(reason, privacy: .public)")
@@ -904,7 +878,7 @@ public actor WorldStore {
         let floating = world.screens[loc.screen]!.workspaces[loc.index].floating.contains(w.ref)
         // A fullscreen window's frame is always macOS's word, even one we once parked (a window in
         // an inactive row that went fullscreen); a parked floating window's frame is our corner.
-        guard w.isFullscreen || (floating && !parked.contains(w.ref)),
+        guard w.isFullscreen || (floating && !records[w.ref].parked),
               let d = displayUnder(w.frame), d != loc.screen, world.screens[d] != nil else { return }
         let focused = world.focus.window == w.ref
         world.remove(w.ref)
@@ -953,10 +927,8 @@ public actor WorldStore {
     /// #165: `WindowEchoes` has learned a sheet will not move (its placement's echo, or a snapshot,
     /// still showed it where it was).
     private func logUnmovable(_ r: WindowRef) {
-        Self.log.notice("sheet \(r.id, privacy: .public) \(self.bundleIDs[r] ?? "-", privacy: .public) did not move: its owner moves instead")
+        Self.log.notice("sheet \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) did not move: its owner moves instead")
     }
-
-    private func forgetPopup(_ r: WindowRef) { pendingPopups[r] = nil; popups.remove(r) }
 
     // MARK: reconcile
 
@@ -964,7 +936,7 @@ public actor WorldStore {
         let since = since ?? now()
         // Placement memory follows the model: whatever the last command or snapshot did, the
         // windows on screen now define where their apps belong.
-        placements.merge(PersistedState.placements(world: world, bundleIDs: bundleIDs)) { _, live in live }
+        placements.merge(PersistedState.placements(world: world, bundleIDs: records.bundleIDs)) { _, live in live }
         generation += 1
         let gen = generation
         // #148: one span per pass, one child for all its writes and one for the raise — counts, not
@@ -989,7 +961,7 @@ public actor WorldStore {
             span.setAttribute(key: "superseded", value: !finished)
             span.end()
         }
-        let zero = Set(bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
+        let zero = Set(records.bundleIDs.filter { zeroSliverBundleIDs.contains($0.value) }.map(\.key))
         // Zen and `show-panels` decide whether the panels' edges belong to the layout (M2 design
         // §Decisions: `ShellInsets(config:hidden:)` computed purely in Kit; same insets on every
         // screen — each screen carries both panels).
@@ -997,12 +969,13 @@ public actor WorldStore {
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         logUnresolvedLayouts()
         var desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
-                                         observed: observed, prePark: prePark, parkedNow: parked, zeroSliver: zero,
+                                         observed: records.observed, prePark: records.prePark, parkedNow: records.parked, zeroSliver: zero,
                                          insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: echoes.refused,
                                          unmovable: echoes.unmovable)
         // #165: the popups due a placement, and the requests they were placed for.
+        let pendingPopups = records.pendingPopups
         let placed = Reconciler.placePopups(pendingPopups, into: &desired, world: world, displays: displays,
-                                            observed: observed, parkedNow: parked, unmovable: echoes.unmovable)
+                                            observed: records.observed, parkedNow: records.parked, unmovable: echoes.unmovable)
         let placing = pendingPopups.filter { placed.contains($0.key) }
         tiles = DropTarget.tiles(world: world, desired: desired)
         borders = findBorders(desired)
@@ -1041,12 +1014,12 @@ public actor WorldStore {
             span.setAttribute(key: "animating", value: animating)
             if gen != generation { return }          // superseded: the deferred play still lands it
         }
-        let plan = Reconciler.plan(desired: desired, observed: observed, parkedNow: parked)
+        let plan = Reconciler.plan(desired: desired, observed: records.observed, parkedNow: records.parked)
         // #165: a popup already where its placement puts it is placed; one being written is placed
         // once its write returns, superseded or not, so no later pass drags it back there after
         // the user has moved it.
         for r in placing.keys where !plan.contains(where: { if case .setFrame(r, _) = $0 { true } else { false } }) {
-            if pendingPopups[r] == placing[r] { pendingPopups[r] = nil }
+            if records[r].pendingPopup == placing[r] { records[r].pendingPopup = nil }
         }
         for w in plan {
             echoes.record(w)
@@ -1054,26 +1027,26 @@ public actor WorldStore {
             switch w {
             case .setFrame(let r, let f):
                 frames += 1
-                let from = observed[r]
+                let from = records[r].observed
                 let result = await backend.setFrame(r, f)
                 count(result)
                 if let request = placing[r] {
-                    if pendingPopups[r] == request { pendingPopups[r] = nil }
+                    if records[r].pendingPopup == request { records[r].pendingPopup = nil }
                     // A first placement of an attached window is also the test of whether it moves.
                     if request.mode == .place, world.owner(of: r) != nil { echoes.probe(r, from: from, to: f) }
                 }
                 if gen != generation { return }
-                observed[r] = f; parked.remove(r); prePark[r] = nil
+                records[r].observed = f; records[r].parked = false; records[r].prePark = nil
                 note(result, for: r)
             case .setPosition(let r, let o):
-                let pre = parked.contains(r) ? nil : observed[r]
+                let pre = records[r].parked ? nil : records[r].observed
                 parks += 1
                 let result = await backend.setPosition(r, o)
                 count(result)
                 if gen != generation { return }
-                if let pre { prePark[r] = pre }
-                if let cur = observed[r] { observed[r] = CGRect(origin: o, size: cur.size) }
-                parked.insert(r)
+                if let pre { records[r].prePark = pre }
+                if let cur = records[r].observed { records[r].observed = CGRect(origin: o, size: cur.size) }
+                records[r].parked = true
                 note(result, for: r)
             }
         }
@@ -1081,7 +1054,7 @@ public actor WorldStore {
         if let f = world.focus.window, focusEchoes.recordRaise(of: f) {
             let raise = startSpan("reconcile.raise", parent: span)
             raise.setAttribute(key: "window.id", value: Int(f.id))
-            if let b = bundleIDs[f] { raise.setAttribute(key: "bundle.id", value: b) }
+            if let b = records[f].bundleID { raise.setAttribute(key: "bundle.id", value: b) }
             let result = await backend.raise(f)
             if case .failure = result { raise.setAttribute(key: "failed", value: true) }
             raise.end()
@@ -1124,6 +1097,7 @@ public actor WorldStore {
     /// so the prediction is exactly what the next `prepare` will ask for. Nothing is written.
     private func predictedSwitches(insets: [DisplayID: ShellInsets], zero: Set<WindowRef>) -> [[Transition]] {
         let env = commandEnvironment
+        let (observed, prePark, parked) = (records.observed, records.prePark, records.parked)
         return Self.predictedCommands.map { command in
             let next = CommandRunner.run(command, on: world, in: env).world
             let desired = Reconciler.desired(world: next, displays: displays, config: layoutConfig,
@@ -1147,7 +1121,7 @@ public actor WorldStore {
             for r in ws.floating where !world.hidden.contains(r) && !world.fullscreen.contains(r) && !world.offSpace.contains(r) {
                 switch desired[r] {
                 case .frame(let f)?: frames[r] = f
-                case .untouched?: if let f = observed[r] { frames[r] = f }
+                case .untouched?: if let f = records[r].observed { frames[r] = f }
                 default: break
                 }
             }
@@ -1178,9 +1152,9 @@ public actor WorldStore {
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
-                                         observed: observed, prePark: prePark, parkedNow: parked,
+                                         observed: records.observed, prePark: records.prePark, parkedNow: records.parked,
                                          zeroSliver: [], insets: insets, refused: echoes.refused, unmovable: echoes.unmovable)
-        for (ref, frame) in observed.sorted(by: { $0.key.id < $1.key.id }) {
+        for (ref, frame) in records.observed.sorted(by: { $0.key.id < $1.key.id }) {
             guard Reconciler.isBeyondReach(frame, displays: displays) else { continue }
             // #55: never write to a window on another Space. ponytail: only placed windows carry the
             // flag, so an ignored or ephemeral one away on another Space can still be rescued.
@@ -1192,10 +1166,10 @@ public actor WorldStore {
             let screen = world.screenContaining(ref) ?? world.focus.screen
             let display = displays.first { $0.id == screen } ?? displays[0]
             let rescued = Reconciler.centered(size: frame.size, in: display.visibleFrame)
-            Self.log.notice("rescue \(ref.id, privacy: .public) \(self.bundleIDs[ref] ?? "-", privacy: .public) from \(String(describing: frame.origin), privacy: .public) (\(reason, privacy: .public))")
+            Self.log.notice("rescue \(ref.id, privacy: .public) \(self.records[ref].bundleID ?? "-", privacy: .public) from \(String(describing: frame.origin), privacy: .public) (\(reason, privacy: .public))")
             echoes.record(.setFrame(ref, rescued))
             let result = await backend.setFrame(ref, rescued)
-            observed[ref] = rescued
+            records[ref].observed = rescued
             note(result, for: ref)
         }
     }
@@ -1205,35 +1179,37 @@ public actor WorldStore {
     private func note(_ result: Result<Void, BackendError>, for r: WindowRef) {
         switch result {
         case .success:
-            failures[r] = nil
+            records[r].failures = 0
         case .failure:
-            failures[r, default: 0] += 1
-            guard failures[r, default: 0] >= 3 else { return }
-            failures[r] = nil
+            records[r].failures += 1
+            guard records[r].failures >= 3 else { return }
+            records[r].failures = 0
             // macOS owns a fullscreen window and the shell writes nothing for it, so a failure
             // there says nothing about manageability (#36).
             guard !world.fullscreen.contains(r) else { return }
-            // Remember where it belongs before the side tables that know are cleared.
-            if parked.contains(r), let frame = prePark[r] ?? observed[r] { stranded[r] = frame }
-            retired[r] = Retired(frame: lastSeen[r] ?? observed[r] ?? .zero, fullscreen: world.fullscreen.contains(r))
-            Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.bundleIDs[r] ?? "-", privacy: .public) after 3 failed writes")
-            world.remove(r); world.ignored.insert(r)
-            observed[r] = nil; prePark[r] = nil; parked.remove(r); echoes.forget(r)
-            forgetPopup(r)
-            focusEchoes.retired(r)
+            Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.records[r].bundleID ?? "-", privacy: .public) after 3 failed writes")
+            retire(r)
             publishWriteProblems()
         }
+    }
+
+    /// Spec §11: `r` goes to `ignored`, keeping who it is and what brings it back
+    /// (`WindowRecord.retire`); nothing learned from placing it or from its echoes stays.
+    private func retire(_ r: WindowRef) {
+        records[r].retire(fullscreen: world.fullscreen.contains(r))
+        world.remove(r); world.ignored.insert(r)
+        echoes.forget(r); focusEchoes.retired(r)
+    }
+
+    /// #174: `r` vanished: nothing the store knew about it outlives it, here or in the echoes.
+    private func forget(_ r: WindowRef) {
+        records.forget(r); echoes.forget(r); focusEchoes.vanished(r)
     }
 
     /// #109: a retired window is a write failure that persisted. One problem per app, rebuilt from
     /// `retired` whenever it changes, so a revived or vanished window clears itself.
     private func publishWriteProblems() {
-        let apps = Set(retired.keys.map { bundleIDs[$0] ?? "pid:\($0.pid)" })
+        let apps = Set(records.retired.map { records[$0].bundleID ?? "pid:\($0.pid)" })
         ProblemCenter.shared.replace(prefix: Problem.Key.axWritePrefix, with: apps.map { Problem.axWriteFailing(app: $0) })
-    }
-
-    /// Test-only window onto the side tables that must never outlive their window.
-    func debugSideTables() -> (parked: Set<WindowRef>, prePark: [WindowRef: CGRect], observed: [WindowRef: CGRect]) {
-        (parked, prePark, observed)
     }
 }
