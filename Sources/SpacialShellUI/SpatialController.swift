@@ -14,6 +14,10 @@ import SpacialShellProtocol
 /// App-layer, like the overview: opening it changes nothing in the model, and every click in it
 /// re-enters the store as a `Command`. Covers the focused display, in a non-activating panel
 /// above the shell's own, so the window you were in keeps key focus throughout.
+///
+/// #181: the chips draw `WindowThumbnails`' pictures in the first frame, and opening the view (or
+/// the camera moving to another row) asks `ThumbnailRefresher` to take every chip in view whose
+/// picture is missing or stale; each row's pictures swap in as they land.
 @MainActor
 public final class SpatialController {
     private let panel = PanelWindow()
@@ -26,6 +30,14 @@ public final class SpatialController {
     public private(set) var isOpen = false
     /// Opened by holding the workspace keys: it closes when the modifier is let go.
     private var held = false
+    /// #181: what the last thumbnail refresh was asked for — the display, the row the camera
+    /// centred and the chips in view; nil when none has been asked for since the view opened.
+    private var refreshedFor: RefreshKey?
+    private struct RefreshKey: Equatable {
+        let display: SpacialShellProtocol.DisplayID
+        let active: Int
+        let chips: Set<SpacialShellProtocol.WindowRef>
+    }
 
     public init(config: Config, appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void) {
         self.config = config
@@ -73,6 +85,8 @@ public final class SpatialController {
         guard isOpen else { return }
         isOpen = false
         held = false
+        refreshedFor = nil
+        ThumbnailRefresher.shared.cancelRefresh()
         panel.orderOut(nil)
         panel.contentView = nil
         host = nil
@@ -90,7 +104,9 @@ public final class SpatialController {
                               height: vf.height - (panels ? config.panelHeight : 0) - 2 * config.gap)
         guard let state = SpatialView.state(for: world.focus.screen, in: world, layouts: LayoutCatalogue(config: config),
                                             titles: titles, viewport: viewport, gap: config.gap) else { return }
+        let thumbs = WindowThumbnails.shared
         let view = SpatialStripView(state: state, metaFor: appMeta.meta(for:), send: { [send] in send($0) },
+                                    thumbnails: Self.thumbnails(for: state, from: thumbs),
                                     dismiss: { [weak self] in self?.close() },
                                     reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
         if let host {
@@ -101,5 +117,32 @@ public final class SpatialController {
             panel.contentView = host
         }
         if panel.frame != vf { panel.setFrame(vf, display: true) }
+
+        // After the frame is drawn from the cache, never before it. Asked again only when what is
+        // in view changes (another row, another display, a window arriving), not per render: a
+        // render follows every landing.
+        let visible = SpatialView.visibleRows(count: state.rows.count, active: state.activeIndex,
+                                              rowHeight: SpatialStripView.rowHeight(in: vf.size, aspect: state.aspect),
+                                              spacing: SpatialStripView.spacing, viewHeight: vf.height)
+        let key = RefreshKey(display: state.display, active: state.activeIndex,
+                             chips: Set(state.rows[visible].flatMap { $0.chips.map(\.ref) }))
+        guard refreshedFor != key else { return }
+        refreshedFor = key
+        ThumbnailRefresher.shared.refresh(ThumbnailRefresh.onOpen(state, visible: visible, isStale: thumbs.isStale)) {
+            [weak self] in
+            guard let self, self.isOpen else { return }
+            self.render()
+        }
+    }
+
+    /// The cached picture of every chip that has one. A placeholder (#128) has no window, and its
+    /// id is its own, so a picture cached under the same number belongs to some real window.
+    private static func thumbnails(for state: SpatialState,
+                                   from thumbs: WindowThumbnails) -> [SpacialShellProtocol.WindowRef: NSImage] {
+        var out: [SpacialShellProtocol.WindowRef: NSImage] = [:]
+        for chip in state.rows.flatMap(\.chips) where !chip.ref.isPlaceholder {
+            out[chip.ref] = thumbs.image(for: chip.ref.id)
+        }
+        return out
     }
 }

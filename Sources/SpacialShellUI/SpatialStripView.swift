@@ -5,16 +5,23 @@ import SpacialShellProtocol
 
 /// #132 (M3 B9): the spatialisation view — the focused display's workspaces as mini-desktops, one
 /// per row, top to bottom, as the model has them. Each mini-desktop is that screen at a small
-/// scale: its windows are chips where the row's layout frames them (no screen capture), and the
-/// rest of the row (off the layout's page, floating, minimized) waits beside it. The camera keeps
-/// the active row in the middle and slides when it changes; clicking a mini-desktop goes there,
-/// clicking a chip goes to that window, and clicking the backdrop closes the view.
+/// scale: its windows are chips where the row's layout frames them, and the rest of the row (off
+/// the layout's page, floating, minimized) waits beside it as icons. The camera keeps the active
+/// row in the middle and slides when it changes; clicking a mini-desktop goes there, clicking a
+/// chip goes to that window, and clicking the backdrop closes the view.
 ///
-/// Props in, `Command` out, like every panel: `SpatialView.state` is the whole input.
+/// #181: a chip with a picture in `thumbnails` draws it, filling the chip, with its icon and title
+/// on a material band along the bottom; a chip without one is the icon and title alone. The view
+/// captures nothing: `SpatialController` looks the pictures up in `WindowThumbnails` and hands in
+/// new ones as they land.
+///
+/// Props in, `Command` out, like every panel: `SpatialView.state` and the pictures are the input.
 struct SpatialStripView: View {
     let state: SpatialState
     let metaFor: (Int32) -> AppMeta
     let send: (Command) -> Void
+    /// The chips' cached window pictures; a chip missing here draws its icon and title.
+    var thumbnails: [SpacialShellProtocol.WindowRef: NSImage] = [:]
     var dismiss: () -> Void = {}
     /// Reduce Motion: the camera cuts instead of sliding.
     var reduceMotion = false
@@ -132,19 +139,7 @@ struct SpatialStripView: View {
 
     private func chip(_ chip: SpatialChip, size: CGSize) -> some View {
         let meta = metaFor(chip.ref.pid)
-        let icon = min(28, max(10, min(size.width, size.height) * 0.34))
-        let roomy = size.height >= 44 && size.width >= 60
-        return VStack(spacing: 3) {
-            appIcon(meta, side: icon)
-            if roomy {
-                Text(chip.title.isEmpty ? meta.name : chip.title)
-                    .font(.system(size: 10, weight: chip.isFocused ? .semibold : .regular))
-                    .lineLimit(1).truncationMode(.tail)   // #175: the beginning, like the tab bar
-                    .padding(.horizontal, 4)
-            }
-        }
-        .frame(width: size.width - 2, height: size.height - 2)
-        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(.regularMaterial))
+        return chipFace(chip, meta: meta, size: size)
         .overlay(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(chip.isFocused ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.separator),
@@ -154,6 +149,48 @@ struct SpatialStripView: View {
         .contentShape(Rectangle())
         .onTapGesture { send(.focusWindowRef(chip.ref)); dismiss() }
         .help(chip.title.isEmpty ? meta.name : "\(meta.name) — \(chip.title)")
+    }
+
+    private static let chipShape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+
+    /// Titled where there is room for a line of text.
+    private static func roomy(_ size: CGSize) -> Bool { size.height >= 44 && size.width >= 60 }
+
+    private func chipTitle(_ chip: SpatialChip, meta: AppMeta) -> some View {
+        Text(chip.title.isEmpty ? meta.name : chip.title)
+            .font(.system(size: 10, weight: chip.isFocused ? .semibold : .regular))
+            .lineLimit(1).truncationMode(.tail)   // #175: the beginning, like the tab bar
+    }
+
+    /// The window's picture if there is one (#181), otherwise its icon and title on material.
+    @ViewBuilder
+    private func chipFace(_ chip: SpatialChip, meta: AppMeta, size: CGSize) -> some View {
+        let inner = CGSize(width: max(0, size.width - 2), height: max(0, size.height - 2))
+        if let picture = thumbnails[chip.ref] {
+            // The window fills its chip as it fills its tile; the band keeps the label legible
+            // over whatever the picture is, in either appearance.
+            let band = min(18, max(12, inner.height * 0.3))
+            ZStack(alignment: .bottom) {
+                Image(nsImage: picture).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                    .frame(width: inner.width, height: inner.height).clipped()
+                HStack(spacing: 4) {
+                    appIcon(meta, side: band - 6)
+                    if Self.roomy(size) { chipTitle(chip, meta: meta) }
+                }
+                .padding(.horizontal, 4)
+                .frame(width: inner.width, height: band, alignment: .leading)
+                .background(Rectangle().fill(.regularMaterial))
+            }
+            .frame(width: inner.width, height: inner.height)
+            .clipShape(Self.chipShape)
+        } else {
+            VStack(spacing: 3) {
+                appIcon(meta, side: min(28, max(10, min(size.width, size.height) * 0.34)))
+                if Self.roomy(size) { chipTitle(chip, meta: meta).padding(.horizontal, 4) }
+            }
+            .frame(width: inner.width, height: inner.height)
+            .background(Self.chipShape.fill(.regularMaterial))
+        }
     }
 
     // MARK: the rest of the row

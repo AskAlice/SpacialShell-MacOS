@@ -3,9 +3,9 @@ import CoreGraphics
 import SpacialShellProtocol
 
 // #132 (M3 B9): the spatialisation view. The zoomed-out picture of the model the README draws —
-// one mini-desktop per workspace, top to bottom — made a real mode. Drawn *schematically from the
-// model*: each window a chip where its row's layout puts it, no screen capture. Everything the
-// view needs is derived here; the UI resolves pids to names and icons, as the panels do.
+// one mini-desktop per workspace, top to bottom — made a real mode. Drawn *from the model*: each
+// window a chip where its row's layout puts it. Everything the view needs is derived here; the UI
+// resolves pids to names and icons, as the panels do, and (#181) chips to their cached thumbnails.
 
 /// One window drawn on a mini-desktop, where the row's layout frames it.
 public struct SpatialChip: Identifiable, Equatable, Sendable {
@@ -88,6 +88,19 @@ public enum SpatialView {
     /// this one number, which the view animates — the slide.
     public static func cameraOffset(active: Int, rowHeight: CGFloat, spacing: CGFloat, viewHeight: CGFloat) -> CGFloat {
         viewHeight / 2 - (CGFloat(active) * (rowHeight + spacing) + rowHeight / 2)
+    }
+
+    /// #181: the rows the camera shows, wholly or in part, when it centres row `active` — the
+    /// same geometry as `cameraOffset`. What opening the view refreshes thumbnails for.
+    public static func visibleRows(count: Int, active: Int, rowHeight: CGFloat, spacing: CGFloat,
+                                   viewHeight: CGFloat) -> Range<Int> {
+        let offset = cameraOffset(active: active, rowHeight: rowHeight, spacing: spacing, viewHeight: viewHeight)
+        let shown = (0..<max(0, count)).filter { i in
+            let top = offset + CGFloat(i) * (rowHeight + spacing)
+            return top < viewHeight && top + rowHeight > 0
+        }
+        guard let first = shown.first, let last = shown.last else { return 0..<0 }
+        return first..<(last + 1)
     }
 
     /// Holding the workspace keys opens the view: an autorepeat of a chord bound to one of these.

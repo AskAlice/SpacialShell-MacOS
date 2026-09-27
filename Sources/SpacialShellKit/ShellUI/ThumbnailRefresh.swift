@@ -75,4 +75,19 @@ public struct ThumbnailRefresh: Sendable {
             world.screens[display]!.workspaces.flatMap(\.windows).filter { !skip.contains($0) && !$0.isPlaceholder }
         }
     }
+
+    /// #181: what opening the spatial view captures — every chip in the rows it shows whose
+    /// thumbnail is missing or stale (`isStale` is true for a window never taken: it still gets
+    /// tried). One batch per row, the active row first and then outwards (the upper one first on a
+    /// tie), so the pictures being looked at land first. Not the "also in this row" icons, which
+    /// stay icons, and never a placeholder (#128): it has no window, and its id is its own.
+    public static func onOpen(_ state: SpatialState, visible: Range<Int>,
+                              isStale: (WindowID) -> Bool) -> [[WindowRef]] {
+        let rows = visible.clamped(to: 0..<state.rows.count)
+        let active = state.activeIndex
+        return rows.sorted { (abs($0 - active), $0) < (abs($1 - active), $1) }.compactMap { i in
+            let refs = state.rows[i].chips.map(\.ref).filter { !$0.isPlaceholder && isStale($0.id) }
+            return refs.isEmpty ? nil : refs
+        }
+    }
 }

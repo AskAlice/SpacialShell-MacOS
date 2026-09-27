@@ -67,6 +67,18 @@ import CoreGraphics
         #expect(SpatialView.cameraOffset(active: 3, rowHeight: 200, spacing: 20, viewHeight: 1000) == -260)
     }
 
+    /// #181: the rows the camera shows — wholly or in part — are the ones whose thumbnails are
+    /// refreshed when the view opens. Offsets as in `theCameraCentresTheActiveRow`.
+    @Test func theRowsInViewAreTheOnesTheCameraShows() {
+        func rows(_ active: Int, count: Int = 5) -> Range<Int> {
+            SpatialView.visibleRows(count: count, active: active, rowHeight: 200, spacing: 20, viewHeight: 1000)
+        }
+        #expect(rows(0) == 0..<3)             // tops at 400, 620, 840; the fourth starts at 1060
+        #expect(rows(3) == 1..<5)             // row 0 ends at -60, above the view; row 1 peeks in
+        #expect(rows(1, count: 2) == 0..<2)
+        #expect(rows(0, count: 0).isEmpty)
+    }
+
     @Test func holdingTheWorkspaceKeysOpensIt() {
         #expect(SpatialView.opensOnHold(.focusWorkspace(.up)) && SpatialView.opensOnHold(.focusWorkspace(.down)))
         #expect(SpatialView.opensOnHold(.moveWindowToWorkspace(.down)))

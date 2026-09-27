@@ -79,4 +79,33 @@ import Foundation
         w.ephemeral.insert(WindowRef(id: 9, pid: 2))           // no rail icon
         #expect(R.candidates(in: w).map(\.id).sorted() == [1, 5])
     }
+
+    /// #181: opening the spatial view refreshes the stale thumbnails of the chips in the rows it
+    /// shows, a batch per row, the active row first and then outwards, so the pictures the user is
+    /// looking at land first. Not the "also in this row" icons, and never a placeholder (#128),
+    /// whose id is its own and has no window to take.
+    @Test func openingTheSpatialViewRefreshesTheStaleChipsInViewActiveRowFirst() {
+        func ref(_ id: WindowID, pid: Int32 = 1) -> WindowRef { WindowRef(id: id, pid: pid) }
+        func chips(_ refs: [WindowRef]) -> [SpatialChip] { refs.map { SpatialChip(ref: $0, frame: .zero) } }
+        let rows = [
+            SpatialRow(id: UUID(), index: 0, name: "Off the top", chips: chips([ref(1)])),
+            SpatialRow(id: UUID(), index: 1, name: "Above", chips: chips([ref(2), ref(3)])),
+            SpatialRow(id: UUID(), index: 2, name: "Active", chips: chips([ref(4), ref(5, pid: -7)]),
+                       offscreen: [ref(6)], isActive: true),
+            SpatialRow(id: UUID(), index: 3, name: "Below", chips: chips([ref(7)])),
+            SpatialRow(id: UUID(), index: 4, name: "Fresh", chips: chips([ref(8)])),
+        ]
+        let state = SpatialState(display: "D1", rows: rows, aspect: 1.6)
+        let fresh: Set<WindowID> = [3, 8]
+        let batches = R.onOpen(state, visible: 1..<5, isStale: { !fresh.contains($0) })
+        #expect(batches == [[ref(4)], [ref(2)], [ref(7)]])
+    }
+
+    @Test func openingTheSpatialViewWithEverythingFreshTakesNothing() {
+        let row = SpatialRow(id: UUID(), index: 0, name: "Web",
+                             chips: [SpatialChip(ref: WindowRef(id: 1, pid: 1), frame: .zero)], isActive: true)
+        let state = SpatialState(display: "D1", rows: [row], aspect: 1.6)
+        #expect(R.onOpen(state, visible: 0..<1, isStale: { _ in false }).isEmpty)
+        #expect(R.onOpen(state, visible: 0..<0, isStale: { _ in true }).isEmpty)
+    }
 }

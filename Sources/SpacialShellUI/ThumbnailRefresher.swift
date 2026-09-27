@@ -11,6 +11,9 @@ import SpacialShellProtocol
 /// policy has nothing to do (no rail windows, the gate not open, the screen locked or asleep). A
 /// world change, the screen coming back, or its own capture landing starts it again. The gate not
 /// yet open includes every launch until the first user-initiated capture: this never makes it.
+///
+/// It also runs the spatial view's user-initiated refresh (#181, `refresh(_:landed:)`), which is
+/// not background work and so is not paced by the policy.
 @MainActor
 final class ThumbnailRefresher {
     static let shared = ThumbnailRefresher()
@@ -38,6 +41,40 @@ final class ThumbnailRefresher {
         refs = Dictionary(windows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         poke()
     }
+
+    /// #181: the spatial view's captures, which a newer request replaces.
+    private var onDemand: Task<Void, Never>?
+
+    /// #181: the spatial view opened, or its camera moved to another row: take `batches` now, a
+    /// batch (a row) at a time, and call `landed` after each one that brought a picture back, so
+    /// the view swaps them in. User-initiated like a hover, so it goes through `CaptureGate` but is
+    /// not held back by `admitsPrefetch`: a window never taken is still tried. A newer request
+    /// waits for this one's in-flight window, then re-checks staleness, so nothing is taken twice.
+    /// What lands stays in `WindowThumbnails` whether or not the view is still open.
+    func refresh(_ batches: [[SpacialShellProtocol.WindowRef]], landed: @escaping @MainActor () -> Void) {
+        let previous = onDemand
+        previous?.cancel()
+        guard !batches.isEmpty else { return }   // kept, cancelled, for the next request to wait on
+        onDemand = Task(priority: .userInitiated) {
+            await previous?.value
+            let thumbs = WindowThumbnails.shared
+            for batch in batches {
+                // Taken meanwhile (a hover, a switch picture, the request this one replaced).
+                let due = batch.filter { thumbs.isStale($0.id) }
+                guard !Task.isCancelled else { return }
+                guard !due.isEmpty else { continue }
+                let taken = ContinuousClock.now
+                let images = await WindowPreviewCapture.images(for: due, longSide: WindowThumbnails.longSide)
+                guard !images.isEmpty else { continue }
+                await thumbs.add(Array(images), taken: taken)
+                landed()
+            }
+        }
+    }
+
+    /// The spatial view closed: its captures stop at the next window. The task is kept, so a
+    /// request right after (the view reopened) still waits for the window in flight.
+    func cancelRefresh() { onDemand?.cancel() }
 
     private func watch(_ center: NotificationCenter, _ name: Notification.Name,
                        _ apply: @escaping @MainActor (ThumbnailRefresher) -> Void) {

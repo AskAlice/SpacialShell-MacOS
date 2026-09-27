@@ -194,6 +194,39 @@ enum Stories {
                       chat: "#general", n1: "Shopping list", n2: "Ideas"]
         return SpatialView.state(for: d, in: world, layouts: .builtins, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
     }
+    /// #181: cached pictures for some of `state`'s chips, keyed by window id, the rest left to the
+    /// icon-and-title fallback. Each is a stand-in window at its chip's own aspect (a tiled window
+    /// fills its tile), `WindowThumbnails.longSide` px on the long side as the cache holds them: a
+    /// title bar, then lines of "text". Drawn straight into a bitmap, so the pixels are the same on
+    /// any display, and in fixed colours, as a capture's are in either appearance.
+    static func spatialThumbnails(_ state: SpatialState,
+                                  _ looks: [WindowID: (bg: UInt32, bar: UInt32, ink: UInt32)])
+        -> [SpacialShellProtocol.WindowRef: NSImage] {
+        func color(_ hex: UInt32) -> CGColor {
+            CGColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
+                    blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        }
+        var out: [SpacialShellProtocol.WindowRef: NSImage] = [:]
+        for chip in state.rows.flatMap(\.chips) {
+            guard let look = looks[chip.ref.id] else { continue }
+            let aspect = chip.frame.width * state.aspect / chip.frame.height
+            let long = WindowThumbnails.longSide
+            let w = Int((aspect >= 1 ? long : long * aspect).rounded()), h = Int((aspect >= 1 ? long / aspect : long).rounded())
+            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+            ctx.setFillColor(color(look.bg)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.setFillColor(color(look.bar)); ctx.fill(CGRect(x: 0, y: h - 28, width: w, height: 28))   // bottom-left origin
+            ctx.setFillColor(color(look.ink))
+            for (i, y) in stride(from: h - 56, to: 16, by: -22).enumerated() {
+                let length = CGFloat(w - 40) * [0.9, 0.6, 0.75, 0.45, 0.8][i % 5]
+                ctx.fill(CGRect(x: 20, y: CGFloat(y), width: length, height: 8))
+            }
+            let image = ctx.makeImage()!
+            out[chip.ref] = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        }
+        return out
+    }
     /// #128: a placeholder tab for app `pid` — a negative pid, as `WindowRef.placeholderPid` gives.
     static func placeholder(_ pid: Int32, window: Int = 0, title: String = "", pinned: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: -pid),
@@ -612,6 +645,23 @@ enum Stories {
         // The first row active: the camera at the top of the stack, nothing above it.
         add("spatial-view-top", CGSize(width: 1440, height: 900),
             SpatialStripView(state: spatial(active: 0), metaFor: meta, send: send, reduceMotion: true),
+            truncates: true)
+        // #181: the same view once some captures have landed. Pictured: the first Safari, the
+        // editor, the focused terminal, #general and two notes. Still the icon and title: the
+        // second Safari, the other terminal and the middle note, whose captures are pending or
+        // failed. The aside's Mail stays an icon.
+        let pictured = spatial(active: 1)
+        add("spatial-view-thumbnails", CGSize(width: 1440, height: 900),
+            SpatialStripView(state: pictured, metaFor: meta, send: send,
+                             thumbnails: spatialThumbnails(pictured, [
+                                 1: (0xF5F5F7, 0xDCDCE0, 0x8E8E93),     // a web page
+                                 3: (0x1E1F24, 0x2B2D33, 0x6C9EF8),     // an editor
+                                 4: (0x101010, 0x2A2A2A, 0x3FC56B),     // a terminal
+                                 6: (0x36393F, 0x2F3136, 0xB9BBBE),     // a chat
+                                 8: (0xFFF8DC, 0xF2E6A6, 0xA08C3C),     // a note
+                                 10: (0xFFF8DC, 0xF2E6A6, 0xA08C3C),
+                             ]),
+                             reduceMotion: true),
             truncates: true)
 
         // #108: the tile a dragged window would swap with, at a half-split tile's size.
