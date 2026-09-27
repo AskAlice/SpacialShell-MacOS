@@ -30,6 +30,20 @@ public struct Refusal: Sendable, Equatable {
         self.init(asked: asked, size: got.size)
     }
 
+    /// #164: the same refusal twice: the same tile asked for, and (within a couple of points)
+    /// the same size back. Two such echoes in a row confirm a window really cannot fill its tile.
+    func sameAs(_ other: Refusal, tolerance: CGFloat = 2) -> Bool {
+        Reconciler.approx(asked, other.asked)
+            && abs(size.width - other.size.width) <= tolerance && abs(size.height - other.size.height) <= tolerance
+    }
+
+    /// #164: `frame` is bigger than this refusal on an axis it refused, so the window can grow
+    /// after all. It was never truly fixed-size, and holding it small would shrink it back.
+    func grew(to frame: CGRect, tolerance: CGFloat = 1) -> Bool {
+        (size.width < asked.width - tolerance && frame.width > size.width + tolerance)
+            || (size.height < asked.height - tolerance && frame.height > size.height + tolerance)
+    }
+
     /// `tile`, with the window centred in it on each axis where it is smaller; nil when this
     /// refusal was learned on another tile.
     func fitted(in tile: CGRect) -> CGRect? {

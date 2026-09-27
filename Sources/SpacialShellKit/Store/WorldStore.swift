@@ -28,6 +28,10 @@ public actor WorldStore {
     private var prePark: [WindowRef: CGRect] = [:]
     /// #125: windows that came back smaller than the tile we asked for; the reconciler centres them.
     private var refused: [WindowRef: Refusal] = [:]
+    /// #164: a first smaller echo is only a suspicion. Browsers report transient smaller frames
+    /// mid-resize, and a frame clamped while it moves between displays of different sizes looks
+    /// the same, so the tile is asked for once more. A second echo of the same size confirms it.
+    private var suspectedRefusal: [WindowRef: Refusal] = [:]
     /// Spec §7.4 + §11. A window retired to `ignored` after three failed writes *while parked* is
     /// unreachable by the reconciler for good, so nothing would ever unpark it — the one way a
     /// window can be permanently stranded in a corner. Its last known real frame is kept here
@@ -391,9 +395,17 @@ public actor WorldStore {
         case .windowMoved(let r, let f), .windowResized(let r, let f):
             // #125: the echo of our own write, smaller than asked — a window that cannot grow to
             // its tile. Learned, not fought: the snap-back below re-places it centred in the tile.
+            // #164: a refused window that grew past its refused size (the user or the app resized
+            // it) can fill after all: forget the refusal, and the snap-back gives it the whole tile.
+            if let rf = refused[r], rf.grew(to: f) { refused[r] = nil; suspectedRefusal[r] = nil }
             if let asked = intents.frame(for: r), let refusal = Refusal(asked: asked, got: f) {
-                refused[r] = refusal; intents.forget(r)
-            } else if intents.matches(r, frame: f) { observed[r] = f; return }
+                if let s = suspectedRefusal[r], s.sameAs(refusal) {
+                    refused[r] = refusal; suspectedRefusal[r] = nil
+                } else {
+                    suspectedRefusal[r] = refusal   // ask for the tile once more before believing it
+                }
+                intents.forget(r)
+            } else if intents.matches(r, frame: f) { observed[r] = f; suspectedRefusal[r] = nil; return }
             let was = observed[r]
             observed[r] = f
             if locked { return }
@@ -553,7 +565,7 @@ public actor WorldStore {
                     Self.log.notice("pinned \(gone.id, privacy: .public) \(b, privacy: .public) closed: placeholder left in its slot")
                 } else { world.remove(gone) }
                 observed[gone] = nil; prePark[gone] = nil; parked.remove(gone); bundleIDs[gone] = nil; titles[gone] = nil; intents.forget(gone)
-                refused[gone] = nil
+                refused[gone] = nil; suspectedRefusal[gone] = nil
                 retired[gone] = nil; lastSeen[gone] = nil
                 stranded[gone] = nil
                 failures[gone] = nil; if lastRaised == gone { lastRaised = nil }; if lastNativeFocus == gone { lastNativeFocus = nil }
@@ -1315,7 +1327,7 @@ public actor WorldStore {
             retired[r] = Retired(frame: lastSeen[r] ?? observed[r] ?? .zero, fullscreen: world.fullscreen.contains(r))
             Self.log.notice("retire \(r.id, privacy: .public) pid=\(r.pid) \(self.bundleIDs[r] ?? "-", privacy: .public) after 3 failed writes")
             world.remove(r); world.ignored.insert(r)
-            observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r); refused[r] = nil
+            observed[r] = nil; prePark[r] = nil; parked.remove(r); intents.forget(r); refused[r] = nil; suspectedRefusal[r] = nil
             if lastRaised == r { lastRaised = nil }
             publishWriteProblems()
         }

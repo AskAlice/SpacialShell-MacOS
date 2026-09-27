@@ -79,6 +79,11 @@ import Foundation
         #expect(await be.calls.contains(.setFrame(a, full)))
         await be.reset()
         // The app kept its 400 × 300: the echo of our write comes back at the tile's corner.
+        // #164: once is only a suspicion, so the tile is asked for again...
+        await store.apply(.windowResized(a, CGRect(x: 8, y: 33, width: 400, height: 300)))
+        #expect(await be.calls.filter { if case .setFrame = $0 { true } else { false } } == [.setFrame(a, full)])
+        await be.reset()
+        // ...and the same size back a second time confirms it: centred.
         await store.apply(.windowResized(a, CGRect(x: 8, y: 33, width: 400, height: 300)))
         let centred = CGRect(x: 8 + (984 - 400) / 2, y: 33 + (658 - 300) / 2, width: 400, height: 300)
         #expect(await be.calls.filter { if case .setFrame = $0 { true } else { false } } == [.setFrame(a, centred)])
@@ -86,5 +91,46 @@ import Foundation
         await be.reset()
         await store.apply(.windowMoved(a, centred))
         #expect(await be.calls.filter { if case .setFrame = $0 { true } else { false } }.isEmpty)
+    }
+
+    // MARK: - #164: a window that can grow is never held small
+
+    func started() async -> (WorldStore, FakeBackend, CGRect) {
+        let s = Snapshot(displays: [d1], apps: [AppInfo(pid: 1, bundleID: "com.x", isHidden: false)],
+                         windows: [WindowSnapshot(ref: a, frame: CGRect(x: 0, y: 0, width: 300, height: 200), title: "t", bundleID: "com.x",
+                                                  kind: .tile, parent: nil, isMinimized: false, isFullscreen: false)],
+                         focused: a)
+        let be = FakeBackend(snapshot: s)
+        let store = WorldStore(backend: be, config: m1Config(), world: nil, zeroSliverBundleIDs: [], onChange: { _, _ in })
+        await store.start()
+        await be.reset()
+        return (store, be, CGRect(x: 8, y: 33, width: 984, height: 658))
+    }
+    func frameWrites(_ be: FakeBackend) async -> [FakeBackend.Call] {
+        await be.calls.filter { if case .setFrame = $0 { true } else { false } }
+    }
+
+    /// A browser mid-resize (or clamped crossing displays) reports one smaller frame, then takes
+    /// the tile when asked again: nothing is learned, and it keeps the whole tile.
+    @Test func aTransientSmallerEchoLearnsNothing() async {
+        let (store, be, full) = await started()
+        await store.apply(.windowResized(a, CGRect(x: 8, y: 33, width: 700, height: 500)))
+        #expect(await frameWrites(be) == [.setFrame(a, full)], "asked for the tile again")
+        await be.reset()
+        await store.apply(.windowResized(a, full))            // granted this time
+        await store.apply(.windowMoved(a, full))
+        #expect(await frameWrites(be).isEmpty, "full tile, no centring")
+    }
+
+    /// Learned as fixed-size, then it grows (the user or the app resized it): the refusal is
+    /// forgotten and the window gets the whole tile back, never shrunk to the old size.
+    @Test func aRefusedWindowThatGrowsGetsTheWholeTile() async {
+        let (store, be, full) = await started()
+        let small = CGRect(x: 8, y: 33, width: 400, height: 300)
+        await store.apply(.windowResized(a, small))
+        await store.apply(.windowResized(a, small))           // confirmed: centred
+        await be.reset()
+        await store.apply(.windowResized(a, CGRect(x: 100, y: 100, width: 900, height: 600)))
+        #expect(await frameWrites(be) == [.setFrame(a, full)], "grew: the whole tile, not the old 400 × 300")
     }
 }
