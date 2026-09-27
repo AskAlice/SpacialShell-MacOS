@@ -139,7 +139,7 @@ struct SpatialStripView: View {
             if roomy {
                 Text(chip.title.isEmpty ? meta.name : chip.title)
                     .font(.system(size: 10, weight: chip.isFocused ? .semibold : .regular))
-                    .lineLimit(1).truncationMode(.middle)
+                    .lineLimit(1).truncationMode(.tail)   // #175: the beginning, like the tab bar
                     .padding(.horizontal, 4)
             }
         }

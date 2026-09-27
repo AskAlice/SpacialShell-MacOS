@@ -438,7 +438,7 @@ enum Stories {
             state: tabs(attentionRow), metaFor: meta, sizing: .fit, send: send))
         add("bar-attention-name", barGeometry, WorkspacePanelView(
             state: tabs(attentionRow), metaFor: meta, sizing: .fit, style: .name, send: send))
-        // A title longer than the 220 pt tab ceiling truncates in the middle, keeping both ends.
+        // A title longer than the 220 pt tab ceiling keeps its beginning and ends in "…" (#175).
         add("bar-long-title", barGeometry, WorkspacePanelView(
             state: tabs([tab(4, focused: true,
                              title: "Re: Quarterly planning — the long thread everyone was copied on (37 messages)"),

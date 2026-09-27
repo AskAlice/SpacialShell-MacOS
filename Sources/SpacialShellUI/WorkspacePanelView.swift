@@ -149,12 +149,12 @@ struct WorkspacePanelView: View {
                 AttentionDot()
             }
             if style != .icon || icon == nil {
-                // Middle truncation for titles: both ends carry the meaning ("Report — Pages",
-                // "~/code/spacial-shell — zsh"). An app name keeps the tail truncation it always had.
+                // #175: a title that doesn't fit keeps its beginning and ends in "…", as an app
+                // name always has; the whole title is in the tooltip (#116).
                 Text(titled ? tab.title : meta.name)
                     .font(.system(size: 11.5, weight: tab.isFocused ? .semibold : .regular))
                     .lineLimit(1)
-                    .truncationMode(titled ? .middle : .tail)
+                    .truncationMode(.tail)
             }
             if tab.isPinned {
                 // #129: pinned — kept, as a placeholder, when its window closes.
