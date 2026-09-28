@@ -258,8 +258,8 @@ pane):
 
 Left and right are not steps but a drag. As soon as four fingers have moved a little (about 3 % of
 the trackpad) more sideways than up or down, they take hold of the focused tile's side edge (the
-edge `Fn+⌃A/D` move: its right edge, or its left one for the last column) until you lift. Right
-always grows the focused tile and left shrinks it, whichever side its edge is on. The change is
+edge `Fn+⌃A/D` move: its right edge, or its left one for the last column) until you lift. The
+edge follows your fingers, whichever side of the tile it is on: right moves it right. The change is
 proportional and gentle: the full width of the trackpad moves the edge half the width of the row. It behaves exactly like dragging that border with the mouse: no tile gets
 narrower than a tenth of the row, the edge catches on the 25/50/75 % marks as it passes them, and
 where you lift is where it stays, except that in `split` lifting with either tile within 2 % of the

@@ -172,21 +172,17 @@ public enum Resize {
     /// #162: the line a four-finger drag moves for tile `index`, the same edge a resize key moves
     /// (the trailing one, else the leading one), or nil when the tile has none sideways (maximize,
     /// a full-width row).
-    /// `trailing` says which side of the tile it is: the trailing edge grows the tile rightward, the
-    /// leading one (the last column's) leftward.
-    public static func swipeLine(_ page: Page, index: Int) -> (line: Int, trailing: Bool)? {
-        edge(page, index: index, axis: .width).map { (line: $0.line, trailing: $0.trailing) }
+    public static func swipeLine(_ page: Page, index: Int) -> Int? {
+        edge(page, index: index, axis: .width)?.line
     }
 
     /// #162: where a four-finger drag puts the edge that started at unit position `start`, after
-    /// `travel` (normalized trackpad x): it follows the fingers, `swipeGain` to one. What happens
-    /// there is a mouse drag's, `drag`: the same detents, the same floor.
-    /// Focus-relative, not edge-follows-fingers (the user, 2026-09-26: left/right felt inverted on
-    /// the last column): swiping **right grows the focused tile** and left shrinks it, whichever
-    /// side its edge is on. For a trailing edge that is the fingers' way; for a leading one, the
-    /// opposite.
-    public static func swiped(from start: Double, travel: Double, trailing: Bool = true) -> Double {
-        start + travel * swipeGain * (trailing ? 1 : -1)
+    /// `travel` (normalized trackpad x): it follows the fingers, `swipeGain` to one, whichever tile
+    /// is focused — a mouse drag of the border, `drag`: the same detents, the same floor.
+    /// #186: not focus-relative. "Right grows the focused tile" moved the last column's border
+    /// against the fingers, which the user logged as inverted (2026-09-28).
+    public static func swiped(from start: Double, travel: Double) -> Double {
+        start + travel * swipeGain
     }
 
     /// #178: what a resize that settled at `settled` on `page` of workspace `workspace` (whose

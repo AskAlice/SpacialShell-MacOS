@@ -84,12 +84,11 @@ import Foundation
         #expect(abs(Resize.swiped(from: 0.5, travel: 0.1) - 0.55) < 1e-9)
         #expect(abs(Resize.swiped(from: 0.5, travel: -0.2) - 0.4) < 1e-9, "a trailing edge follows the fingers left")
         #expect(abs(Resize.swiped(from: 0, travel: 1) - 0.5) < 1e-9, "the whole trackpad moves the edge half the row")
-        // Right grows the focused tile on either side: a leading edge (the last column's) moves left.
-        #expect(abs(Resize.swiped(from: 0.5, travel: 0.2, trailing: false) - 0.4) < 1e-9, "right grows a last column")
+        // #186: the same line from either side of it, following the fingers either way.
         let p = page(.split, 2)
-        #expect(Resize.swipeLine(p, index: 0)?.line == 0 && Resize.swipeLine(p, index: 1)?.line == 0, "the one line, from either side")
-        #expect(Resize.swipeLine(page(.column, 3), index: 1).map { [$0.line, $0.trailing ? 1 : 0] } == [1, 1], "the middle column's trailing edge")
-        #expect(Resize.swipeLine(page(.column, 3), index: 2).map { [$0.line, $0.trailing ? 1 : 0] } == [1, 0], "the last column's leading edge")
+        #expect(Resize.swipeLine(p, index: 0) == 0 && Resize.swipeLine(p, index: 1) == 0, "the one line, from either side")
+        #expect(Resize.swipeLine(page(.column, 3), index: 1) == 1, "the middle column's trailing edge")
+        #expect(Resize.swipeLine(page(.column, 3), index: 2) == 1, "the last column's leading edge")
         #expect(Resize.swipeLine(page(.maximize, 2), index: 0) == nil, "maximize has no edge")
         // Past there it is `drag`: the detents and the floor.
         #expect(near(Resize.drag(p, nil, axis: .width, line: 0, to: Resize.swiped(from: 0.5, travel: 0.52))!.x, [0.75]))
@@ -323,9 +322,9 @@ import Foundation
     /// #178: a four-finger drag that lifts with the focused tile at 90 % does the same.
     @Test func aFourFingerDragEndingAtNearlyFullCollapsesToMaximize() async {
         let (store, be) = await make(Box())
-        await store.run(.focusWindowRef(b))   // the last column: right grows it leftwards
-        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.2)) == .done)
-        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 1.2)) == .done)
+        await store.run(.focusWindowRef(b))   // the last column: swiping left grows it (#186)
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: -0.2)) == .done)
+        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: -1.2)) == .done)
         let ws = await store.world.screens["D1"]!.active
         #expect(ws.layout == .maximize, "\(ws.layout)")
         #expect(await store.world.focus.window == b)
@@ -357,6 +356,17 @@ import Foundation
     }
 
     func portion(_ store: WorldStore) async -> Double? { await store.world.screens["D1"]!.active.portions["split#2"]?.x.first }
+
+    /// #186: the border follows the fingers whichever tile is focused, like a mouse drag of it. With
+    /// the right tile focused, swiping right moves the border right (the right tile shrinks); the
+    /// user logged the focus-relative flip here as inverted.
+    @Test func aFourFingerDragMovesTheBorderWithTheFingersFromTheRightTileToo() async {
+        let (store, _) = await make(Box())
+        _ = await store.run(.focusWindowRef(b))
+        #expect(await store.swipeEdge(SwipeDrag(.began, fingers: 4, travel: 0.2)) == .done)
+        #expect(await store.swipeEdge(SwipeDrag(.ended, fingers: 4, travel: 0.2)) == .done)
+        #expect(await portion(store).map { abs($0 - 0.6) < 1e-9 } == true, "border right, with the fingers")
+    }
 
     /// The mouse border drag's path, driven by travel: the edge previews live as the fingers move
     /// (snapping onto 75 %, stopping at the floor), settles where the lift leaves it, and a drag

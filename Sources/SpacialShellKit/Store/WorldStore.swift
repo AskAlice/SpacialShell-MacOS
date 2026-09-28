@@ -116,9 +116,6 @@ public actor WorldStore {
         let workspace: UUID, key: String, axis: ResizeAxis, line: Int
         /// #162: where the line was when four fingers took it; nil for the pointer.
         let swipeStart: Double?
-        /// #162: whether that line is the focused tile's trailing edge (right grows it) or its
-        /// leading one (right shrinks it, so the travel is flipped: right always grows the tile).
-        var swipeTrailing = true
         var latest: GrabTarget
         var applied: GrabTarget?
         /// Where the highlight is looked for along the line: the pointer, or the focused tile.
@@ -834,26 +831,25 @@ public actor WorldStore {
             guard let rect = tilingRect(world.focus.screen),
                   let (id, page, i) = world.resizePage(layouts: layouts, in: rect, gap: config.gap)
             else { return .noop("nothing to resize") }
-            guard let (line, trailing) = Resize.swipeLine(page, index: i) else { return .noop(Resize.stuck(page, index: i, axis: .width)) }
+            guard let line = Resize.swipeLine(page, index: i) else { return .noop(Resize.stuck(page, index: i, axis: .width)) }
             let start = page.positions(world.screens[world.focus.screen]?.active.portions[page.key], .width)[line]
             let anchor = world.focus.window.flatMap { tiles[$0] }.map { CGPoint(x: $0.midX, y: $0.midY) }
             grab = Grab(workspace: id, key: page.key, axis: .width, line: line, swipeStart: start,
-                        swipeTrailing: trailing,
-                        latest: .unit(Resize.swiped(from: start, travel: drag.travel, trailing: trailing)),
+                        latest: .unit(Resize.swiped(from: start, travel: drag.travel)),
                         applied: nil, anchor: anchor)
             Self.log.notice("swipe edge \(line, privacy: .public) of \(page.key, privacy: .public) from \(start, privacy: .public)")
             focusEchoes.humanInput()
             if pump == nil { pump = Task { await self.pumpGrab() } }
             return .done
         case .moved:
-            guard let g = grab, let start = g.swipeStart else { return .noop("no edge in the hand") }
-            grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel, trailing: g.swipeTrailing))
+            guard let start = grab?.swipeStart else { return .noop("no edge in the hand") }
+            grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel))
             focusEchoes.humanInput()
             if pump == nil { pump = Task { await self.pumpGrab() } }
             return .done
         case .ended:
             guard let g = grab, let start = g.swipeStart else { return .noop("no edge in the hand") }
-            grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel, trailing: g.swipeTrailing))
+            grab?.latest = .unit(Resize.swiped(from: start, travel: drag.travel))
             await settleGrab()
             show(nil)
             Self.log.notice("swipe edge settled: \(String(describing: self.world.screens[self.world.focus.screen]?.active.portions[g.key]), privacy: .public)")
