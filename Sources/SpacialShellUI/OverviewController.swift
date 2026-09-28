@@ -20,7 +20,8 @@ public final class OverviewController {
     /// URL → item, kept across opens; the directory listing is cheap, the icon loads are not.
     private var appCache: [URL: OverviewAppItem] = [:]
 
-    private static let panelSize = NSSize(width: 640, height: 440)
+    /// Four thumbnail columns (#189), with the applications starting in view.
+    static let panelSize = NSSize(width: 800, height: 560)
     private static let appDirs = ["/Applications", "/System/Applications", "/System/Applications/Utilities",
                                   NSHomeDirectory() + "/Applications"]
 

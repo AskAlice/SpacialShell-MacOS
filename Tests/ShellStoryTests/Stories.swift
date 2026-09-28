@@ -648,20 +648,20 @@ enum Stories {
             OverviewAppItem(url: URL(fileURLWithPath: "/Applications/\(n).app"), name: n,
                             icon: swatch([.systemTeal, .systemGreen, .systemOrange, .systemRed, .systemPurple, .systemBrown][i]))
         }
-        add("overview-results", CGSize(width: 640, height: 440),
+        add("overview-results", OverviewController.panelSize,
             OverviewView(windows: windows, apps: apps, onSelectWindow: { _ in }, onLaunchApp: { _ in }),
             awaitsFocus: true)
         // #189: once the captures have landed — each window's picture fitted into its frame, the
         // app icon on the corner. Notes is still the icon: its capture is pending or failed. The
         // long-named window is portrait, so it is letterboxed sideways; the apps stay icons.
-        add("overview-thumbnails", CGSize(width: 640, height: 440),
+        add("overview-thumbnails", OverviewController.panelSize,
             OverviewView(windows: windows, apps: apps, thumbnails: [
                 windows[0].ref: windowShot(aspect: 1.6, (0xF5F5F7, 0xDCDCE0, 0x8E8E93)),    // a web page
                 windows[2].ref: windowShot(aspect: 1.4, (0x101010, 0x2A2A2A, 0x3FC56B)),    // a terminal
                 windows[3].ref: windowShot(aspect: 0.75, (0x1E1F24, 0x2B2D33, 0x6C9EF8)),   // an editor
             ], onSelectWindow: { _ in }, onLaunchApp: { _ in }),
             awaitsFocus: true)
-        add("overview-empty", CGSize(width: 640, height: 440),
+        add("overview-empty", OverviewController.panelSize,
             OverviewView(windows: [], apps: [], onSelectWindow: { _ in }, onLaunchApp: { _ in }),
             awaitsFocus: true)
 
