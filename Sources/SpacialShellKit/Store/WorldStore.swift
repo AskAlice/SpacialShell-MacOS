@@ -69,6 +69,11 @@ public actor WorldStore {
     /// next switch.
     private var lastShown: [DisplayID: ShownRow] = [:]
     private var locked = false
+    /// #190: `stop()` was called; nothing is written from here on.
+    private var stopped = false
+    /// #190: parks sent and not yet answered. A park `stop()` cuts off still lands, and nothing
+    /// would record it, so the export counts these as parked.
+    private var parking: Set<WindowRef> = []
     /// Bumped by every `reconcile()`; an in-flight pass abandons itself once a newer pass has started.
     /// Only a *newer reconcile* invalidates a plan — early-return event paths (intent echoes, locked,
     /// floating/unknown moves) must not abort a multi-write plan that is already in flight.
@@ -156,7 +161,12 @@ public actor WorldStore {
             for await e in self.backend.events { await self.apply(e) }
         }
     }
-    public func stop() { eventTask?.cancel() }
+    /// The way out (#190): after this no event, command or pass moves a window. The termination
+    /// restore puts every parked window back next, and each of its writes echoes back as a move
+    /// nobody asked for — which a live store snaps back, parking the window again before the process
+    /// exits. The generation bump abandons a pass already in flight at its next await, as the screen
+    /// lock does. Terminal: a stopped store does not start again.
+    public func stop() { stopped = true; generation += 1; eventTask?.cancel() }
 
     /// Spec §7.4. Everything the termination path needs to put windows back where a human can
     /// reach them: the model, the topology it was laid out against, and the last frames the
@@ -167,7 +177,7 @@ public actor WorldStore {
     /// parking corner, and only parked windows are in one — a tiled window is already somewhere
     /// the user can reach, and centring it on the way out just scrambles their screen.
     public func exportForTermination() -> (world: World, displays: [DisplayInfo], observed: [WindowRef: CGRect], stranded: [WindowRef: CGRect], parked: Set<WindowRef>, placements: [String: UUID], movedApps: Set<String>, bundleIDs: [WindowRef: String], titles: [WindowRef: String]) {
-        (world, displays, records.observed, records.stranded, records.parked, placements, movedApps, records.bundleIDs, records.titles)
+        (world, displays, records.observed, records.stranded, records.parked.union(parking), placements, movedApps, records.bundleIDs, records.titles)
     }
     /// The placement memory to persist — see `PersistedState.placements`.
     public func currentPlacements() -> [String: UUID] { placements }
@@ -218,7 +228,7 @@ public actor WorldStore {
     /// #109: hotkeys ignore the report; `spacialctl run` prints it and exits 1 on a failure.
     @discardableResult
     public func run(_ command: Command) async -> CommandReport {
-        guard !locked else { return .failed(.locked) }   // spec §7.7: no writes and no model changes while locked
+        guard !locked, !stopped else { return .failed(.locked) }   // spec §7.7: no writes and no model changes while locked; #190: nor once stopped
         // #179: every command but `.peek` ends a peek — here, so one that fails or does nothing
         // ends it too; `bail` puts the window back on the way out of those.
         let endsPeek: Bool = if case .peek = command { false } else { world.peek != nil }
@@ -885,6 +895,7 @@ public actor WorldStore {
     // MARK: reconcile
 
     private func reconcile(parent: (any Span)? = nil, since: ContinuousClock.Instant? = nil) async {
+        guard !stopped else { return }
         let since = since ?? now()
         // Placement memory follows the model: whatever the last command or snapshot did, the
         // windows on screen now define where their apps belong.
@@ -1000,9 +1011,14 @@ public actor WorldStore {
                 // the peek, not the peek's frame.
                 let pre = records[r].parked ? nil : peekHomes[r]?.frame ?? records[r].observed
                 parks += 1
+                parking.insert(r)
                 let result = await backend.setPosition(r, o)
                 count(result)
-                if gen != generation { return }
+                if gen != generation {
+                    if !stopped { parking.remove(r) }   // the newer pass owns it; stopped, no pass will
+                    return
+                }
+                parking.remove(r)
                 if let pre { records[r].prePark = pre }
                 if let cur = records[r].observed { records[r].observed = CGRect(origin: o, size: cur.size) }
                 records[r].parked = true
@@ -1138,7 +1154,7 @@ public actor WorldStore {
     /// That leaves exactly the windows nothing else looks after — floating, ephemeral, ignored, and
     /// anything stranded by a run that died before its restore — which is the set that strands.
     private func rescueBeyondReach(reason: StaticString) async {
-        guard !locked, !displays.isEmpty else { return }
+        guard !stopped, !locked, !displays.isEmpty else { return }
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         let desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,

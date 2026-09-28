@@ -641,8 +641,9 @@ final class TerminationGate: @unchecked Sendable {
     private static let log = Logger(subsystem: Paths.bundleID, category: "termination")
     /// Ruling 10. The export only has to get four values out of an actor.
     private static let exportBudget: TimeInterval = 3
-    /// Handed to `restoreAllForTermination`, which spends it across all windows.
-    private static let restoreBudget = Duration.seconds(6)
+    /// Handed to `restoreAllForTermination`: one wait for every window's write, made all at once
+    /// (#190), well inside the grace macOS gives a terminating app.
+    private static let restoreBudget: TimeInterval = 2
     private static let teardownBudget: TimeInterval = 1
 
     private let lock = NSLock()
@@ -719,6 +720,9 @@ final class TerminationGate: @unchecked Sendable {
         let export = Box<TerminationExport>()
         let exported = DispatchSemaphore(value: 0)
         Task.detached(priority: .userInitiated) {
+            // #190: stopped first, so nothing the store does can undo the restore below — the
+            // restore's own writes echo back to it as moves to snap back, i.e. to park again.
+            await store.stop()
             export.value = await store.exportForTermination()
             exported.signal()
         }
@@ -747,7 +751,6 @@ final class TerminationGate: @unchecked Sendable {
         } else {
             run(Self.teardownBudget, onMainThread: false) { await MainActor.run { watchers?.stop(); backend.stop() } }
         }
-        run(Self.teardownBudget, onMainThread: onMainThread) { await store.stop() }
         Self.log.info("terminated cleanly")
     }
 

@@ -49,7 +49,6 @@ final class AXApp: @unchecked Sendable {
     let systemCategory: String?
     let nsApp: NSRunningApplication
 
-    private let timeoutMs: Int
     private let onEvent: @Sendable (AXAppEvent) -> Void
 
     // Thread-confined state (app thread only).
@@ -79,7 +78,6 @@ final class AXApp: @unchecked Sendable {
     private init(
         _ nsApp: NSRunningApplication,
         _ axApp: AXUIElement,
-        timeoutMs: Int,
         thread: Thread,
         onEvent: @escaping @Sendable (AXAppEvent) -> Void,
     ) {
@@ -88,7 +86,6 @@ final class AXApp: @unchecked Sendable {
         self.bundleID = nsApp.bundleIdentifier
         self.systemCategory = nsApp.bundleURL.flatMap(Bundle.init(url:))?
             .object(forInfoDictionaryKey: "LSApplicationCategoryType") as? String
-        self.timeoutMs = timeoutMs
         self.onEvent = onEvent
         self.axApp = .init(axApp)
         self.thread = thread
@@ -126,7 +123,7 @@ final class AXApp: @unchecked Sendable {
                 // wedged app strands its thread forever. Timeouts surface as
                 // `kAXErrorCannotComplete`, which we map to `BackendError.timeout`.
                 _ = AXUIElementSetMessagingTimeout(axApp, Float(timeoutMs) / 1000)
-                let instance = AXApp(app, axApp, timeoutMs: timeoutMs, thread: Thread.current, onEvent: onEvent)
+                let instance = AXApp(app, axApp, thread: Thread.current, onEvent: onEvent)
                 future.complete(instance)
                 // AeroSpace runs the loop only `if isGood`, i.e. only when the observers attached
                 // (MacApp.swift:73, 85-92) — their observer source is what keeps the loop alive.
@@ -501,28 +498,25 @@ final class AXApp: @unchecked Sendable {
         }
     }
 
-    /// MacApp.swift:186-195 (`setAxFrameForTermination`). Blocking and non-cancellable: called
-    /// from the termination handler, which must not return before windows are unparked.
-    func setFrameForTermination(_ id: WindowID, _ frame: CGRect) {
-        let job = RunLoopJob(.nonCancellable)
-        let semaphore = DispatchSemaphore(value: 0)
+    /// MacApp.swift:186-195 (`setAxFrameForTermination`), made asynchronous (#190): the write is
+    /// queued on the app thread and `done` answers it there, so the termination restore can hand
+    /// every window's write out at once and wait for all of them within one deadline. `done` is
+    /// called at once with `.notFound` when the app thread is gone; a window the app thread has
+    /// not registered is still reachable through the element its id was minted for.
+    func setFrameForTermination(_ id: WindowID, _ frame: CGRect, done: @escaping @Sendable (Result<Void, BackendError>) -> Void) {
         let submitted = stateLock.withLock { () -> Bool in
             pendingFrameJobs.removeValue(forKey: id)?.cancel()
             guard let thread else { return false }
-            thread.runInLoopAsync(job: job, autoCheckCancelled: false) { [self] job in
-                if let window = windows.threadGuarded[id] {
-                    _ = disableAnimations(app: axApp.threadGuarded) {
-                        writeFrame(window.ax, frame.origin, frame.size, job)
-                    }
+            thread.runInLoopAsync(job: RunLoopJob(.nonCancellable), autoCheckCancelled: false) { [self] job in
+                guard let ax = windows.threadGuarded[id]?.ax ?? WindowIdentities.element(for: id) else {
+                    done(.failure(.notFound))
+                    return
                 }
-                semaphore.signal()
+                done(disableAnimations(app: axApp.threadGuarded) { writeFrame(ax, frame.origin, frame.size, job) })
             }
             return true
         }
-        guard submitted else { return }
-        // AeroSpace waits forever; we bound the wait by the messaging-timeout budget so that
-        // quitting can never hang on a wedged app.
-        _ = semaphore.wait(timeout: .now() + .milliseconds(max(2000, timeoutMs * 4)))
+        if !submitted { done(.failure(.notFound)) }
     }
 
     /// Ruling 4: a newer write for the same window cancels the queued older one

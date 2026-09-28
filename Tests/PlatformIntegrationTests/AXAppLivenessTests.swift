@@ -13,6 +13,11 @@ import SpacialShellKit
         return false
     }
 
+    /// #190: the termination write answers through `done`; hangs here if it never does.
+    private func terminationWrite(_ app: AXApp, _ id: WindowID, _ frame: CGRect) async -> Result<Void, BackendError> {
+        await withCheckedContinuation { c in app.setFrameForTermination(id, frame) { c.resume(returning: $0) } }
+    }
+
     private func create(_ app: NSRunningApplication) -> AXApp? {
         AXApp.getOrCreate(app, timeoutMs: 200, onEvent: { _ in })
     }
@@ -52,7 +57,7 @@ import SpacialShellKit
         #expect(isNotFound(await app.setPosition(bogus, .zero)))
         #expect(isNotFound(await app.raise(bogus)))
         #expect(isNotFound(await app.close(bogus)))
-        app.setFrameForTermination(bogus, CGRect(x: 0, y: 0, width: 10, height: 10))
+        #expect(isNotFound(await terminationWrite(app, bogus, CGRect(x: 0, y: 0, width: 10, height: 10))))
 
         app.destroy()
         // After destroy the app is gone for good: no stale windows, no hanging writes.
@@ -61,7 +66,7 @@ import SpacialShellKit
         #expect(isNotFound(await app.setFrame(bogus, .zero)))
         let focused = await app.focusedWindowRef()
         #expect(focused == nil)
-        app.setFrameForTermination(bogus, .zero) // returns at once, doesn't wait out its budget
+        #expect(isNotFound(await terminationWrite(app, bogus, .zero)))   // answered at once: no thread to queue on
         let recreated = create(target)
         #expect(recreated !== app)
         recreated?.destroy()

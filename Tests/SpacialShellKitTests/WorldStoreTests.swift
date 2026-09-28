@@ -43,6 +43,47 @@ import OpenTelemetryApi
         // centring `a` as well would scramble a layout that is perfectly fine (I4).
         #expect(export.parked == [b])
     }
+    /// #190: the way out stops the store, then restores. The restore's write to each parked window
+    /// echoes back as a move nobody asked for, and a store still running snaps the window back —
+    /// to its parking corner — before the process exits (VM, 2026-09-28: a window the restore moved
+    /// out was back in the corner 28 ms later, and two of three parked windows ended the quit there).
+    @Test func aStoppedStoreDoesNotReparkTheWindowsTheRestoreMoves() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await store.stop()
+        let export = await store.exportForTermination()
+        #expect(export.parked == [b])
+        await be.reset()
+        await store.apply(.windowMoved(b, CGRect(x: 350, y: 250, width: 300, height: 200)))   // the restore's echo
+        await store.apply(.snapshot(snap([win(a), win(b, CGRect(x: 350, y: 250, width: 300, height: 200))], focused: a)))
+        _ = await store.run(.focusWindow(.right))
+        #expect(await be.calls.isEmpty)
+    }
+    /// …and a pass already mid-plan when the store stops writes nothing after the write in flight.
+    @Test func stoppingTheStoreAbandonsAPassInFlight() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.reset()
+        await be.armGate(onWriteNumber: 1)                       // plan is [setFrame(b), setPosition(a)]
+        let run = Task { await store.run(.focusWindow(.right)) }
+        while await !be.isGateArmed() { try? await Task.sleep(for: .milliseconds(5)) }
+        await store.stop()
+        await be.releaseGate()
+        await run.value
+        #expect(await be.calls == [.setFrame(b, CGRect(x: 8, y: 33, width: 984, height: 658))])
+    }
+    /// …but a park already sent is in its corner once it lands, whichever of it and the export
+    /// comes first: the export counts it as parked, or the restore would leave it there.
+    @Test func aParkInFlightWhenTheStoreStopsIsExportedAsParked() async {
+        let (store, be) = await make(snap([win(a), win(b)], focused: a))
+        await be.reset()
+        await be.armGate(onWriteNumber: 2)                       // plan is [setFrame(b), setPosition(a)]
+        let run = Task { await store.run(.focusWindow(.right)) }
+        while await !be.isGateArmed() { try? await Task.sleep(for: .milliseconds(5)) }
+        await store.stop()
+        #expect(await store.exportForTermination().parked.contains(a))   // export first
+        await be.releaseGate()
+        await run.value
+        #expect(await store.exportForTermination().parked.contains(a))   // the write first
+    }
     /// A window retired after three failed writes *while parked* leaves the model entirely, so
     /// nothing would ever unpark it — spec §7.4 says quitting must not strand it in the corner.
     @Test func retiredWhileParkedWindowIsExportedAsStranded() async {

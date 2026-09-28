@@ -476,9 +476,9 @@ public final class AXWindowBackend: WindowBackend {
     // MARK: - Termination (spec §7.4)
 
     /// Never strand a window in a parking corner. Every window in `parked` is centred on its
-    /// screen's `visibleFrame` at the size we last observed (fallback 800×600), with blocking,
-    /// bounded AX writes — plus every window in `stranded`, which was retired to `ignored` while
-    /// parked and can no longer be reached any other way (best-effort, on the main display).
+    /// screen's `visibleFrame` at the size we last observed, plus every window in `stranded`, which
+    /// was retired to `ignored` while parked and can no longer be reached any other way — where each
+    /// goes is `TerminationRestore.frames`.
     ///
     /// Only *parked* windows move. A tiled window is already where the user put it, and centring
     /// it on the way out would pile every window on every workspace into the middle of one screen
@@ -488,60 +488,35 @@ public final class AXWindowBackend: WindowBackend {
     /// handler or `applicationWillTerminate` (never from a raw C signal handler), which must not
     /// return until the windows are back.
     ///
-    /// `deadline` is a **total** wall-clock budget. Each `setFrameForTermination` waits up to
-    /// `max(2000, axTimeoutMs × 4)` ms on its own, so a handful of hung apps would otherwise blow
-    /// through macOS's termination grace period and every window after the stall would stay
-    /// parked anyway — with the budget, the ones we can still reach get moved first.
+    /// #190: every write goes out at once, each on its own app's thread, and `deadline` (seconds)
+    /// bounds the wait for all of them, so a hung app costs the others nothing. Every window that
+    /// did not get back is logged with why: its write's AX error, its app gone, or no answer in time.
+    /// An app the registry has dropped is looked up again rather than skipped.
     public nonisolated func restoreAllForTermination(
         world: World,
         displays: [DisplayInfo],
         observed: [WindowRef: CGRect],
         stranded: [WindowRef: CGRect] = [:],
         parked: Set<WindowRef> = [],
-        deadline: Duration = .seconds(8),
+        deadline: TimeInterval = 2,
     ) {
-        let clock = ContinuousClock()
-        let start = clock.now
-        var restored = 0
-        var skipped = 0
-
-        func place(_ ref: WindowRef, size: CGSize, on display: DisplayInfo) {
-            guard start.duration(to: clock.now) < deadline else { skipped += 1; return }
-            let visible = display.visibleFrame
-            let frame = CGRect(
-                x: visible.midX - size.width / 2,
-                y: visible.midY - size.height / 2,
-                width: size.width,
-                height: size.height,
-            )
-            // An app that is no longer registered has no window left to strand.
-            guard let app = registry.get(ref.pid) else { return }
-            app.setFrameForTermination(ref.id, frame)
-            restored += 1
+        let frames = TerminationRestore.frames(world: world, displays: displays, observed: observed, stranded: stranded, parked: parked)
+        if frames.isEmpty, !parked.isEmpty || !stranded.isEmpty {
+            Self.log.error("termination restore: no display to put \(parked.count + stranded.count) parked windows on")
         }
-
-        // Deviation from the brief, which skips a screen whose display is missing: a window whose
-        // display was unplugged between the last refresh and the quit would stay in its parking
-        // corner, which is the one outcome §7.4 exists to prevent. It goes to the main display.
-        let fallback = displays.first(where: \.isMain) ?? displays.first
-        for (displayID, screen) in world.screens {
-            guard let display = displays.first(where: { $0.id == displayID }) ?? fallback else { continue }
-            for workspace in screen.workspaces {
-                for ref in workspace.windows where parked.contains(ref) {
-                    place(ref, size: observed[ref]?.size ?? CGSize(width: 800, height: 600), on: display)
-                }
+        guard !frames.isEmpty else { return }
+        let registry = registry
+        let failures = TerminationRestore.run(frames, deadline: deadline) { ref, frame, done in
+            guard let app = registry.get(ref.pid) ?? NSRunningApplication(processIdentifier: ref.pid).flatMap(registry.getOrCreate) else {
+                done(.failure(.notFound))
+                return
             }
+            app.setFrameForTermination(ref.id, frame, done: done)
         }
-        // Retired-while-parked windows are in no workspace any more, so the walk above cannot see
-        // them; their recorded frame is the last one from before they were parked.
-        if let fallback {
-            for (ref, frame) in stranded {
-                place(ref, size: frame.size, on: fallback)
-            }
+        for (ref, error) in failures.sorted(by: { $0.key.id < $1.key.id }) {
+            Self.log.error("termination restore: window \(ref.id, privacy: .public) pid=\(ref.pid, privacy: .public) left parked: \(String(describing: error), privacy: .public)")
         }
-        if skipped > 0 {
-            Self.log.error("termination restore ran out of budget: \(restored) restored, \(skipped) left parked")
-        }
+        Self.log.info("termination restore: \(frames.count - failures.count) of \(frames.count) windows back on screen")
     }
 
     // MARK: - Testing
