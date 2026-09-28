@@ -48,6 +48,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var shell: ShellController?
     private var overview: OverviewController?
     private var spatial: SpatialController?
+    private var appWindows: AppWindowSwitcherController?
     private var settingsWindow: SettingsWindowController?
     private var updater: SPUStandardUpdaterController?
     private var layouts: LayoutsController?
@@ -162,6 +163,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 self?.watchers.observe(world)
                 self?.overview?.update(world: world, snapshot: snapshot)
                 self?.spatial?.update(world: world, snapshot: snapshot)
+                self?.appWindows?.update(world: world, snapshot: snapshot)
                 self?.layouts?.update(world: world)
             }
         }
@@ -184,6 +186,13 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             Task { await store.run(command) }
         }
         self.spatial = spatial
+        // #188: the app window switcher. Its commit is a store command, like a tab click; while it
+        // is open the tap binds Esc to cancel it.
+        let appWindows = AppWindowSwitcherController(appMeta: appMeta) { command in
+            Task { await store.run(command) }
+        }
+        appWindows.onModal = { tap.update(modal: $0) }
+        self.appWindows = appWindows
 
         // Same rule: captured directly, never through `self`. `onChange` hops back onto the main
         // actor to persist and re-layer, which is the only thing that needs the runtime at all.
@@ -225,6 +234,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { @MainActor in overview.toggle() }
             case .toggleSpatialView:
                 Task { @MainActor in spatial.toggle() }
+            case .switchAppWindow, .cancelAppWindowSwitch:
+                Task { @MainActor in appWindows.handle(command) }
             case .openSettings:
                 Task { @MainActor in settings.toggle() }
             case .editLayout, .setDefaultLayout, .showLayoutOnBar:
@@ -290,9 +301,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // main actor. Spawning a task that hops there later is fine; blocking on it is not.
         // `flags` never consumes events: holding the bare modifier shows the cheat sheet.
         let cheatSheet = CheatSheetController(config: config)
-        // #185: never over the spatial view.
-        cheatSheet.isSuppressed = { [weak spatial] in spatial?.isOpen ?? false }
+        // #185: never over the spatial view, nor the app window switcher (#188).
+        cheatSheet.isSuppressed = { [weak spatial, weak appWindows] in
+            (spatial?.isOpen ?? false) || (appWindows?.isOpen ?? false)
+        }
         spatial.onOpen = { [weak cheatSheet] in cheatSheet?.spatialOpened() }
+        appWindows.onOpen = { [weak cheatSheet] in cheatSheet?.spatialOpened() }
         self.cheatSheet = cheatSheet
         // #135: focus follows the mouse, opt-in. A completed dwell is a click on that window's tab:
         // the same `route`, the same `.focusWindowRef`. Made before the hotkey tap is connected so
@@ -324,6 +338,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     cheatSheet.flagsChanged(flags)
                     spatial.flagsChanged(flags)   // #132: a held-open spatial view lands on release
+                    appWindows.flagsChanged(flags)   // #188: so does the app window switcher
                 }
             },
             keyDown: {

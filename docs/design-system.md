@@ -72,6 +72,7 @@ Config → views is the entire pipeline.
 | `OverviewView.swift` | Launcher overlay (search, windows + apps grid): a window is its cached thumbnail with an app-icon corner badge, or its icon alone without one (#189); apps are icons |
 | `SpatialStripView.swift` / `SpatialController.swift` | The spatialisation view (#132): workspaces as mini-desktops, window chips at their layout frames, drawing the window's cached thumbnail under a material label band, or icon + title without one (#181) (model: Kit `SpatialView`) |
 | `CheatSheetOverlay.swift` | Fn-hold keybinding sheet (view + controller) |
+| `AppWindowSwitcherPanel.swift` | The app window switcher (#188): the focused app's windows as previews, held open on ``Fn+` `` / ``⌘` `` (view + controller; model: Kit `AppWindowSwitcher`) |
 | `PanelWindow.swift` | The non-activating `NSPanel` all chrome lives in |
 | `ShellController.swift` / `OverviewController.swift` | AppKit owners: panel lifecycle, geometry, hosting |
 | `RailHoverCard.swift` | Rail hover popover: window miniatures, or why there are none |

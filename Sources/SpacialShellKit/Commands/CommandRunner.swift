@@ -444,7 +444,8 @@ public enum CommandRunner {
             // sweep runs inside the ordinary reconcile.
             effects.append(.relayout)
 
-        case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar:
+        case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar,
+             .switchAppWindow, .cancelAppWindowSwitch:
             // App-layer surfaces; AppRuntime routes them before the store, and if one does reach
             // the store anyway (custom wiring, tests) it must change nothing.
             break

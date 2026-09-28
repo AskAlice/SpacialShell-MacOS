@@ -231,6 +231,24 @@ enum Stories {
         let image = ctx.makeImage()!
         return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
+    /// #188: Safari (pid 1) with two windows on Web and two on Code, beside the editor; the first is
+    /// focused, and the third was used before it.
+    static func appWindowSwitcher() -> AppWindowSwitcher {
+        func w(_ id: Int, _ pid: Int32) -> SpacialShellProtocol.WindowRef { WindowRef(id: WindowID(id), pid: pid) }
+        let (s1, s2, s3, s4, code) = (w(1, 1), w(2, 1), w(3, 1), w(4, 1), w(5, 5))
+        let d: SpacialShellProtocol.DisplayID = "D1"
+        let rows = [
+            Workspace(name: "Web", layout: .split, windows: [s1, s2], anchor: s1, category: .web),
+            Workspace(name: "Code", layout: .half, windows: [code, s3, s4], anchor: code, category: .coding),
+            Workspace(name: "Workspace", layout: .maximize),
+        ]
+        let world = World(screens: [d: Screen(display: d, workspaces: rows, activeIndex: 0)], screenOrder: [d],
+                          focus: Focus(screen: d, window: s1), ephemeral: [], ignored: [], hidden: [],
+                          parents: [:], defaultLayout: .maximize)
+        let titles = [s1: "Pull requests · AskAlice/SpacialShell-MacOS", s2: "developer.apple.com — AXUIElement",
+                      s3: "Swift Forums — Strict concurrency", s4: "ScreenCaptureKit | Apple Developer Documentation"]
+        return AppWindowSwitcher(world: world, recent: [s1, s3, s2], titles: titles)!
+    }
     /// #128: a placeholder tab for app `pid` — a negative pid, as `WindowRef.placeholderPid` gives.
     static func placeholder(_ pid: Int32, window: Int = 0, title: String = "", pinned: Bool = false) -> WindowTabItem {
         WindowTabItem(ref: WindowRef(id: WindowID(pid) * 10 + WindowID(window) * 1000, pid: -pid),
@@ -693,6 +711,15 @@ enum Stories {
                              ]),
                              reduceMotion: true),
             truncates: true)
+
+        // #188: Fn+` in Safari, four windows over two workspaces. The focused one first, then the
+        // one used before it (on Code), then the rest; the selection on the second, as a tap and
+        // release would land. The last window's capture is pending: its app's icon stands in.
+        add("app-window-switcher", nil, AppWindowSwitcherView(
+            state: appWindowSwitcher(), appName: "Safari", appIcon: meta(1).icon,
+            thumbnails: [WindowRef(id: 1, pid: 1): shot(.systemBlue), WindowRef(id: 3, pid: 1): shot(.systemIndigo),
+                         WindowRef(id: 2, pid: 1): shot(.systemTeal)],
+            columns: 4, reduceMotion: true), truncates: true)
 
         // #108: the tile a dragged window would swap with, at a half-split tile's size.
         add("drop-target", CGSize(width: 480, height: 320), DropTargetView())

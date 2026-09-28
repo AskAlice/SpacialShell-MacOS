@@ -384,6 +384,7 @@ struct SettingsView: View {
         ("focus-workspace-up", "Focus workspace up"), ("focus-workspace-down", "Focus workspace down"),
         ("focus-window-left", "Focus window left"), ("focus-window-right", "Focus window right"),
         ("focus-previous-window", "Focus previous window"),
+        ("switch-app-window", "Switch app window"), ("switch-app-window-reverse", "Switch app window backwards"),
         ("move-window-left", "Move window left"), ("move-window-right", "Move window right"),
         ("move-window-up", "Move window to workspace up"), ("move-window-down", "Move window to workspace down"),
         ("focus-screen-prev", "Focus previous screen"), ("focus-screen-next", "Focus next screen"),

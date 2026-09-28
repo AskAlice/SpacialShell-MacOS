@@ -74,6 +74,9 @@ public final class HotkeyTap: @unchecked Sendable {
     /// happens under it, so the callback's lookup is uncontended in practice.
     private let lock = NSLock()
     private var table: [Chord: Command]
+    /// #188: chords bound only while a held-open surface is up (the app switcher's Esc), looked up
+    /// before `table`. Empty the rest of the time.
+    private var modal: [Chord: Command] = [:]
     private var tapPort: CFMachPort?
     private var source: CFRunLoopSource?
     private var health: CFRunLoopTimer?
@@ -152,6 +155,11 @@ public final class HotkeyTap: @unchecked Sendable {
 
     public func update(table: [Chord: Command]) {
         lock.lock(); self.table = table; lock.unlock()
+    }
+
+    /// #188: see `modal`. Pass `[:]` when the surface closes.
+    public func update(modal: [Chord: Command]) {
+        lock.lock(); self.modal = modal; lock.unlock()
     }
 
     /// Pure: the five modifiers the model knows about, and nothing else. Caps lock, the numeric-pad
@@ -489,7 +497,7 @@ public final class HotkeyTap: @unchecked Sendable {
             let chord = Self.chord(from: flags, keyCode: code)
             if chord.fn && Self.functionRow.contains(code) { return passThrough }
 
-            lock.lock(); let command = table[chord]; lock.unlock()
+            lock.lock(); let command = modal[chord] ?? table[chord]; lock.unlock()
             let decision = Self.decision(isRepeat: isRepeat, bound: command != nil)
             guard decision.swallow else { return passThrough }
             guard decision.fire, let command else {

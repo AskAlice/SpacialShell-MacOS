@@ -71,6 +71,22 @@ import CoreGraphics
         #expect(box.repeated == [.focusWorkspace(.up), .focusWorkspace(.up)])
     }
 
+    /// #188: while the app switcher is held open, ⌘Esc (bound to nothing) cancels it and never
+    /// reaches the front app; closed again, it passes through.
+    @Test func aModalChordIsSwallowedOnlyWhileSet() throws {
+        final class Box: @unchecked Sendable { var fired: [Command] = [] }
+        let box = Box()
+        let tap = HotkeyTap(table: [:], onCommand: { box.fired.append($0) })
+        let esc = try #require(CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: true))
+        esc.flags = .maskCommand
+        #expect(tap.handle(type: .keyDown, event: esc) != nil)
+        tap.update(modal: [AppWindowSwitcher.cancelChords(held: .maskCommand)[0]: .cancelAppWindowSwitch])
+        #expect(tap.handle(type: .keyDown, event: esc) == nil)
+        tap.update(modal: [:])
+        #expect(tap.handle(type: .keyDown, event: esc) != nil)
+        #expect(box.fired == [.cancelAppWindowSwitch])
+    }
+
     /// The test host is not AX-trusted, so `CGEvent.tapCreate` returns NULL and `start()` must
     /// surface that as `TapError.creationFailed` rather than trapping or hanging on the dedicated
     /// tap thread. On a trusted host (someone granted the test runner) the tap really is created,

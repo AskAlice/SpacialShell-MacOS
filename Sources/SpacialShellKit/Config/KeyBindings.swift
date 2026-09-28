@@ -66,6 +66,8 @@ public enum KeyBindings {
         "toggle-pin": .togglePin,
         // #137
         "focus-previous-window": .focusPreviousWindow,
+        // #188
+        "switch-app-window": .switchAppWindow(reverse: false), "switch-app-window-reverse": .switchAppWindow(reverse: true),
     ].merging((1...10).map { ("move-window-to-workspace-\($0)", Command.moveWindowToWorkspaceIndex($0)) }) { a, _ in a }
         .merging((1...9).map { ("focus-tab-\($0)", Command.focusTab($0)) }) { a, _ in a }
 
@@ -107,7 +109,8 @@ public enum KeyBindings {
         ("shift-w", "move-window-up"), ("shift-s", "move-window-down"), ("space", "cycle-layout"), ("esc", "toggle-shell-ui"),
         ("tab", "toggle-overview"), ("shift-space", "cycle-layout-reverse"),
         ("z", "toggle-spatial-view"),   // #132: Z for zoom out
-        ("backtick", "focus-previous-window"),   // #137: Fn+` / ⌃⌥`
+        ("p", "focus-previous-window"),   // #137: Fn+P / ⌃⌥P (Fn+` until #188)
+        ("backtick", "switch-app-window"), ("shift-backtick", "switch-app-window-reverse"),   // #188
 
         ("leftSquareBracket", "focus-screen-prev"), ("rightSquareBracket", "focus-screen-next"),
         ("shift-leftSquareBracket", "move-window-to-screen-prev"), ("shift-rightSquareBracket", "move-window-to-screen-next"),
@@ -143,6 +146,12 @@ public enum KeyBindings {
         ("ctrl-alt-up", "focus-workspace-up"), ("ctrl-alt-down", "focus-workspace-down"), ("ctrl-alt-left", "focus-window-left"), ("ctrl-alt-right", "focus-window-right"),
         ("ctrl-alt-shift-up", "move-window-up"), ("ctrl-alt-shift-down", "move-window-down"), ("ctrl-alt-shift-left", "move-window-left"), ("ctrl-alt-shift-right", "move-window-right"),
     ]
+    /// #188: ⌘` on every preset, taking it from macOS, whose ⌘` cycles the front app's windows on
+    /// the current Space only — under the shell it finds nothing, or raises a parked window the
+    /// reconciler puts back. The tap sits at the HID level, so macOS never sees the chord.
+    static let everyPreset: [(String, String)] = [
+        ("cmd-backtick", "switch-app-window"), ("cmd-shift-backtick", "switch-app-window-reverse"),
+    ]
 
     public static func table(for config: Config) -> [Chord: Command] {
         var t: [Chord: Command] = [:]
@@ -164,7 +173,7 @@ public enum KeyBindings {
         for (k, name) in resize where !rebound.contains(name) {
             if let ch = parse(resizePrefix + k), let cmd = commandNames[name] { t[ch] = cmd }
         }
-        for (k, name) in arrows where !rebound.contains(name) {
+        for (k, name) in arrows + everyPreset where !rebound.contains(name) {
             if let ch = parse(k), let cmd = command(named: name) { t[ch] = cmd }
         }
         for name in rebound {

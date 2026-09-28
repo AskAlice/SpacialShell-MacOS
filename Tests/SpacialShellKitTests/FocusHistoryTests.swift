@@ -149,14 +149,15 @@ import SpacialShellProtocol
         #expect(restored.screens["D1"]!.workspaces.allSatisfy { $0.focusHistory.isEmpty })
     }
 
-    @Test func boundToBacktickInBothPresets() {
+    /// #188 moved it off `` ` ``, which is the app window switcher now.
+    @Test func boundToPInBothPresets() {
         #expect(KeyBindings.command(named: "focus-previous-window") == .focusPreviousWindow)
         let fn = KeyBindings.chords(for: .focusPreviousWindow, config: Config()).map(KeyBindings.display)
-        #expect(fn == ["Fn+`"])
+        #expect(fn == ["Fn+P"])
         var ctrlAlt = Config(); ctrlAlt.keybindingPreset = .ctrlAlt
-        #expect(KeyBindings.chords(for: .focusPreviousWindow, config: ctrlAlt).map(KeyBindings.display) == ["⌃⌥`"])
+        #expect(KeyBindings.chords(for: .focusPreviousWindow, config: ctrlAlt).map(KeyBindings.display) == ["⌃⌥P"])
         // Nothing else was on either chord: each resolves to this command alone.
-        #expect(KeyBindings.table(for: Config()).filter { KeyBindings.display($0.key) == "Fn+`" }.count == 1)
-        #expect(CheatSheet.rows(for: Config()).contains { $0.commandName == "focus-previous-window" && $0.chords == ["Fn+`"] })
+        #expect(KeyBindings.table(for: Config()).filter { KeyBindings.display($0.key) == "Fn+P" }.count == 1)
+        #expect(CheatSheet.rows(for: Config()).contains { $0.commandName == "focus-previous-window" && $0.chords == ["Fn+P"] })
     }
 }

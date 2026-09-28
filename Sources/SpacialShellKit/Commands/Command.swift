@@ -67,6 +67,11 @@ public enum Command: Sendable, Hashable {
     /// #132 (M3 B9): the spatialisation view — the focused display's workspaces as mini-desktops,
     /// zoomed out. App-layer, like the overview; holding Fn+W/S opens it too (`SpatialView`).
     case toggleSpatialView
+    /// #188: `Fn+`` / `⌘`` (`⇧`` reverse) — the app window switcher (`AppWindowSwitcher`): opens
+    /// it, or steps it while it is held open. App-layer, like the spatial view.
+    case switchAppWindow(reverse: Bool)
+    /// #188: Esc while the switcher is held open. Unnamed: the hotkey tap binds it only then.
+    case cancelAppWindowSwitch
     /// Tab dragged onto a rail row. Absolute where `moveWindowToWorkspace(Vertical)` is relative:
     /// a drag names both the window and the destination, and neither need be the focused one.
     /// `follow` (#95): the store's own moves follow the window, as the keyboard does; a drop passes
@@ -154,6 +159,7 @@ public enum Command: Sendable, Hashable {
     public var isAppLayer: Bool {
         switch self {
         case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
+        case .switchAppWindow, .cancelAppWindowSwitch: true   // #188
         case .reloadConfig, .showAbout, .quit: true   // #111
         default: false
         }

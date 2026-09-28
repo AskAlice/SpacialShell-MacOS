@@ -43,7 +43,8 @@ Home/End/PgUp/PgDn below the keyboard driver, so that is what those chords are b
 |---|---|---|---|
 | Focus workspace up / down | `Fn+W` / `Fn+S` | `⌃⌥W` / `⌃⌥S` | Super+W / S |
 | Focus window left / right † | `Fn+A` / `Fn+D` | `⌃⌥A` / `⌃⌥D` | Super+A / D |
-| Focus the previous window of the workspace; again, back (`focus-previous-window`) | ``Fn+` `` | ``⌃⌥` `` | — |
+| Focus the previous window of the workspace; again, back (`focus-previous-window`) | `Fn+P` | `⌃⌥P` | — |
+| Switch between the focused app's windows, on every workspace and display — hold, tap `` ` `` (``⇧` `` back), let go (`switch-app-window`, `switch-app-window-reverse`) | ``Fn+` `` / ``Fn+⇧` ``, and ``⌘` `` / ``⌘⇧` `` | ``⌃⌥` `` / ``⌃⌥⇧` ``, and ``⌘` `` / ``⌘⇧` `` | Super+`` ` `` |
 | Focus workspace 1…10 (again on the active one: back to the previous) | `Fn+1` … `Fn+9`, `Fn+0` | `⌃⌥1` … `⌃⌥0` | Super+1 … 0 |
 | Focus tab 1…9 of the active workspace (past the last: the last; `0`: the first) | `Fn+⌥1` … `Fn+⌥9`, `Fn+⌥0` | unbound ‡ | — |
 | Move window to workspace 1…10 | `Fn+⇧1` … `Fn+⇧0` | `⌃⌥⇧1` … `⌃⌥⇧0` | Super+Shift+1 … 0 |
@@ -174,11 +175,21 @@ Semantics worth knowing:
 - Close presses the window's close button; the app stays running (macOS convention). Focus goes to
   the window you used before it in that workspace (#137), else the left neighbour, else the right.
 - **Focus history** (#137): each workspace remembers the last five windows focused in it, however
-  focus got there (keys, clicks, ⌘Tab). It is what a close falls back to, and what ``Fn+` ``
-  (`focus-previous-window`) walks: it focuses the window before this one, and pressed again comes
-  back, so one chord flips between two windows — the window-level twin of `Fn+N` on the active
-  workspace. A minimized window there is brought back, as a tab click does. Placeholder tabs
+  focus got there (keys, clicks, ⌘Tab). It is what a close falls back to, and what `Fn+P`
+  (`focus-previous-window`; it was ``Fn+` `` until #188) walks: it focuses the window before this
+  one, and pressed again comes back, so one chord flips between two windows — the window-level
+  twin of `Fn+N` on the active workspace. A minimized window there is brought back, as a tab click does. Placeholder tabs
   (#128) are never in the history. It is not saved: a relaunch starts every workspace afresh.
+- **App window switcher** (#188): Linux's Super+`` ` ``. ``Fn+` `` (``⌃⌥` `` on `ctrl-alt`) or ``⌘` ``
+  (on every preset — macOS's own ⌘` only cycles the current Space, where the shell has parked the
+  other workspaces' windows, so the shell takes the chord) opens a panel of every window of the
+  focused window's app, on every workspace and display: a preview of each (its app's icon until a
+  capture lands, or without Screen Recording), its title and its workspace. The focused window is
+  first, then the rest most recently used first, and the selection starts on the second, so a tap
+  and release goes to the app's previous window, like ⌘Tab. Keep the modifier (Fn, ⌃⌥ or ⌘) down
+  and tap `` ` `` to step, ``⇧` `` to step back (both wrap); let go to switch there, workspace and
+  display included, as a tab click does. `Esc` cancels; clicking a preview switches to it. With a
+  single window it does not open. Placeholder tabs are not listed; popups are.
 - Autorepeat of a bound chord is swallowed, not re-fired: holding `Fn+D` moves once and types
   nothing into the front app.
 - **Spatial view** (#132): the focused display's workspaces zoomed out, one mini-desktop per row,

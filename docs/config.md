@@ -350,7 +350,8 @@ Generated from `KeyBindings.commandNames`:
 | `shrink-height` / `grow-height` | The same for its top or bottom edge, where the layout has rows (half, grid, drawn layouts) |
 | `balance` | Put every layout of the focused workspace back to its designed sizes |
 | `split-columns-more` / `split-columns-fewer` | Show one column more / fewer in the focused workspace's *split* (2–6, default 2; remembered per workspace and across relaunch). Unbound by default; does nothing when the layout is not split |
-| `focus-previous-window` | Focus the window focused before this one in the active workspace; again, back — one chord flips between two windows. Each workspace remembers its last five (not across relaunch); closing the focused window falls back the same way (#137). ``Fn+` `` / ``⌃⌥` `` by default |
+| `focus-previous-window` | Focus the window focused before this one in the active workspace; again, back — one chord flips between two windows. Each workspace remembers its last five (not across relaunch); closing the focused window falls back the same way (#137). `Fn+P` / `⌃⌥P` by default (``Fn+` `` until #188) |
+| `switch-app-window` / `switch-app-window-reverse` | The app window switcher (#188): every window of the focused window's app, on every workspace and display, the most recently used first. It opens on the second; hold the modifier and press again to step (the reverse one steps back), let go to switch there, `Esc` to cancel. With nothing held (`spacialctl run switch-app-window`) it switches straight to the app's previous window. ``Fn+` `` / ``Fn+⇧` `` (``⌃⌥` `` / ``⌃⌥⇧` ``), and ``⌘` `` / ``⌘⇧` `` on every preset, by default |
 | `toggle-pin` | Pin or unpin the focused window's tab (#129). A pinned tab stays when its window closes, as a placeholder that opens the app when clicked and cannot be closed until unpinned; pins survive relaunch. Unbound by default — the tab's right-click menu has Pin / Unpin |
 
 ### Key names

@@ -180,7 +180,7 @@ import Foundation
         #expect(KeyBindings.commandNames["toggle-overview"]?.isAppLayer == true)
         // Everything else a socket can name is the store's.
         let named = KeyBindings.commandNames.filter { $0.value.isAppLayer }.keys.sorted()
-        #expect(named == ["open-settings", "toggle-overview", "toggle-spatial-view"])
+        #expect(named == ["open-settings", "switch-app-window", "switch-app-window-reverse", "toggle-overview", "toggle-spatial-view"])
     }
 }
 
