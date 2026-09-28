@@ -17,7 +17,7 @@ import SpacialShellProtocol
         var w = World.empty(screens: ["D1"], defaultLayout: .split)
         for r in [a1, a2, a3] { w.adopt(r, kind: .tile, on: "D1") }
         let c = AppWindowSwitcherController(appMeta: AppMetaCache(), send: { sent.commands.append($0) },
-                                            present: { _ in })
+                                            present: { _ in }, keyboard: { [] })
         c.onModal = { sent.modal.append($0) }
         for r in [a3, a2, a1] {   // a1 focused last; a2 before it
             let env = CommandEnvironment(layouts: .builtins, displays: [], workspaceWrap: false, categoryOrder: [])

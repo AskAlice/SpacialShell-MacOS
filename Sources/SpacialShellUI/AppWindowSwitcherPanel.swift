@@ -111,14 +111,19 @@ public final class AppWindowSwitcherController {
     /// Puts the panel on screen. A test passes a no-op, so no run ever leaves a real panel on the
     /// user's display (#182's stuck card).
     private let present: (NSWindow) -> Void
+    /// The modifiers physically down right now. Tests pass `{ [] }`: read live, a unit test depended
+    /// on whatever the person at the keyboard was holding while it ran.
+    private let keyboard: () -> CGEventFlags
     /// Its own thumbnail refresh is running: only that one is cancelled on close.
     private var refreshing = false
 
     public init(appMeta: AppMetaCache, send: @escaping @Sendable (Command) -> Void,
-                present: @escaping (NSWindow) -> Void = { $0.orderFrontRegardless() }) {
+                present: @escaping (NSWindow) -> Void = { $0.orderFrontRegardless() },
+                keyboard: @escaping () -> CGEventFlags = { CGEventSource.flagsState(.combinedSessionState) }) {
         self.appMeta = appMeta
         self.send = send
         self.present = present
+        self.keyboard = keyboard
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)   // over the rail and the bar
     }
 
@@ -157,7 +162,7 @@ public final class AppWindowSwitcherController {
         // What the tap last reported, or what the session says now: a flags event still queued
         // behind this command (the modifier already let go) then commits at once, and a quick tap
         // and release, or `spacialctl run switch-app-window`, never leaves the panel stranded.
-        held = AppWindowSwitcher.holdModifiers(flags.union(CGEventSource.flagsState(.combinedSessionState)))
+        held = AppWindowSwitcher.holdModifiers(flags.union(keyboard()))
         guard !held.isEmpty else {
             if let c = s.end(committing: true) { send(c) }
             return
