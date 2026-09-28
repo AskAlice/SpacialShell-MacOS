@@ -53,6 +53,9 @@ final class RailHoverController {
     // #182 pointer safety net. The pointer and the clock are injected so a test can move them.
     private let pointer: () -> CGPoint
     private let now: () -> ContinuousClock.Instant
+    /// Puts the card on screen. Tests pass a no-op: a test run that ordered real cards front left
+    /// them on the user's display for as long as the runner lived (#182's "stuck card").
+    private let present: (NSWindow) -> Void
     /// The rail panel the card was opened from, in screen coordinates; nil when it is off screen.
     var railFrame: () -> CGRect? = { nil }
     private var pointerMonitors: [Any] = []
@@ -74,11 +77,13 @@ final class RailHoverController {
 
     init(send: @escaping @Sendable (Command) -> Void, peekDwell: Duration = RailHoverController.peekDwell,
          pointer: @escaping () -> CGPoint = { NSEvent.mouseLocation },
-         now: @escaping () -> ContinuousClock.Instant = { .now }) {
+         now: @escaping () -> ContinuousClock.Instant = { .now },
+         present: @escaping (NSWindow) -> Void = { $0.orderFrontRegardless() }) {
         self.send = send
         self.peekDwell = peekDwell
         self.pointer = pointer
         self.now = now
+        self.present = present
         host = NSHostingView(rootView: RailHoverCard(title: "", subtitle: nil,
                                                      content: .message(""), onGrantAccess: {}))
         window.contentView = host
@@ -249,7 +254,7 @@ final class RailHoverController {
         Self.log.debug("hover card show \(self.shown?.uuidString ?? "-", privacy: .public) \(what, privacy: .public)")
         // A new tile's hover: the pointer is on the rail, whatever the card last heard about it.
         pointerInCard = false
-        window.orderFrontRegardless()
+        present(window)
         guard pointerMonitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
         if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in

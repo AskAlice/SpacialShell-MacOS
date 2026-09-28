@@ -71,7 +71,7 @@ import SwiftUI
     @Test func clickingAPreviewFocusesItsWindowAndClosesTheCard() {
         final class Sent: @unchecked Sendable { var commands: [Command] = [] }
         let sent = Sent()
-        let hover = RailHoverController(send: { sent.commands.append($0) })
+        let hover = RailHoverController(send: { sent.commands.append($0) }, present: { _ in })
         let item = railState().rail[0]
         hover.show(item: item, tile: NSRect(x: 0, y: 400, width: 48, height: 48), railSide: .left,
                    bounds: NSRect(x: 0, y: 0, width: 1440, height: 900), metaFor: meta)
@@ -87,7 +87,7 @@ import SwiftUI
     static let dwell = Duration.milliseconds(40)
     func settle() async { try? await Task.sleep(for: Self.dwell * 3) }
     func shownCard(_ sent: Sent) -> (RailHoverController, WorkspaceRailItem) {
-        let hover = RailHoverController(send: { sent.commands.append($0) }, peekDwell: Self.dwell)
+        let hover = RailHoverController(send: { sent.commands.append($0) }, peekDwell: Self.dwell, present: { _ in })
         let item = railState().rail[0]
         hover.show(item: item, tile: NSRect(x: 0, y: 400, width: 48, height: 48), railSide: .left,
                    bounds: NSRect(x: 0, y: 0, width: 1440, height: 900), metaFor: meta)
@@ -181,7 +181,7 @@ import SwiftUI
     }
 
     func shownCard(_ stage: Stage, _ item: WorkspaceRailItem) -> RailHoverController {
-        let hover = RailHoverController(send: { _ in }, pointer: { stage.pointer }, now: { stage.clock })
+        let hover = RailHoverController(send: { _ in }, pointer: { stage.pointer }, now: { stage.clock }, present: { _ in })
         hover.railFrame = { stage.rail }
         hover.show(item: item, tile: NSRect(x: 0, y: 400, width: 48, height: 48), railSide: .left,
                    bounds: NSRect(x: 0, y: 0, width: 1440, height: 900), metaFor: meta)
