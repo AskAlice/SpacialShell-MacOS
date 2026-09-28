@@ -645,6 +645,13 @@ final class TerminationGate: @unchecked Sendable {
     /// (#190), well inside the grace macOS gives a terminating app.
     private static let restoreBudget: TimeInterval = 2
     private static let teardownBudget: TimeInterval = 1
+    /// #190: how long a second way out waits for the first: every budget above — the fallback's
+    /// display lookup and the two teardowns are one `teardownBudget` each — and slack.
+    private static let waitBudget = exportBudget + restoreBudget + 3 * teardownBudget + 2
+
+    /// Entered by the one `run` that restores, left when its windows are back and the teardown is
+    /// done — not after the trace flush, which a second way out need not wait for.
+    private let restoring = DispatchGroup()
 
     private let lock = NSLock()
     private var store: WorldStore?
@@ -697,19 +704,33 @@ final class TerminationGate: @unchecked Sendable {
     }
 
     /// Idempotent: SIGTERM followed by `applicationWillTerminate` must not restore twice.
+    ///
+    /// #190: and a second way out *waits* for the first. The two run on different threads — the
+    /// signal source and `spacialctl quit` on `queue`, `applicationWillTerminate` (a Sparkle
+    /// relaunch, a logout, any `NSApp.terminate`) on the main thread — so a SIGTERM that lands
+    /// while AppKit is terminating, or the other way round, used to return here at once, and its
+    /// caller exited (`exit(0)`, or AppKit's own once `applicationWillTerminate` returned) with the
+    /// restore still under way on the other thread.
     func run(onMainThread: Bool) {
         lock.lock()
         if didTerminate {
             lock.unlock()
+            let finished = DispatchSemaphore(value: 0)
+            restoring.notify(queue: .global()) { finished.signal() }
+            if !wait(finished, Self.waitBudget, onMainThread: onMainThread) {
+                Self.log.error("the restore under way on another thread did not finish in time; exiting anyway")
+            }
             return
         }
         didTerminate = true
+        restoring.enter()
         let store = self.store, backend = self.backend, tap = self.tap, ipc = self.ipc, tracing = self.tracing
         let watchers = self.watchers
         lock.unlock()
         // #148: last, after the windows are back — the flush waits on the network, bounded by the
         // exporter's timeout. It sends the spans of this very shutdown too.
         defer { tracing?.shutdown() }
+        defer { restoring.leave() }
 
         // First, stop taking commands: a keystroke or IPC request landing between the export and
         // the restore would move windows the restore has already decided about.

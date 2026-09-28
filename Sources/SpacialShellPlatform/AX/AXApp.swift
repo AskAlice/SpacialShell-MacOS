@@ -502,7 +502,8 @@ final class AXApp: @unchecked Sendable {
     /// queued on the app thread and `done` answers it there, so the termination restore can hand
     /// every window's write out at once and wait for all of them within one deadline. `done` is
     /// called at once with `.notFound` when the app thread is gone; a window the app thread has
-    /// not registered is still reachable through the element its id was minted for.
+    /// not registered is still reachable through the element its id was minted for. Judged by where
+    /// the window ends up, with a position-only retry (`TerminationRestore.place`).
     func setFrameForTermination(_ id: WindowID, _ frame: CGRect, done: @escaping @Sendable (Result<Void, BackendError>) -> Void) {
         let submitted = stateLock.withLock { () -> Bool in
             pendingFrameJobs.removeValue(forKey: id)?.cancel()
@@ -512,7 +513,9 @@ final class AXApp: @unchecked Sendable {
                     done(.failure(.notFound))
                     return
                 }
-                done(disableAnimations(app: axApp.threadGuarded) { writeFrame(ax, frame.origin, frame.size, job) })
+                done(disableAnimations(app: axApp.threadGuarded) {
+                    TerminationRestore.place(frame, write: { writeFrame(ax, $0, $1, job) }, origin: { ax.get(Ax.topLeftCornerAttr) })
+                })
             }
             return true
         }

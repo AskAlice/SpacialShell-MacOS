@@ -34,6 +34,22 @@ public enum TerminationRestore {
         return out
     }
 
+    /// One window's write, judged by where the window ends up rather than by the first AX error:
+    /// `write` sets the frame (size, position, size), or only the position when the size is nil;
+    /// `origin` reads where the window is. A window that refused the resize but took the move is
+    /// back. One that answered with an error and did not move gets a position-only retry, and if
+    /// that does not move it either, the retry's error is the answer: the app refused. A timeout or a
+    /// window gone is final — a retry would only spend the deadline the app's other windows share.
+    public static func place(_ frame: CGRect, write: (CGPoint, CGSize?) -> Result<Void, BackendError>,
+                             origin: () -> CGPoint?) -> Result<Void, BackendError> {
+        func landed() -> Bool { origin().map { abs($0.x - frame.minX) <= 1 && abs($0.y - frame.minY) <= 1 } ?? false }
+        let first = write(frame.origin, frame.size)
+        guard case .failure(.ax) = first else { return first }
+        if landed() { return .success(()) }
+        let retry = write(frame.origin, nil)
+        return landed() ? .success(()) : retry
+    }
+
     /// Hands every write out before waiting on any, then waits for them all until `deadline`
     /// (seconds) has passed. Returns each window whose write failed, with its error, or had not
     /// answered by then (`.timeout`); empty when every window is back. Nothing to write returns at

@@ -84,6 +84,34 @@ import Foundation
         #expect(ContinuousClock.now - started < .milliseconds(100))
     }
 
+    /// One window's write, judged by where the window ends up (#190, iPhone Mirroring and an
+    /// Electron app answered -25200 on hardware): an app that refuses the resize but takes the move
+    /// is back; one that refuses the whole write gets a position-only retry; one that refuses that
+    /// too is reported refused, with the retry's AX error.
+    @Test(arguments: [
+        // (first write's error, moves on it, retry's error, moves on the retry) → error, writes made; nil = success
+        (nil as BackendError?, true, nil as BackendError?, false, nil as BackendError?, 1),
+        (.ax(-25200), true, nil, false, nil, 1),                        // refused the size, took the move
+        (.ax(-25200), false, nil, true, nil, 2),                        // position only took
+        (.ax(-25200), false, .ax(-25205), false, .ax(-25205), 2),       // refused
+        (.timeout, false, nil, true, .timeout, 1),                      // hung: no retry to spend the deadline on
+    ])
+    func aWriteIsJudgedByWhereTheWindowEndsUp(first: BackendError?, movesFirst: Bool, retry: BackendError?,
+                                              movesOnRetry: Bool, outcome: BackendError?, writes: Int) {
+        let target = CGRect(x: 100, y: 80, width: 600, height: 400)
+        var calls: [CGSize?] = []
+        var at = CGPoint(x: 1919, y: 1079)
+        let result = TerminationRestore.place(target, write: { origin, size in
+            calls.append(size)
+            let (error, moves) = calls.count == 1 ? (first, movesFirst) : (retry, movesOnRetry)
+            if moves { at = origin }
+            return error.map { .failure($0) } ?? .success(())
+        }, origin: { at })
+        if case .failure(let e) = result { #expect(e == outcome) } else { #expect(outcome == nil) }
+        #expect(calls.count == writes)
+        if writes == 2 { #expect(calls == [target.size, nil]) }   // the retry is position-only
+    }
+
     private final class Written: @unchecked Sendable {
         private let lock = NSLock()
         private var set: Set<WindowRef> = []

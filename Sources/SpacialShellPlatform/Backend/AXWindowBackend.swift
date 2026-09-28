@@ -504,7 +504,6 @@ public final class AXWindowBackend: WindowBackend {
         if frames.isEmpty, !parked.isEmpty || !stranded.isEmpty {
             Self.log.error("termination restore: no display to put \(parked.count + stranded.count) parked windows on")
         }
-        guard !frames.isEmpty else { return }
         let registry = registry
         let failures = TerminationRestore.run(frames, deadline: deadline) { ref, frame, done in
             guard let app = registry.get(ref.pid) ?? NSRunningApplication(processIdentifier: ref.pid).flatMap(registry.getOrCreate) else {
@@ -514,8 +513,17 @@ public final class AXWindowBackend: WindowBackend {
             app.setFrameForTermination(ref.id, frame, done: done)
         }
         for (ref, error) in failures.sorted(by: { $0.key.id < $1.key.id }) {
-            Self.log.error("termination restore: window \(ref.id, privacy: .public) pid=\(ref.pid, privacy: .public) left parked: \(String(describing: error), privacy: .public)")
+            // An app that answered with an error refused the move, the position-only retry
+            // included — unless the error says the window itself has gone (kAXErrorInvalidUIElement).
+            let why = switch error {
+            case .ax(AXError.invalidUIElement.rawValue), .notFound: "its app or window is gone"
+            case .ax(let code): "refused by the app (AX error \(code))"
+            case .timeout: "the app did not answer in time"
+            }
+            let app = NSRunningApplication(processIdentifier: ref.pid)?.bundleIdentifier ?? "-"
+            Self.log.error("termination restore: window \(ref.id, privacy: .public) pid=\(ref.pid, privacy: .public) \(app, privacy: .public) left parked: \(why, privacy: .public)")
         }
+        // Always, nothing parked included: the one line that says the restore ran to its end.
         Self.log.info("termination restore: \(frames.count - failures.count) of \(frames.count) windows back on screen")
     }
 
