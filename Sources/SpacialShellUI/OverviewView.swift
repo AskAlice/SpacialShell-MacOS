@@ -24,9 +24,14 @@ struct OverviewAppItem: Identifiable {
 /// material-shell's launcher, macOS-shaped: a search field over two sections — the windows that
 /// already exist (click = go there) and the applications that could (click = launch; the new
 /// window then lands at the end of the active workspace by the ordinary adoption rules).
+///
+/// #189: a window is drawn as its picture from `thumbnails`, with its app icon as a corner badge,
+/// or as its icon alone while the capture is pending or after it failed. The view captures
+/// nothing: `OverviewController` hands the pictures in and swaps in new ones as they land.
 struct OverviewView: View {
     let windows: [OverviewWindowItem]
     let apps: [OverviewAppItem]
+    var thumbnails: [SpacialShellProtocol.WindowRef: NSImage] = [:]
     let onSelectWindow: (SpacialShellProtocol.WindowRef) -> Void
     let onLaunchApp: (URL) -> Void
 
@@ -60,15 +65,12 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     if !filteredWindows.isEmpty {
                         sectionHeader("Windows")
-                        grid(filteredWindows.map { item in
-                            cell(name: item.name, detail: item.detail, icon: item.icon,
-                                 help: item.name == item.app ? item.name : "\(item.app) — \(item.name)") { onSelectWindow(item.ref) }
-                        })
+                        grid(minimum: Self.thumbSize.width, filteredWindows.map(windowCell))
                     }
                     if !filteredApps.isEmpty {
                         sectionHeader("Applications")
-                        grid(filteredApps.map { item in
-                            cell(name: item.name, detail: nil, icon: item.icon) { onLaunchApp(item.url) }
+                        grid(minimum: 92, filteredApps.map { item in
+                            appCell(item)
                         })
                     }
                     if filteredWindows.isEmpty && filteredApps.isEmpty {
@@ -93,34 +95,74 @@ struct OverviewView: View {
         Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 2)
     }
 
-    private func grid(_ cells: [AnyView]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 6)], spacing: 8) {
+    private func grid(minimum: CGFloat, _ cells: [AnyView]) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 6)], spacing: 8) {
             ForEach(Array(cells.enumerated()), id: \.offset) { $0.element }
         }
     }
 
-    private func cell(name: String, detail: String?, icon: NSImage?, help: String? = nil,
-                      action: @escaping () -> Void) -> AnyView {
-        AnyView(
-            Button(action: action) {
-                VStack(spacing: 4) {
-                    if let icon {
-                        Image(nsImage: icon).resizable().frame(width: 40, height: 40)
-                    } else {
-                        Image(systemName: "app.dashed").font(.system(size: 30)).frame(width: 40, height: 40)
-                            .foregroundStyle(.secondary)
+    /// #189: the frame a window's picture is fitted into.
+    static let thumbSize = CGSize(width: 180, height: 112)
+    private static let thumbShape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+
+    /// The picture, aspect-fit, the app icon on its corner; the icon alone without one. Then the
+    /// title and where the window is.
+    private func windowCell(_ item: OverviewWindowItem) -> AnyView {
+        let picture = thumbnails[item.ref]
+        return AnyView(
+            Button { onSelectWindow(item.ref) } label: {
+                VStack(spacing: 3) {
+                    ZStack {
+                        Self.thumbShape.fill(.quaternary.opacity(0.6))
+                        if let picture {
+                            Image(nsImage: picture).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                        } else {
+                            icon(item.icon, side: 40)
+                        }
                     }
-                    // Middle: a title's two ends say the most ("Report — Pages", "~/code — zsh").
-                    Text(name).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
-                    if let detail {
-                        Text(detail).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+                    .frame(width: Self.thumbSize.width, height: Self.thumbSize.height)
+                    .clipShape(Self.thumbShape)
+                    .overlay(alignment: .bottomTrailing) {
+                        if picture != nil { icon(item.icon, side: 20).shadow(radius: 1).padding(4) }
                     }
+                    title(item.name)
+                    Text(item.detail).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .frame(width: 92, height: detail == nil ? 74 : 84)
+                .frame(width: Self.thumbSize.width)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(help ?? name)
+            .help(item.name == item.app ? item.name : "\(item.app) — \(item.name)")
         )
+    }
+
+    private func appCell(_ item: OverviewAppItem) -> AnyView {
+        AnyView(
+            Button { onLaunchApp(item.url) } label: {
+                VStack(spacing: 4) {
+                    icon(item.icon, side: 40)
+                    title(item.name)
+                }
+                .frame(width: 92, height: 74)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(item.name)
+        )
+    }
+
+    /// Middle truncation: a title's two ends say the most ("Report — Pages", "~/code — zsh").
+    private func title(_ text: String) -> some View {
+        Text(text).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
+    }
+
+    @ViewBuilder
+    private func icon(_ image: NSImage?, side: CGFloat) -> some View {
+        if let image {
+            Image(nsImage: image).resizable().frame(width: side, height: side)
+        } else {
+            Image(systemName: "app.dashed").font(.system(size: side * 0.75)).frame(width: side, height: side)
+                .foregroundStyle(.secondary)
+        }
     }
 }

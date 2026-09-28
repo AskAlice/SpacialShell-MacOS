@@ -42,9 +42,12 @@ public final class OverviewController {
     private func open() {
         guard let world else { return }
         isOpen = true
+        let windows = windowItems(world)
+        let thumbs = WindowThumbnails.shared
         let view = OverviewView(
-            windows: windowItems(world),
+            windows: windows,
             apps: installedApps(),
+            thumbnails: Self.thumbnails(for: windows),
             onSelectWindow: { [weak self] ref in
                 self?.close(restoreFocus: false)   // the selection is the focus; a restore could race it
                 self?.send(.focusWindowRef(ref))
@@ -69,11 +72,32 @@ public final class OverviewController {
                                   width: s.width, height: s.height), display: true)
         }
         panel.makeKeyAndOrderFront(nil)
+
+        // #189: after the first frame is drawn from the cache, take what is missing or stale, a
+        // few windows at a time, and swap each batch's pictures in as it lands. A landing from an
+        // earlier open only re-reads the cache for what is on screen now.
+        ThumbnailRefresher.shared.refresh(
+            ThumbnailRefresh.onOverview(windows.map(\.ref), in: world, isStale: thumbs.isStale)) { [weak self] in
+            guard let self, self.isOpen, let host = self.host else { return }
+            host.rootView.thumbnails = Self.thumbnails(for: host.rootView.windows)
+        }
+    }
+
+    /// The cached picture of every window that has one. A placeholder (#128) has no window, and its
+    /// id is its own, so a picture cached under the same number belongs to some real window.
+    private static func thumbnails(for windows: [OverviewWindowItem]) -> [SpacialShellProtocol.WindowRef: NSImage] {
+        var out: [SpacialShellProtocol.WindowRef: NSImage] = [:]
+        for item in windows where !item.ref.isPlaceholder {
+            out[item.ref] = WindowThumbnails.shared.image(for: item.ref.id)
+        }
+        return out
     }
 
     private func close(restoreFocus: Bool = true) {
         guard isOpen else { return }
         isOpen = false
+        // #189: the open's captures are left to finish (a few windows, once; they stay in the
+        // cache). `cancelRefresh` would cancel whichever request is current, maybe the spatial view's.
         panel.orderOut(nil)   // fires resignKey → onDismiss → this method; the flag above ends the loop
         panel.contentView = nil
         host = nil

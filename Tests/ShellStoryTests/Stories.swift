@@ -202,30 +202,34 @@ enum Stories {
     static func spatialThumbnails(_ state: SpatialState,
                                   _ looks: [WindowID: (bg: UInt32, bar: UInt32, ink: UInt32)])
         -> [SpacialShellProtocol.WindowRef: NSImage] {
+        var out: [SpacialShellProtocol.WindowRef: NSImage] = [:]
+        for chip in state.rows.flatMap(\.chips) {
+            guard let look = looks[chip.ref.id] else { continue }
+            out[chip.ref] = windowShot(aspect: chip.frame.width * state.aspect / chip.frame.height, look)
+        }
+        return out
+    }
+    /// A stand-in window of `aspect` (width / height) as the thumbnail cache holds one,
+    /// `WindowThumbnails.longSide` px on the long side: a title bar, then lines of "text".
+    static func windowShot(aspect: CGFloat, _ look: (bg: UInt32, bar: UInt32, ink: UInt32)) -> NSImage {
         func color(_ hex: UInt32) -> CGColor {
             CGColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255,
                     blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
         }
-        var out: [SpacialShellProtocol.WindowRef: NSImage] = [:]
-        for chip in state.rows.flatMap(\.chips) {
-            guard let look = looks[chip.ref.id] else { continue }
-            let aspect = chip.frame.width * state.aspect / chip.frame.height
-            let long = WindowThumbnails.longSide
-            let w = Int((aspect >= 1 ? long : long * aspect).rounded()), h = Int((aspect >= 1 ? long / aspect : long).rounded())
-            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
-            ctx.setFillColor(color(look.bg)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-            ctx.setFillColor(color(look.bar)); ctx.fill(CGRect(x: 0, y: h - 28, width: w, height: 28))   // bottom-left origin
-            ctx.setFillColor(color(look.ink))
-            for (i, y) in stride(from: h - 56, to: 16, by: -22).enumerated() {
-                let length = CGFloat(w - 40) * [0.9, 0.6, 0.75, 0.45, 0.8][i % 5]
-                ctx.fill(CGRect(x: 20, y: CGFloat(y), width: length, height: 8))
-            }
-            let image = ctx.makeImage()!
-            out[chip.ref] = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+        let long = WindowThumbnails.longSide
+        let w = Int((aspect >= 1 ? long : long * aspect).rounded()), h = Int((aspect >= 1 ? long / aspect : long).rounded())
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
+        ctx.setFillColor(color(look.bg)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.setFillColor(color(look.bar)); ctx.fill(CGRect(x: 0, y: h - 28, width: w, height: 28))   // bottom-left origin
+        ctx.setFillColor(color(look.ink))
+        for (i, y) in stride(from: h - 56, to: 16, by: -22).enumerated() {
+            let length = CGFloat(w - 40) * [0.9, 0.6, 0.75, 0.45, 0.8][i % 5]
+            ctx.fill(CGRect(x: 20, y: CGFloat(y), width: length, height: 8))
         }
-        return out
+        let image = ctx.makeImage()!
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
     }
     /// #128: a placeholder tab for app `pid` — a negative pid, as `WindowRef.placeholderPid` gives.
     static func placeholder(_ pid: Int32, window: Int = 0, title: String = "", pinned: Bool = false) -> WindowTabItem {
@@ -628,6 +632,16 @@ enum Stories {
         }
         add("overview-results", CGSize(width: 640, height: 440),
             OverviewView(windows: windows, apps: apps, onSelectWindow: { _ in }, onLaunchApp: { _ in }),
+            awaitsFocus: true)
+        // #189: once the captures have landed — each window's picture fitted into its frame, the
+        // app icon on the corner. Notes is still the icon: its capture is pending or failed. The
+        // long-named window is portrait, so it is letterboxed sideways; the apps stay icons.
+        add("overview-thumbnails", CGSize(width: 640, height: 440),
+            OverviewView(windows: windows, apps: apps, thumbnails: [
+                windows[0].ref: windowShot(aspect: 1.6, (0xF5F5F7, 0xDCDCE0, 0x8E8E93)),    // a web page
+                windows[2].ref: windowShot(aspect: 1.4, (0x101010, 0x2A2A2A, 0x3FC56B)),    // a terminal
+                windows[3].ref: windowShot(aspect: 0.75, (0x1E1F24, 0x2B2D33, 0x6C9EF8)),   // an editor
+            ], onSelectWindow: { _ in }, onLaunchApp: { _ in }),
             awaitsFocus: true)
         add("overview-empty", CGSize(width: 640, height: 440),
             OverviewView(windows: [], apps: [], onSelectWindow: { _ in }, onLaunchApp: { _ in }),

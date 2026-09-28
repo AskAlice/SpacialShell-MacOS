@@ -90,4 +90,19 @@ public struct ThumbnailRefresh: Sendable {
             return refs.isEmpty ? nil : refs
         }
     }
+
+    /// #189: windows a batch when the overview opens — the first cells' pictures land first.
+    public static var overviewBatch: Int { 4 }
+
+    /// #189: what opening the overview captures — every window it lists whose thumbnail is missing
+    /// or stale, in its order, `overviewBatch` at a time. Never a placeholder (#128), nor a hidden,
+    /// fullscreen or off-Space window, which a capture cannot resolve (see `candidates`).
+    public static func onOverview(_ windows: [WindowRef], in world: World,
+                                  isStale: (WindowID) -> Bool) -> [[WindowRef]] {
+        let skip = world.hidden.union(world.offSpace).union(world.fullscreen)
+        let due = windows.filter { !$0.isPlaceholder && !skip.contains($0) && isStale($0.id) }
+        return stride(from: 0, to: due.count, by: overviewBatch).map {
+            Array(due[$0..<min($0 + overviewBatch, due.count)])
+        }
+    }
 }

@@ -108,4 +108,23 @@ import Foundation
         #expect(R.onOpen(state, visible: 0..<1, isStale: { _ in false }).isEmpty)
         #expect(R.onOpen(state, visible: 0..<0, isStale: { _ in true }).isEmpty)
     }
+
+    /// #189: opening the overview refreshes the stale thumbnails of the windows it lists, in its
+    /// order, a few at a time so the first cells' pictures land first. Never a placeholder (#128);
+    /// not a hidden, fullscreen or off-Space window, which a capture cannot resolve (its cell keeps
+    /// whatever picture it had). A visitor (ephemeral) window is taken like any other.
+    @Test func openingTheOverviewRefreshesItsStaleWindowsAFewAtATime() {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        for id: WindowID in 1...9 { w.adopt(WindowRef(id: id, pid: 1), kind: .tile, on: "D1") }
+        w.setHidden(WindowRef(id: 2, pid: 1), true)
+        w.setFullscreen(WindowRef(id: 3, pid: 1), true)
+        w.setOnActiveSpace(WindowRef(id: 4, pid: 1), false)
+        w.ephemeral.insert(WindowRef(id: 20, pid: 2))
+        let listed = (1...9).map { WindowRef(id: $0, pid: 1) } + [WindowRef(id: 30, pid: -7), WindowRef(id: 20, pid: 2)]
+        let fresh: Set<WindowID> = [6]
+        let batches = R.onOverview(listed, in: w, isStale: { !fresh.contains($0) })
+        #expect(R.overviewBatch == 4)
+        #expect(batches.map { $0.map(\.id) } == [[1, 5, 7, 8], [9, 20]])
+        #expect(R.onOverview(listed, in: w, isStale: { _ in false }).isEmpty)
+    }
 }

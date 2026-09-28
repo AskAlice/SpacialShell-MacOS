@@ -69,7 +69,7 @@ Config → views is the entire pipeline.
 | `LayoutPopover.swift` | The tab-bar cog's popover (a non-activating panel) + its controller |
 | `LayoutEditorView.swift` | The layout editor: presets, grid canvas, name/id, Copy as TOML (model: Kit `GridEditor`) |
 | `LayoutsController.swift` | The editor window and the popover's `settings.json` edits |
-| `OverviewView.swift` | Launcher overlay (search, windows + apps grid) |
+| `OverviewView.swift` | Launcher overlay (search, windows + apps grid): a window is its cached thumbnail with an app-icon corner badge, or its icon alone without one (#189); apps are icons |
 | `SpatialStripView.swift` / `SpatialController.swift` | The spatialisation view (#132): workspaces as mini-desktops, window chips at their layout frames, drawing the window's cached thumbnail under a material label band, or icon + title without one (#181) (model: Kit `SpatialView`) |
 | `CheatSheetOverlay.swift` | Fn-hold keybinding sheet (view + controller) |
 | `PanelWindow.swift` | The non-activating `NSPanel` all chrome lives in |
