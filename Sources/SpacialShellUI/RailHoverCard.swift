@@ -42,6 +42,8 @@ struct RailHoverCard: View {
     var highlighted: SpacialShellProtocol.WindowRef?
     /// #179: the pointer entered (true) or left (false) a preview.
     var onHoverPreview: (SpacialShellProtocol.WindowRef, Bool) -> Void = { _, _ in }
+    /// #192: a problem's button was clicked (`Problem.action`).
+    var onProblemAction: (Command) -> Void = { _ in }
 
     /// Past six the card stops being a glance and starts being a window list; the count on the
     /// tile already carries "a lot".
@@ -78,7 +80,7 @@ struct RailHoverCard: View {
     private func body(for content: Content) -> some View {
         switch content {
         case .problems(let problems):
-            ProblemsList(problems: problems)
+            ProblemsList(problems: problems, onAction: onProblemAction)
         case .message(let text):
             Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

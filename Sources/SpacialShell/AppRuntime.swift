@@ -249,6 +249,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                     NSApp.activate(ignoringOtherApps: true)
                     NSApp.orderFrontStandardAboutPanel(nil)
                 }
+            case .checkForUpdates:
+                // #192: the rail cog's update entry — brings Sparkle's alert up, in front.
+                Task { @MainActor in
+                    NSApp.activate(ignoringOtherApps: true)
+                    self?.updater?.checkForUpdates(nil)
+                }
             case .quit:
                 // Spec §7.4 and the M2 ruling: through the gate, never `NSApp.terminate` — the same
                 // path, on the same queue, as SIGTERM, so every parked window is put back first.

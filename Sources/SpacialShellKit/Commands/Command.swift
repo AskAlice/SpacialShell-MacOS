@@ -152,6 +152,8 @@ public enum Command: Sendable, Hashable {
     case reloadConfig
     case showAbout
     case quit
+    /// #192: the rail cog's "Update to X available" entry. App-layer: Sparkle's dialog, in focus.
+    case checkForUpdates
 
     /// Commands the app layer handles (overview, settings, the layout surfaces) — no-ops in the
     /// model. Every command source, the hotkey tap and the control socket alike, routes these to
@@ -161,6 +163,7 @@ public enum Command: Sendable, Hashable {
         case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
         case .switchAppWindow, .cancelAppWindowSwitch: true   // #188
         case .reloadConfig, .showAbout, .quit: true   // #111
+        case .checkForUpdates: true   // #192
         default: false
         }
     }

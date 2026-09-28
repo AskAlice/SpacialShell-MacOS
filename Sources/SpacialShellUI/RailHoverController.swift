@@ -364,7 +364,11 @@ final class RailHoverController {
             },
             onSelect: { [weak self] in self?.select($0) },
             highlighted: highlighted,
-            onHoverPreview: { [weak self] ref, inside in self?.previewHovered(ref, inside: inside) })
+            onHoverPreview: { [weak self] ref, inside in self?.previewHovered(ref, inside: inside) },
+            onProblemAction: { [weak self] command in
+                self?.send(command)
+                self?.hideNow("clicked")   // the dialog it opens is where the user's attention goes
+            })
         host.layoutSubtreeIfNeeded()
     }
 

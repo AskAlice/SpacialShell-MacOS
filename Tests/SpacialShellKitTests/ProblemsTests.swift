@@ -65,6 +65,23 @@ import SpacialShellProtocol
         #expect(seen.values == [0, 1, 0])           // the initial call, the report, the clear
     }
 
+    // #192: a scheduled update check's gentle reminder, listed under the rail cog.
+    @Test func anUpdateIsListedWithTheWayToShowIt() {
+        let update = Problem.updateAvailable(version: "0.5.0")
+        #expect(update.message == "Update to 0.5.0 available")
+        #expect(update.severity == .warning)
+        #expect(update.action?.command == .checkForUpdates)
+        #expect(!update.interrupts)   // a reminder, not an alert
+        #expect(Problem.screenRecordingMissing.action == nil)   // the others stay read-only
+    }
+
+    @Test func showingOrDismissingTheUpdateClearsIt() {
+        var p = Problems()
+        p.report(.updateAvailable(version: "0.5.0"))
+        let cleared = p.clear(Problem.Key.update)
+        #expect(cleared && p.isEmpty)
+    }
+
     @Test func wireStateCarriesProblemsAndOldPayloadsStillDecode() throws {
         let w = World.empty(screens: ["D1"], defaultLayout: .column)
         let s = WireState.test(world: w, problems: [.configInvalid("x")])

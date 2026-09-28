@@ -37,6 +37,20 @@ extension Problem {
         public static let gestureConflict = "gestures.system-conflict"
         /// Followed by the app's bundle id (or `pid:<n>`): one entry per app, not per window.
         public static let axWritePrefix = "ax-write:"
+        /// #192: a scheduled check found an update; cleared once Sparkle's dialog has been seen.
+        public static let update = "update"
+    }
+
+    /// #192: Sparkle's gentle reminder. A background app's update alert would open behind every
+    /// other window, so a scheduled check lists it here instead; the row opens the dialog.
+    public static func updateAvailable(version: String) -> Problem {
+        Problem(key: Key.update, severity: .warning, message: "Update to \(version) available")
+    }
+
+    /// What clicking the entry does, for the few that the shell itself can fix. Keyed like
+    /// `interrupts`, so the wire shape stays as it is.
+    public var action: (title: String, command: Command)? {
+        key == Key.update ? ("Show update…", .checkForUpdates) : nil
     }
 
     public static func configInvalid(_ detail: String) -> Problem {
