@@ -1,2 +1,2 @@
 import { noView } from "./lib/noView";
-export default noView("move-window-left", "Moved left");
+export default noView("move-window-left", "Moved window one tab left");

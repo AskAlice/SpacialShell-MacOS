@@ -8,18 +8,18 @@
   "license": "MIT",
   "categories": ["System"],
   "commands": [
-    { "name": "switch", "title": "Switch Workspace", "description": "List and focus workspaces on the current screen", "mode": "view" },
-    { "name": "cycle-layout", "title": "Cycle Layout", "description": "Cycle the active workspace's layout", "mode": "no-view" },
-    { "name": "focus-workspace-up", "title": "Workspace Up", "description": "Focus the workspace above", "mode": "no-view" },
-    { "name": "focus-workspace-down", "title": "Workspace Down", "description": "Focus the workspace below", "mode": "no-view" },
-    { "name": "focus-window-left", "title": "Focus Window Left", "description": "Focus the window to the left", "mode": "no-view" },
-    { "name": "focus-window-right", "title": "Focus Window Right", "description": "Focus the window to the right", "mode": "no-view" },
-    { "name": "move-window-up", "title": "Move Window Up", "description": "Move the focused window to the workspace above", "mode": "no-view" },
-    { "name": "move-window-down", "title": "Move Window Down", "description": "Move the focused window to the workspace below (new category)", "mode": "no-view" },
-    { "name": "move-window-left", "title": "Move Window Left", "description": "Move the focused window left", "mode": "no-view" },
-    { "name": "move-window-right", "title": "Move Window Right", "description": "Move the focused window right", "mode": "no-view" },
-    { "name": "toggle-float", "title": "Toggle Float", "description": "Float or re-tile the focused window", "mode": "no-view" },
-    { "name": "close-window", "title": "Close Window", "description": "Close the focused window", "mode": "no-view" }
+    { "name": "switch", "title": "Switch to Workspace…", "description": "Pick a workspace on any display and switch to it", "mode": "view" },
+    { "name": "cycle-layout", "title": "Cycle Workspace Layout", "description": "Switch the active workspace to its next layout", "mode": "no-view" },
+    { "name": "focus-workspace-up", "title": "Switch to Workspace Above", "description": "Switch to the workspace above the current one", "mode": "no-view" },
+    { "name": "focus-workspace-down", "title": "Switch to Workspace Below", "description": "Switch to the workspace below the current one", "mode": "no-view" },
+    { "name": "focus-window-left", "title": "Focus Window to the Left", "description": "Focus the tab to the left of the current window", "mode": "no-view" },
+    { "name": "focus-window-right", "title": "Focus Window to the Right", "description": "Focus the tab to the right of the current window", "mode": "no-view" },
+    { "name": "move-window-up", "title": "Move Window to Workspace Above", "description": "Send the focused window to the workspace above", "mode": "no-view" },
+    { "name": "move-window-down", "title": "Move Window to Workspace Below", "description": "Send the focused window to the workspace below (a new one if it's the last)", "mode": "no-view" },
+    { "name": "move-window-left", "title": "Move Window One Tab Left", "description": "Swap the focused window with its neighbour on the left", "mode": "no-view" },
+    { "name": "move-window-right", "title": "Move Window One Tab Right", "description": "Swap the focused window with its neighbour on the right", "mode": "no-view" },
+    { "name": "toggle-float", "title": "Float or Re-tile Window", "description": "Float the focused window, or put a floating one back in the tiling", "mode": "no-view" },
+    { "name": "close-window", "title": "Close Focused Window", "description": "Close the focused window", "mode": "no-view" }
   ],
   "preferences": [
     {
