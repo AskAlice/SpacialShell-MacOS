@@ -198,7 +198,8 @@ public actor WorldStore {
     /// `spacialctl state`, with the side tables the model itself does not carry (#57): which app a
     /// window belongs to, whether the shell has it parked, and the last frame it observed.
     public func wireState() -> WireState {
-        WireState(world: world, bundleIDs: records.bundleIDs, parked: records.parked, observed: records.observed, layouts: layouts,
+        WireState(world: world, bundleIDs: records.bundleIDs, parked: records.parked, observed: records.observed,
+                  titles: records.titles, appNames: appNames, categoryOverrides: config.appCategories, layouts: layouts,
                   problems: ProblemCenter.shared.current)
     }
     public func update(config: Config) async { self.config = config; await reconcile() }

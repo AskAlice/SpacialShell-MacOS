@@ -28,6 +28,9 @@ public struct WireState: Codable, Equatable, Sendable {
         public var isPlaceholder: Bool? = nil
         /// #129: set (true) only on a pinned tab.
         public var isPinned: Bool? = nil
+        /// #199: the window's title and its app's name, for clients that find a window by them.
+        public var title: String? = nil
+        public var appName: String? = nil
     }
     public struct WorkspaceDTO: Codable, Equatable, Sendable {
         public var id: UUID
@@ -35,6 +38,9 @@ public struct WireState: Codable, Equatable, Sendable {
         public var pinned: Bool, isActive: Bool
         public var windowCount: Int
         public var windows: [WindowDTO]
+        /// #198: the title the row goes by in the shell (#183: its category, capitalised, else its
+        /// name; "New workspace" for the trailing empty row). `name` stays the stored name.
+        public var title: String? = nil
     }
     public struct ScreenDTO: Codable, Equatable, Sendable {
         public var display: String
@@ -68,7 +74,12 @@ public struct WireState: Codable, Equatable, Sendable {
     /// still gets every workspace, just with anonymous windows.
     public init(world: World, bundleIDs: [WindowRef: String] = [:],
                 parked: Set<WindowRef> = [], observed: [WindowRef: CGRect] = [:],
+                titles: [WindowRef: String] = [:], appNames: [Int32: String] = [:],
+                categoryOverrides: [String: AppCategory] = [:],
                 layouts: LayoutCatalogue, problems: [Problem] = []) {
+        // A row's category from its apps', as the rail and the spatial view work it out (#183).
+        let bundleOf = Dictionary(bundleIDs.map { ($0.key.pid, $0.value) }, uniquingKeysWith: { a, _ in a })
+        let categoryOf = { (pid: Int32) in AppCategories.category(bundleID: bundleOf[pid], overrides: categoryOverrides) }
         self.problems = problems
         self.layouts = layouts.all.map { d in
             var zones: Int?
@@ -80,7 +91,11 @@ public struct WireState: Codable, Equatable, Sendable {
             return ScreenDTO(
                 display: id, isFocused: id == world.focus.screen, activeIndex: s.activeIndex,
                 workspaces: s.workspaces.enumerated().map { i, ws in
-                    WorkspaceDTO(id: ws.id, name: ws.name, symbol: ws.symbol, layout: ws.layout.rawValue,
+                    let trailing = i == s.workspaces.count - 1 && ws.windows.isEmpty
+                    let title = AppCategories.rowTitle(
+                        name: ws.name, category: AppCategories.rowCategory(ws.category, windows: ws.windows, categoryOf: categoryOf),
+                        isTrailingEmpty: trailing)
+                    return WorkspaceDTO(id: ws.id, name: ws.name, symbol: ws.symbol, layout: ws.layout.rawValue,
                                  pinned: ws.pinned, isActive: i == s.activeIndex, windowCount: ws.windows.count,
                                  windows: ws.windows.map { w in
                                      WindowDTO(id: w.id, pid: w.pid, bundleID: world.placeholders[w]?.bundleID ?? bundleIDs[w],
@@ -92,8 +107,11 @@ public struct WireState: Codable, Equatable, Sendable {
                                                isParked: parked.contains(w),
                                                frame: observed[w].map { [$0.minX, $0.minY, $0.width, $0.height] },
                                                isPlaceholder: w.isPlaceholder ? true : nil,
-                                               isPinned: world.pinnedTabs.contains(w) ? true : nil)
-                                 })
+                                               isPinned: world.pinnedTabs.contains(w) ? true : nil,
+                                               title: titles[w].flatMap { $0.isEmpty ? nil : $0 },
+                                               appName: appNames[w.pid])
+                                 },
+                                 title: title)
                 })
         }
     }

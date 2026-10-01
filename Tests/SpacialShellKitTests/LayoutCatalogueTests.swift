@@ -334,7 +334,12 @@ import SpacialShellProtocol
             w.screens["D1"]!.workspaces[i].id = UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", i + 1))!
         }
         let now = WireState.test(world: w, bundleIDs: [WindowRef(id: 11, pid: 7): "com.example.app"])
-        #expect(now.screens == old.screens)
+        // #198 added each row's `title` (window `title`/`appName` too, absent here); everything
+        // the old payload had is unchanged.
+        var untitled = now.screens
+        for s in untitled.indices { for i in untitled[s].workspaces.indices { untitled[s].workspaces[i].title = nil } }
+        #expect(untitled == old.screens)
+        #expect(now.screens[0].workspaces.allSatisfy { $0.title != nil })
         // #109 `problems`, #117 `subscribe`; #131's verbs are appended after them.
         #expect(Array(now.capabilities.prefix(7)) == old.capabilities + ["layouts", "problems", "subscribe"])
         #expect(now.layouts.map(\.id) == ["maximize", "split", "column", "half", "grid", "ratio"])   // #123

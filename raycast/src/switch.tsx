@@ -15,26 +15,37 @@ export default function Switch() {
   const screens = [...(state?.screens ?? [])]
     .filter((s) => byId || s.isFocused)
     .sort((a, b) => Number(b.isFocused) - Number(a.isFocused));
+  // #198: a row reads as the shell names it ("2 Web browsing") with what is in it, not as its
+  // layout: the layout is a small tag, and Change Layout… is the command that changes it.
+  const layoutName = (id: string) => state?.layouts?.find((l) => l.id === id)?.name ?? id;
+  const contents = (ws: Workspace) =>
+    (ws.windows ?? [])
+      .map((w) => w.title || w.appName)
+      .filter((t): t is string => !!t)
+      .slice(0, 3)
+      .join(" · ");
   const item = (ws: Workspace, i: number) => (
     <List.Item
       key={ws.id}
       icon={ws.isActive ? Icon.CheckCircle : Icon.Circle}
-      title={ws.name}
-      subtitle={ws.layout}
+      title={`${i + 1}  ${ws.title ?? ws.name}`}
+      subtitle={contents(ws)}
+      keywords={[ws.name, ...(ws.windows ?? []).flatMap((w) => [w.title ?? "", w.appName ?? ""])].filter(Boolean)}
       accessories={[
         ...(ws.pinned ? [{ icon: Icon.Pin }] : []),
+        { tag: layoutName(ws.layout), tooltip: "Layout" },
         { text: `${ws.windowCount} ${ws.windowCount === 1 ? "window" : "windows"}` },
       ]}
       actions={
         <ActionPanel>
           <Action
-            title="Focus Workspace"
+            title="Switch to Workspace"
             icon={Icon.ArrowRight}
             onAction={async () => {
               await closeMainWindow();
               try {
                 await run(byId ? ["focus-workspace", ws.id] : ["run", `focus-workspace-${i + 1}`]);
-                await showHUD(ws.name);
+                await showHUD(ws.title ?? ws.name);
               } catch (e) {
                 await showHUD(e instanceof Error ? e.message : "SpacialShell error");
               }
@@ -45,7 +56,7 @@ export default function Switch() {
     />
   );
   return (
-    <List isLoading={!state && !error} searchBarPlaceholder="Focus workspace…">
+    <List isLoading={!state && !error} searchBarPlaceholder="Switch to workspace…">
       {error && <List.EmptyView icon={Icon.Warning} title="SpacialShell unavailable" description={error} />}
       {screens.length === 1
         ? screens[0].workspaces.map((ws, i) => item(ws, i))

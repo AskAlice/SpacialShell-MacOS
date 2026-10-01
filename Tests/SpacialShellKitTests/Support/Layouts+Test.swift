@@ -20,8 +20,10 @@ extension ShellUI {
 
 extension WireState {
     static func test(world: World, bundleIDs: [WindowRef: String] = [:], parked: Set<WindowRef> = [],
-                     observed: [WindowRef: CGRect] = [:], layouts: LayoutCatalogue = .builtins,
-                     problems: [Problem] = []) -> WireState {
-        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed, layouts: layouts, problems: problems)
+                     observed: [WindowRef: CGRect] = [:], titles: [WindowRef: String] = [:],
+                     appNames: [Int32: String] = [:], categoryOverrides: [String: AppCategory] = [:],
+                     layouts: LayoutCatalogue = .builtins, problems: [Problem] = []) -> WireState {
+        WireState(world: world, bundleIDs: bundleIDs, parked: parked, observed: observed, titles: titles,
+                  appNames: appNames, categoryOverrides: categoryOverrides, layouts: layouts, problems: problems)
     }
 }

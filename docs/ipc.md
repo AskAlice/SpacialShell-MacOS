@@ -25,7 +25,7 @@ shell may be too old for. The list only grows: `v` stays 1 and a new verb adds a
 | `version` | — | `data.version` |
 | `state` | — | the model: screens, workspaces, windows, layouts, problems, `capabilities` |
 | `run` | `command` | a bound command by name, exactly like its hotkey (`spacialctl run focus-workspace-2`) |
-| `set-layout` | `layout`, `workspace?` | a workspace's layout; the focused one when `workspace` is absent |
+| `set-layout` | `layout`, `workspace?` | changes a workspace's layout; the focused one when `workspace` is absent. `spacialctl change-layout <id>` sends it (`spacialctl set-layout` still works) |
 | `quit` | — | quits through the same path as the rail menu's Quit: every window is put back first. The reply comes before the shell stops; its process exits a few seconds later. |
 | `reload` | — | `quit`, then the same SpacialShell.app starts again ([below](#reloading-reload-194)). The reply comes before the quit. |
 | `subscribe` | — | the event stream (below) |
@@ -63,6 +63,7 @@ and your request can at worst turn it into `unknown-…`, never move the wrong t
 ```sh
 ws=$(spacialctl state | jq -r '.screens[1].workspaces[0].id')
 spacialctl focus-workspace "$ws"                     # a row on the second display
+spacialctl change-layout split                       # the focused workspace's layout (#198)
 spacialctl call move-window "{\"window\":{\"id\":4242,\"pid\":501},\"workspace\":\"$ws\",\"follow\":false}"
 spacialctl quit
 ```

@@ -34,14 +34,32 @@ export async function run(args: string[]): Promise<string> {
   }
 }
 
+export interface Window {
+  id: number;
+  pid: number;
+  bundleID?: string;
+  isFocused: boolean;
+  /** #199: the window's title and its app's name (shells from #198 on). */
+  title?: string;
+  appName?: string;
+}
 export interface Workspace {
   id: string;
   name: string;
+  /** #198: the title the shell shows for the row ("Web browsing"); older shells send only `name`. */
+  title?: string;
   symbol: string;
   layout: string;
   pinned: boolean;
   isActive: boolean;
   windowCount: number;
+  windows: Window[];
+}
+export interface Layout {
+  id: string;
+  name: string;
+  symbol?: string;
+  builtin: boolean;
 }
 export interface Screen {
   display: string;
@@ -53,6 +71,7 @@ export interface State {
   v: number;
   capabilities: string[];
   screens: Screen[];
+  layouts?: Layout[];
 }
 
 export const getState = async (): Promise<State> => JSON.parse(await run(["state"])) as State;

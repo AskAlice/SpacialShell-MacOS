@@ -16,6 +16,9 @@ import Foundation
         #expect(req("set-layout", "grid") == IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string("grid")]))
         #expect(req("set-layout", "grid", "--workspace", "W") ==
                 IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string("grid"), "workspace": .string("W")]))
+        // #198: "change-layout" is the name it goes by; it sends the same request.
+        #expect(req("change-layout", "grid") == req("set-layout", "grid"))
+        #expect(req("change-layout", "grid", "--workspace", "W") == req("set-layout", "grid", "--workspace", "W"))
     }
 
     @Test func focusWorkspaceAndQuit() {

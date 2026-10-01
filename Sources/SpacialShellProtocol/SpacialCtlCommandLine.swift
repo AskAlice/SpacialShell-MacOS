@@ -9,8 +9,9 @@ public enum SpacialCtlCommandLine {
       state                spatial model as JSON
       run <command-name>   run a bound command, e.g. `run focus-workspace-2`; a command that
                            fails (unknown workspace, no focused window, ...) exits 1
-      set-layout <id> [--workspace <uuid>]
-                           set a workspace's layout (default: the focused one); unknown ids exit 1
+      change-layout <id> [--workspace <uuid>]
+                           change a workspace's layout (default: the focused one), e.g.
+                           `change-layout split`; unknown ids exit 1 (`set-layout` still works)
       focus-workspace <uuid>
                            switch to a workspace by id, on whichever display holds it; an unknown
                            id exits 1
@@ -43,9 +44,10 @@ public enum SpacialCtlCommandLine {
         // #109: extra words are passed through, so `run switch 42` is the daemon's clear "unknown command".
         case "run" where args.count >= 2:
             return IPCRequest(id: 1, cmd: "run", args: ["command": .string(args.dropFirst().joined(separator: " "))])
-        case "set-layout" where args.count == 2:
+        case "set-layout" where args.count == 2, "change-layout" where args.count == 2:   // #198
             return IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1])])
-        case "set-layout" where args.count == 4 && args[2] == "--workspace":
+        case "set-layout" where args.count == 4 && args[2] == "--workspace",
+             "change-layout" where args.count == 4 && args[2] == "--workspace":
             return IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1]), "workspace": .string(args[3])])
         // #131: passed through unparsed — an id that is not a UUID is the daemon's "unknown workspace".
         case "focus-workspace" where args.count == 2:
