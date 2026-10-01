@@ -480,6 +480,26 @@ final class AXApp: @unchecked Sendable {
         return id.map { WindowRef(id: $0, pid: pid) }
     }
 
+    /// #193: this app's window asking for a password, if it has one: the window of its focused
+    /// element when that is a secure text field, else its focused window when titled like a
+    /// password prompt (an Electron app often exposes no field at all). Read only while secure
+    /// input is on, and bounded by the app's messaging timeout. `app` is left for the caller.
+    func passwordPrompt() async -> SecureInputCandidate? {
+        await runOnAppThread(fallback: { nil as SecureInputCandidate? }) { [self] job in
+            if job.isCancelled { return nil }
+            let app = axApp.threadGuarded
+            if let field = app.get(Ax.focusedUIElementAttr), field.get(Ax.subroleAttr) == kAXSecureTextFieldSubrole,
+               let window = field.get(Ax.parentWindowRecursive), let id = window.windowIdentity() {
+                return SecureInputCandidate(ref: WindowRef(id: id, pid: pid), app: nil,
+                                            title: window.get(Ax.titleAttr) ?? "", secureField: true)
+            }
+            if job.isCancelled { return nil }
+            guard let focused = app.get(Ax.focusedWindowAttr), let title = focused.ax.get(Ax.titleAttr),
+                  SecureInputCandidate.looksLikePasswordPrompt(title) else { return nil }
+            return SecureInputCandidate(ref: WindowRef(id: focused.windowId, pid: pid), app: nil, title: title, secureField: false)
+        }
+    }
+
     private func cachedSnapshots() -> [WindowSnapshot] { stateLock.withLock { lastSnapshots } }
 
     // MARK: - Writes (spec §7.4; MacApp.swift:411-436)

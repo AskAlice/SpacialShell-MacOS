@@ -504,9 +504,6 @@ public final class HotkeyTap: @unchecked Sendable {
                 if isRepeat, let command { onRepeat?(command) }
                 return nil
             }
-            if IsSecureEventInputEnabled() {
-                Self.log.warning("secure input is active; hotkeys may be unreliable")
-            }
             onCommand(command)
             return nil                                       // consume: the front app never sees it
 

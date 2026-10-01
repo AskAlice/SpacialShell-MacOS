@@ -174,6 +174,11 @@ enum Ax {
         key: kAXParentAttribute,
         getter: { ($0 as! AXUIElement) },
     )
+    /// #193: the app's focused element, to find a focused password field (`AXApp.passwordPrompt`).
+    static let focusedUIElementAttr = ReadableAttrImpl<AXUIElement>(
+        key: kAXFocusedUIElementAttribute,
+        getter: { CFGetTypeID($0) == AXUIElementGetTypeID() ? ($0 as! AXUIElement) : nil },
+    )
     /// Direct children. Read to find a window's native tab bar — see `WindowClassifier`.
     static let childrenAttr = ReadableAttrImpl<[AxUiElementMock]>(
         key: kAXChildrenAttribute,

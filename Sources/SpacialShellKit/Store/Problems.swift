@@ -61,10 +61,12 @@ extension Problem {
     /// `interrupts`, so the wire shape stays as it is.
     public var action: (title: String, command: Command)? {
         switch key {
-        case Key.update: ("Show update…", .checkForUpdates)
-        case Key.karabiner: ("Set up…", .openSettings)
-        default: nil
+        case Key.update: return ("Show update…", .checkForUpdates)
+        case Key.karabiner: return ("Set up…", .openSettings)
+        default: break
         }
+        if let r = secureInputWindow { return ("Show window", .focusWindowRef(r)) }   // #193
+        return nil
     }
 
     public static func configInvalid(_ detail: String) -> Problem {

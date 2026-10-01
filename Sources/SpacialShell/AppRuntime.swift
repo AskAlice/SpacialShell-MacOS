@@ -41,7 +41,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     /// #172: the hotkey tap, trackpad gestures, focus follows the mouse, the Dock's attention marks
-    /// (#126) and the other-window-manager watch (#138), started stage by stage as boot reaches each.
+    /// (#126), the other-window-manager watch (#138) and the secure input watch (#193), started stage
+    /// by stage as boot reaches each.
     private lazy var watchers = Watchers { [log] in log.error("\($0, privacy: .public)") }
     /// Also fed by the store's pointer targets, which are not part of the world.
     private var pointerFocus: PointerFocus?
@@ -413,6 +414,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         alerts.onSilence = { [weak self] key in self?.silence(key) }
         let otherWindowManagers = OtherWindowManagerWatch(silenced: { [weak self] in self?.silencedWarnings ?? [] })
         watchers.start(otherWindowManagers, "the other-window-manager watch", config: config)
+        // #193: another app's secure input silences the tap without a word; this says whose.
+        watchers.start(SecureInputWatcher { await store.world }, "the secure input watch", config: config)
 
         log.info("stage 8/8: config watch and signal handlers")
         watchConfig()

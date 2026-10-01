@@ -341,8 +341,15 @@ it again. Delete the file to opt out; SpacialShell then stops writing it.
 - Tapping `Fn` **alone** still triggers whatever "Press 🌐 key to" is set to in System Settings
   (emoji picker, dictation…); SpacialShell only matches Fn *held* with another key.
 - While a **password field has focus** (Secure Input), macOS stops delivering keystrokes to every
-  event tap; hotkeys are deaf until you leave the field. This is by design of macOS. With
-  Karabiner-Elements they keep working: see [Secure input and Karabiner-Elements](#secure-input-and-karabiner-elements).
+  event tap; hotkeys are deaf until you leave the field. This is by design of macOS, and nothing
+  can opt out of it. SpacialShell notices within about 2 s and lists it under the rail cog, naming
+  the app and window asking for a password and its workspace, with **Show window** to bring it up.
+  The usual culprit is a prompt you can't see: a password window left on another workspace, or an
+  app that reopened after a reboot with its password field focused (#193). Terminal's and iTerm's
+  **Secure Keyboard Entry** do the same without a password field; they are listed as "An app has
+  secure keyboard entry on". `log stream --predicate 'subsystem == "sh.emu.SpacialShell" AND
+  category == "hotkeys"'` shows each change with the app's pid and window.
+  With Karabiner-Elements they keep working anyway: see [Secure input and Karabiner-Elements](#secure-input-and-karabiner-elements).
 - Another window manager or hotkey daemon that also consumes these chords (skhd, Hammerspoon,
   BetterTouchTool, Raycast's Fn hotkeys) wins or loses depending on which tap was installed first —
   run one at a time.
