@@ -79,6 +79,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             exit(1)
         }
         NSApp.setActivationPolicy(.accessory)
+        NSApp.mainMenu = ShellMainMenu.make()   // #200: ⌘A/⌘C/⌘V/⌘X/⌘Z in the shell's text fields
         // Before the Accessibility wait: an update must still reach a copy that never got its grant.
         updater = Updates.makeController()
         Task { await boot() }

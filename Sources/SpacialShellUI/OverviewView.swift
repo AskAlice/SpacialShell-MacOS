@@ -37,6 +37,16 @@ struct OverviewView: View {
 
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    /// #200: the keyboard's place in the results. The search field keeps the focus, so typing
+    /// always searches; arrows, Tab and Return work on the selection, as in Spotlight.
+    @State private var selection = GridSelection(sections: [])
+
+    /// #200: fixed columns, so ↑/↓ move by the rows the user sees: four pictures, seven apps.
+    static let windowColumns = 4, appColumns = 7
+    private var sections: [GridSelection.Section] {
+        [.init(count: filteredWindows.count, columns: Self.windowColumns),
+         .init(count: filteredApps.count, columns: Self.appColumns)]
+    }
 
     private var filteredWindows: [OverviewWindowItem] {
         query.isEmpty ? windows : windows.filter {
@@ -55,27 +65,50 @@ struct OverviewView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 16))
                     .focused($searchFocused)
-                    .onSubmit(openFirst)
+                    .onSubmit(openSelection)
+                    .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow]) { press in
+                        switch press.key {
+                        case .upArrow: selection.move(.up)
+                        case .downArrow: selection.move(.down)
+                        case .leftArrow: selection.move(.left)
+                        default: selection.move(.right)
+                        }
+                        return .handled
+                    }
+                    .onKeyPress(.tab) {
+                        selection.tab(backward: NSEvent.modifierFlags.contains(.shift))
+                        return .handled
+                    }
+                    // Esc clears a search first; with nothing typed it falls through and closes.
+                    .onKeyPress(.escape) {
+                        guard !query.isEmpty else { return .ignored }
+                        query = ""
+                        return .handled
+                    }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.quaternary.opacity(0.5)))
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    if !filteredWindows.isEmpty {
-                        sectionHeader("Windows")
-                        grid(minimum: Self.thumbSize.width, filteredWindows.map(windowCell))
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if !filteredWindows.isEmpty {
+                            sectionHeader("Windows")
+                            grid(section: 0, columns: Self.windowColumns, filteredWindows.map(windowCell))
+                        }
+                        if !filteredApps.isEmpty {
+                            sectionHeader("Applications")
+                            grid(section: 1, columns: Self.appColumns, filteredApps.map(appCell))
+                        }
+                        if filteredWindows.isEmpty && filteredApps.isEmpty {
+                            Text("No matches").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 24)
+                        }
                     }
-                    if !filteredApps.isEmpty {
-                        sectionHeader("Applications")
-                        grid(minimum: 92, filteredApps.map { item in
-                            appCell(item)
-                        })
-                    }
-                    if filteredWindows.isEmpty && filteredApps.isEmpty {
-                        Text("No matches").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 24)
-                    }
+                }
+                .onChange(of: selection.at) { _, at in
+                    guard let at else { return }
+                    withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(Self.cellID(at), anchor: nil) }
                 }
             }
         }
@@ -83,21 +116,37 @@ struct OverviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator.opacity(0.5)))
-        .onAppear { searchFocused = true }
+        .onAppear { searchFocused = true; selection = GridSelection(sections: sections) }
+        // A new search starts at its first result, as Spotlight's does.
+        .onChange(of: query) { selection = GridSelection(sections: sections) }
     }
 
-    /// Enter opens the first visible result, windows before apps — the "I typed enough" path.
-    private func openFirst() {
-        if let w = filteredWindows.first { onSelectWindow(w.ref) } else if let a = filteredApps.first { onLaunchApp(a.url) }
+    /// Return opens the selected result (#200): the first one until the keys or pointer move it.
+    private func openSelection() {
+        guard let at = selection.at else { return }
+        if at.section == 0, filteredWindows.indices.contains(at.index) { onSelectWindow(filteredWindows[at.index].ref) }
+        else if at.section == 1, filteredApps.indices.contains(at.index) { onLaunchApp(filteredApps[at.index].url) }
     }
+
+    private static func cellID(_ at: GridSelection.Position) -> String { "\(at.section)-\(at.index)" }
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.leading, 2)
     }
 
-    private func grid(minimum: CGFloat, _ cells: [AnyView]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 6)], spacing: 8) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { $0.element }
+    /// A section's results in `columns` fixed columns, each cell highlighted while selected (the
+    /// lighter rounded background of #179's previews) and selected by the pointer as it passes.
+    private func grid(section: Int, columns: Int, _ cells: [AnyView]) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: columns), spacing: 8) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { i, cell in
+                let at = GridSelection.Position(section: section, index: i)
+                cell
+                    .padding(4)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(selection.at == at ? 0.10 : 0)))
+                    .onHover { if $0 { selection.select(at) } }
+                    .id(Self.cellID(at))
+            }
         }
     }
 
