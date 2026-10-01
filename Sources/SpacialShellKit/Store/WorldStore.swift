@@ -62,6 +62,15 @@ public actor WorldStore {
     /// #179: the peek the last pass laid out. A pass that starts or ends one does not animate its
     /// re-tiles: the window leaves or rejoins its row by the peek, not by the layout.
     private var shownPeek: WindowRef?
+    /// #195: the windows holding a focused password field, by their root (a sheet shows with its
+    /// owner), as `SecureInputWatcher` last reported them; the reconciler keeps them out of the
+    /// corners (`Reconciler.desired`'s `prompts`). Kept as reported, whether placed yet or not:
+    /// each pass uses the ones in a row. `promptsRaised`: those raised since the last focus raise.
+    /// `promptHomes`: where a prompt brought out of a corner was before it was parked, so parking it
+    /// again keeps that, not the centred frame, for when its row comes back.
+    private var prompts: Set<WindowRef> = []
+    private var promptsRaised: Set<WindowRef> = []
+    private var promptHomes: [WindowRef: CGRect] = [:]
     private let now: @Sendable () -> ContinuousClock.Instant
     /// #64: draws each switch as motion; nil (tests, headless) places instantly.
     private let animator: (any SwitchAnimator)?
@@ -380,7 +389,8 @@ public actor WorldStore {
             if locked { return }
             // #179: the peek raise activates nothing, but an app that activates itself when one
             // of its windows is raised must not pull the model onto the window being peeked.
-            if world.peek?.pid == pid, !focusEchoes.humanRecently { return }
+            // #195: nor onto a password prompt raised out of its row.
+            if world.peek?.pid == pid || prompts.contains(where: { $0.pid == pid }), !focusEchoes.humanRecently { return }
             // #170: our own raise's activation is ignored (`FocusEchoes.activationReported`).
             switch focusEchoes.activationReported(pid: pid, world: world) {
             case .intrusion(let fs): interceptFocus(by: candidateWindow(ofPid: pid), behind: fs)
@@ -405,6 +415,12 @@ public actor WorldStore {
         case .screenUnlocked:
             locked = false
             eventSpan = tracedSnapshot(await backend.currentSnapshot())
+        case .secureInputWindows(let refs):
+            let next = Set(refs.map { world.root(of: $0) })
+            guard next != prompts else { return }
+            Self.log.notice("password prompts \(next.map(\.id).sorted(), privacy: .public)")
+            prompts = next
+            if locked { return }   // the unlock's pass places them
         }
         drainDeferredFocus()
         await reconcile(parent: eventSpan)
@@ -836,7 +852,8 @@ public actor WorldStore {
     /// hidden windows are skipped: a parking corner or a minimized window's frame says nothing —
     /// except a fullscreen one's, which is macOS's word even if we parked it before it went fullscreen.
     private func rehomeIfMacOSOwnsFrame(_ w: WindowSnapshot, hidden: Bool) {
-        guard !hidden, let loc = world.location(of: w.ref) else { return }
+        // #195: a password prompt is on the focused display only while it is one; its row stays put.
+        guard !hidden, !prompts.contains(world.root(of: w.ref)), let loc = world.location(of: w.ref) else { return }
         let floating = world.screens[loc.screen]!.workspaces[loc.index].floating.contains(w.ref)
         // A fullscreen window's frame is always macOS's word, even one we once parked (a window in
         // an inactive row that went fullscreen); a parked floating window's frame is our corner.
@@ -937,11 +954,14 @@ public actor WorldStore {
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         logUnresolvedLayouts()
         notePeekHomes()
+        let shownPrompts = prompts.filter { world.location(of: $0) != nil }
+        for p in shownPrompts where records[p].parked && promptHomes[p] == nil { promptHomes[p] = records[p].prePark }
         var desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: records.observed, prePark: records.prePark, parkedNow: records.parked, zeroSliver: zero,
                                          insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: echoes.refused,
                                          unmovable: echoes.unmovable,
-                                         peekHome: peekHomes.compactMapValues(\.frame))
+                                         peekHome: peekHomes.compactMapValues(\.frame),
+                                         prompts: shownPrompts)
         // #165: the popups due a placement, and the requests they were placed for.
         let pendingPopups = records.pendingPopups
         let placed = Reconciler.placePopups(pendingPopups, into: &desired, world: world, displays: displays,
@@ -1009,7 +1029,7 @@ public actor WorldStore {
             case .setPosition(let r, let o):
                 // #179: a window parked on its way back from a peek remembers where it was before
                 // the peek, not the peek's frame.
-                let pre = records[r].parked ? nil : peekHomes[r]?.frame ?? records[r].observed
+                let pre = records[r].parked ? nil : peekHomes[r]?.frame ?? promptHomes[r] ?? records[r].observed
                 parks += 1
                 parking.insert(r)
                 let result = await backend.setPosition(r, o)
@@ -1052,6 +1072,19 @@ public actor WorldStore {
             let result = await backend.raiseWithoutActivating(p)
             if case .failure(let e) = result {
                 Self.log.notice("peek raise failed \(p.id, privacy: .public) \(String(describing: e), privacy: .public)")
+            }
+            if gen != generation { return }
+        }
+        // #195: a password prompt goes in front, without being focused, so it is seen: once, and
+        // again after any focus raise, which went over it. Until it is answered no hotkey works,
+        // so keeping it in sight is the way out.
+        promptsRaised = raisedFocus ? [] : promptsRaised.intersection(shownPrompts)
+        promptHomes = promptHomes.filter { prompts.contains($0.key) }
+        for p in shownPrompts.subtracting(promptsRaised).sorted(by: { $0.id < $1.id }) {
+            promptsRaised.insert(p)
+            focusEchoes.peekRaised(p)
+            if case .failure(let e) = await backend.raiseWithoutActivating(p) {
+                Self.log.notice("password prompt raise failed \(p.id, privacy: .public) \(String(describing: e), privacy: .public)")
             }
             if gen != generation { return }
         }
@@ -1211,6 +1244,7 @@ public actor WorldStore {
     private func forget(_ r: WindowRef) {
         records.forget(r); echoes.forget(r); focusEchoes.vanished(r)
         peekHomes[r] = nil   // #179
+        prompts.remove(r); promptsRaised.remove(r); promptHomes[r] = nil   // #195
     }
 
     /// #109: a retired window is a write failure that persisted. One problem per app, rebuilt from

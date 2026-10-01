@@ -414,8 +414,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         alerts.onSilence = { [weak self] key in self?.silence(key) }
         let otherWindowManagers = OtherWindowManagerWatch(silenced: { [weak self] in self?.silencedWarnings ?? [] })
         watchers.start(otherWindowManagers, "the other-window-manager watch", config: config)
-        // #193: another app's secure input silences the tap without a word; this says whose.
-        watchers.start(SecureInputWatcher { await store.world }, "the secure input watch", config: config)
+        // #193: another app's secure input silences the tap without a word; this says whose. #195:
+        // and a window holding it with a focused password field is never left parked out of sight.
+        let secureInput = SecureInputWatcher(world: { await store.world }, onPrompts: { refs in
+            Task { await store.apply(.secureInputWindows(refs)) }
+        })
+        watchers.start(secureInput, "the secure input watch", config: config)
 
         log.info("stage 8/8: config watch and signal handlers")
         watchConfig()

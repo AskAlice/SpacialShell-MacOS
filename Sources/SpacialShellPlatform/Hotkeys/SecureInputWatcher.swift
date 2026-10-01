@@ -2,10 +2,13 @@ import AppKit
 import Carbon.HIToolbox
 import os
 import SpacialShellKit
+import struct SpacialShellProtocol.WindowRef
 
 /// #193: while another app holds Secure Event Input, no key-down reaches the hotkey tap, so the
 /// tap itself can never notice. This polls for it apart from key events and lists a Problem naming
-/// the window asking for a password (`SecureInputWatch`), cleared once secure input is off.
+/// the window asking for a password (`SecureInputWatch`), cleared once secure input is off. #195:
+/// the windows with a focused password field also go to `onPrompts`, so the store never leaves
+/// one parked out of sight (title matches only name a window; they never move one).
 ///
 /// Every `interval`: `IsSecureEventInputEnabled()`, which is cheap. Only while it is on, every app
 /// is asked for a password prompt (`AXApp.passwordPrompt`), concurrently, each bounded by its AX
@@ -20,6 +23,9 @@ public final class SecureInputWatcher {
     private let problems: ProblemCenter
     /// The world as the store has it now, for the workspace names: pulled per scan, never cached.
     private let world: @Sendable () async -> World
+    /// Called after every scan, changed or not: the store dedupes, and may not have placed a
+    /// window the last report named.
+    private let onPrompts: @MainActor ([WindowRef]) -> Void
     private var watch = SecureInputWatch()
     private var timer: Timer?
     private var scanning = false
@@ -28,9 +34,11 @@ public final class SecureInputWatcher {
     private var unchangedScans = 0
     private var ticksToSkip = 0
 
-    public init(problems: ProblemCenter = .shared, world: @escaping @Sendable () async -> World) {
+    public init(problems: ProblemCenter = .shared, world: @escaping @Sendable () async -> World,
+                onPrompts: @escaping @MainActor ([WindowRef]) -> Void = { _ in }) {
         self.problems = problems
         self.world = world
+        self.onPrompts = onPrompts
     }
 
     private func poll() {
@@ -47,6 +55,7 @@ public final class SecureInputWatcher {
             scanning = false
             guard timer != nil else { return }   // stopped while it scanned
             let changed = report(on: on, found, world)
+            onPrompts(found.filter(\.secureField).map(\.ref))
             unchangedScans = changed ? 0 : unchangedScans + 1
             ticksToSkip = (1 << min(unchangedScans, 3)) - 1
         }

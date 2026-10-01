@@ -345,7 +345,10 @@ it again. Delete the file to opt out; SpacialShell then stops writing it.
   can opt out of it. SpacialShell notices within about 2 s and lists it under the rail cog, naming
   the app and window asking for a password and its workspace, with **Show window** to bring it up.
   The usual culprit is a prompt you can't see: a password window left on another workspace, or an
-  app that reopened after a reboot with its password field focused (#193). Terminal's and iTerm's
+  app that reopened after a reboot with its password field focused (#193). So such a window is
+  never left parked: while it holds a focused password field it is shown centred on the focused
+  display, in front, without taking focus, and goes back to its own row once it lets go (#195).
+  Terminal's and iTerm's
   **Secure Keyboard Entry** do the same without a password field; they are listed as "An app has
   secure keyboard entry on". `log stream --predicate 'subsystem == "sh.emu.SpacialShell" AND
   category == "hotkeys"'` shows each change with the app's pid and window.

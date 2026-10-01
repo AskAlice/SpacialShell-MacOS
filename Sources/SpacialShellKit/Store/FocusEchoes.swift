@@ -87,7 +87,7 @@ public struct FocusEchoes: Sendable {
     /// reports it, possibly after the peek has ended: queued like any raise, so that report is our
     /// own echo of a window the model has not focused — `.stale`, never a human choosing `p`. Only
     /// the focus stream: nothing is activated, so no activation echo is due. `lastRaised` is left
-    /// alone; the peek is not the model's focus.
+    /// alone; the peek is not the model's focus. #195's password prompts are raised the same way.
     public mutating func peekRaised(_ p: WindowRef) { pendingFocus.append((p, now())) }
 
     /// #179: the peek is over. The model's focus is raised again on the next pass, even if it was

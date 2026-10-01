@@ -34,21 +34,29 @@ public enum Reconciler {
     /// `refused` and `unmovable` are what `WindowEchoes` learned from the echoes of our writes (#169).
     /// `peekHome` (#179): where each window a peek moved was before it — a floating window goes
     /// back there once the peek ends, since nothing else would ever move it back.
+    /// `prompts` (#195): windows holding a focused password field, which hold secure input for the
+    /// whole system and so must not sit unseen in a corner. One that would be parked is centred, at
+    /// its own size, on the focused display's tiling area instead; its row and its sheets follow
+    /// as for any frame. One already on screen is left as it is.
     public static func desired(world: World, displays: [DisplayInfo], config: LayoutConfig,
                                observed: [WindowRef: CGRect], prePark: [WindowRef: CGRect],
                                parkedNow: Set<WindowRef>, zeroSliver: Set<WindowRef>,
                                insets: [DisplayID: ShellInsets] = [:],
                                suspended: Set<WindowRef> = [], refused: [WindowRef: Refusal] = [:],
                                unmovable: Set<WindowRef> = [],
-                               peekHome: [WindowRef: CGRect] = [:]) -> [WindowRef: Placement] {
+                               peekHome: [WindowRef: CGRect] = [:], prompts: Set<WindowRef> = []) -> [WindowRef: Placement] {
         var out: [WindowRef: Placement] = [:]
         let byId = Dictionary(uniqueKeysWithValues: displays.map { ($0.id, $0) })
+        let promptRect = prompts.isEmpty ? nil : world.screens[world.focus.screen].flatMap { s in
+            byId[s.display].map { tilingRect(screen: s, display: $0, insets: insets[s.display, default: .zero], screenGap: config.screenGap) }
+        }
         for (sid, screen) in world.screens {
             guard let display = byId[sid] else { continue }
             let corner = Parking.corner(for: display, among: displays)
             let visible = display.visibleFrame
             func park(_ w: WindowRef) -> Placement {
                 let size = observed[w]?.size ?? fallbackSize
+                if prompts.contains(w), let r = promptRect { return .frame(keepInside(centered(size: size, in: r), r)) }   // #195
                 return .parked(Parking.origin(windowSize: size, visibleFrame: visible, corner: corner, sliver: zeroSliver.contains(w) ? 0 : 1))
             }
             let rect = tilingRect(screen: screen, display: display, insets: insets[sid, default: .zero], screenGap: config.screenGap)

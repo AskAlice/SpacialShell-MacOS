@@ -90,6 +90,10 @@ public enum BackendEvent: Sendable, Equatable {
     case pointerMoved(CGPoint)
     case screenLocked
     case screenUnlocked
+    /// #195: while secure input is on, the windows holding a focused password field (`[]`: none,
+    /// or secure input is off). Not the backend's own observation: `SecureInputWatcher` polls for
+    /// them (#193) and the runtime hands them to the store, which keeps them out of the corners.
+    case secureInputWindows([WindowRef])
 }
 
 public enum BackendError: Error, Equatable, Sendable { case notFound, timeout, ax(Int32) }
