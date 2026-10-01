@@ -116,7 +116,10 @@ struct RailHoverCard: View {
                 } else {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(148), spacing: 8), count: 2),
                               spacing: 6) {
-                        ForEach(shown) { tile($0, width: 148, height: 92) }
+                        ForEach(shown) {
+                            tile($0, width: 148, height: 92)
+                                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                        }
                     }
                 }
                 if items.count > shown.count {
@@ -124,6 +127,8 @@ struct RailHoverCard: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
+            // #203: a window closing or opening in the row fades its preview out or in.
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: shown.map(\.ref))
         }
     }
 
@@ -164,6 +169,14 @@ struct RailHoverCard: View {
         .contentShape(Rectangle())
         .onHover { onHoverPreview(item.ref, $0) }
         .onTapGesture { onSelect(item.ref) }
+        // #203: the hovered preview's ×, as on a tab (#180): its window closes, the card follows.
+        .overlay(alignment: .topTrailing) {
+            if highlighted == item.ref, !item.ref.isPlaceholder {
+                TabCloseButton(backed: true) { onPreviewClose(item.ref) }
+                    .padding(4)
+                    .transition(.opacity)
+            }
+        }
         // #201: right-click is the window's menu, middle-click closes it — as on its tab. The
         // catcher claims only those two; left clicks and hovers reach the preview as before.
         .overlay {

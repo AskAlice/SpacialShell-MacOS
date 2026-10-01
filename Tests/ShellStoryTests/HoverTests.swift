@@ -203,6 +203,19 @@ import SwiftUI
         #expect(hover.shownWorkspace == nil)
     }
 
+    /// #203: a window closing (or opening) in the shown row keeps the card, which follows it.
+    @Test func theCardFollowsItsRowWhenAWindowCloses() {
+        let stage = Stage()
+        let item = railState().rail[0]
+        let hover = shownCard(stage, item)
+        let fewer = WorkspaceRailItem(id: item.id, index: item.index, name: item.name, symbol: item.symbol,
+                                      windowCount: max(0, item.windowCount - 1), windows: Array(item.windows.dropLast()),
+                                      isActive: item.isActive, isPinned: false, isTrailingEmpty: false)
+        hover.railChanged(ScreenShellState(display: "D1", isFocusedScreen: true, rail: [fewer], tabs: [],
+                                           layout: .split, layouts: .builtins))
+        #expect(hover.shownWorkspace == item.id, "same row, one window fewer: still shown")
+    }
+
     /// Still there but at another row: the card would sit beside some other tile.
     @Test func theCardGoesWhenItsWorkspaceMoves() {
         let stage = Stage()

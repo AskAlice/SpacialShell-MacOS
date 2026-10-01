@@ -98,7 +98,7 @@ final class RailHoverController {
 
     /// `tile` and `bounds` are screen coordinates (bottom-left origin, like `NSScreen`).
     func show(item: WorkspaceRailItem, tile: CGRect, railSide: RailSide, bounds: CGRect,
-              metaFor: (Int32) -> AppMeta) {
+              metaFor: @escaping (Int32) -> AppMeta) {
         hideTask?.cancel(); hideTask = nil
         guard shown != item.id else { return }
         captureTask?.cancel()
@@ -123,6 +123,8 @@ final class RailHoverController {
         let card = content(for: item, items: items)
         render(title: title, subtitle: subtitle, content: card)
         place(near: tile, railSide: railSide, bounds: bounds)
+        // #203: what a live update needs to draw this card again.
+        anchor = (tile, railSide, bounds); shownWindows = item.windows; meta = metaFor
         appear("workspace \(item.index + 1)")
 
         guard case .previews = card else { return }
@@ -247,8 +249,32 @@ final class RailHoverController {
             if state.tray.isEmpty { hideNow("tray emptied") }
         default:
             guard let row = state.rail.first(where: { $0.id == shown }) else { return hideNow("workspace gone") }
-            if row.index != shownIndex { hideNow("workspace moved") }
+            if row.index != shownIndex { return hideNow("workspace moved") }
+            if row.windows != shownWindows { follow(row) }
         }
+    }
+
+    /// #203: the card's row gained or lost a window while it is open — say it closed from the
+    /// card. It is drawn again from the cache (a new window's picture follows as for any preview),
+    /// and the window slides to its new size beside the same tile.
+    private var anchor: (tile: CGRect, side: RailSide, bounds: CGRect)?
+    private var shownWindows: [SpacialShellProtocol.WindowRef] = []
+    private var meta: ((Int32) -> AppMeta)?
+    private func follow(_ row: WorkspaceRailItem) {
+        guard let anchor, let meta else { return }
+        shownWindows = row.windows
+        let thumbs = WindowThumbnails.shared
+        let items = row.windows.map { ref in
+            let m = meta(ref.pid)
+            return WindowPreviewItem(ref: ref, name: m.name, icon: m.icon,
+                                     image: ref.isPlaceholder ? nil : thumbs.image(for: ref.id))
+        }
+        let title = AppCategories.rowTitle(
+            name: row.name,
+            category: AppCategories.rowCategory(row.category, windows: row.windows) { meta($0).category },
+            isTrailingEmpty: row.isTrailingEmpty)
+        render(title: title, subtitle: subtitle(row), content: content(for: row, items: items))
+        place(near: anchor.tile, railSide: anchor.side, bounds: anchor.bounds, animated: true)
     }
 
     // MARK: - #182 pointer safety net
@@ -401,13 +427,22 @@ final class RailHoverController {
 
     /// Beside the tile, on the side the rail is not: vertically centred on the tile, then nudged
     /// back inside the screen so a card next to the bottom tile is not half off the display.
-    private func place(near tile: CGRect, railSide: RailSide, bounds: CGRect) {
+    private func place(near tile: CGRect, railSide: RailSide, bounds: CGRect, animated: Bool = false) {
         let size = host.fittingSize
         let gap: CGFloat = 8
         let x = railSide == .left ? tile.maxX + gap : tile.minX - gap - size.width
         var y = tile.midY - size.height / 2
         y = min(max(y, bounds.minY + gap), bounds.maxY - size.height - gap)
-        window.setFrame(NSRect(x: min(max(x, bounds.minX), bounds.maxX - size.width), y: y,
-                               width: size.width, height: size.height), display: true)
+        let frame = NSRect(x: min(max(x, bounds.minX), bounds.maxX - size.width), y: y,
+                           width: size.width, height: size.height)
+        // #203: a live change slides the card to its new size; a fresh show lands at once.
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            return window.setFrame(frame, display: true)
+        }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrame(frame, display: true)
+        }
     }
 }

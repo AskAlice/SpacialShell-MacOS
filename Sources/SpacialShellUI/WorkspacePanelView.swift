@@ -325,7 +325,7 @@ private struct WidthCap: ViewModifier {
 /// pointer over the glyph itself lights a round fill behind it, so it reads as the button it is,
 /// focused tab or not. `backed` gives the hover × an opaque disc so it stays legible drawn over
 /// the end of a title.
-private struct TabCloseButton: View {
+struct TabCloseButton: View {   // #203: also on the sidebar card's previews
     let backed: Bool
     let action: () -> Void
     @State private var hovered: Bool
