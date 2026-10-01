@@ -39,7 +39,17 @@ extension Problem {
         public static let axWritePrefix = "ax-write:"
         /// #192: a scheduled check found an update; cleared once Sparkle's dialog has been seen.
         public static let update = "update"
+        /// #196: Karabiner-Elements is installed and SpacialShell's rules file is not written.
+        public static let karabiner = "karabiner.offer"
     }
+
+    /// #196: an offer, not a fault. Listed until the rules file is written or the entry dismissed.
+    public static let karabinerOffer = Problem(
+        key: Key.karabiner, severity: .warning,
+        message: "Hotkeys stop working while a password field has focus. Karabiner-Elements can deliver them anyway: set it up in Settings › General.")
+
+    /// #196: entries the user may put away for good; the rest clear only when fixed.
+    public var canDismiss: Bool { key == Key.karabiner }
 
     /// #192: Sparkle's gentle reminder. A background app's update alert would open behind every
     /// other window, so a scheduled check lists it here instead; the row opens the dialog.
@@ -50,7 +60,11 @@ extension Problem {
     /// What clicking the entry does, for the few that the shell itself can fix. Keyed like
     /// `interrupts`, so the wire shape stays as it is.
     public var action: (title: String, command: Command)? {
-        key == Key.update ? ("Show update…", .checkForUpdates) : nil
+        switch key {
+        case Key.update: ("Show update…", .checkForUpdates)
+        case Key.karabiner: ("Set up…", .openSettings)
+        default: nil
+        }
     }
 
     public static func configInvalid(_ detail: String) -> Problem {

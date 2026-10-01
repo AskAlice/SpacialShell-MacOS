@@ -45,17 +45,21 @@ public struct IPCDispatch: Sendable {
     public var route: @Sendable (Command) -> Void
     /// #139: the settings window's "Reset saved state…", by another door; returns what happened.
     public var resetState: @Sendable () async -> String
+    /// #196: `write` false, the Karabiner rules file as JSON; true, it is written and the reply
+    /// says where. Throws what went wrong.
+    public var karabinerRules: @Sendable (_ write: Bool) async throws -> JSONValue
 
     public init(version: String, wireState: @escaping @Sendable () async -> WireState,
                 run: @escaping @Sendable (Command) async -> CommandReport,
                 route: @escaping @Sendable (Command) -> Void,
-                resetState: @escaping @Sendable () async -> String = { "not running" }) {
+                resetState: @escaping @Sendable () async -> String = { "not running" },
+                karabinerRules: @escaping @Sendable (Bool) async throws -> JSONValue = { _ in .null }) {
         self.version = version; self.wireState = wireState; self.run = run; self.route = route
-        self.resetState = resetState
+        self.resetState = resetState; self.karabinerRules = karabinerRules
     }
 
     /// The verbs `handle` answers, plus `subscribe`. Order is the wire's: older verbs first.
-    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state"] + idVerbs.keys.sorted()
+    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state", "karabiner-rules"] + idVerbs.keys.sorted()
 
     public func handle(_ request: IPCRequest) async -> IPCReply {
         let id = request.id
@@ -81,6 +85,9 @@ public struct IPCDispatch: Sendable {
             }
         case "reset-state":
             return IPCReply(.ok(id: id, data: .object(["message": .string(await resetState())])))
+        case "karabiner-rules":
+            do { return IPCReply(.ok(id: id, data: try await karabinerRules(request.args["write"]?.boolValue == true))) }
+            catch { return IPCReply(.failure(id: id, error.localizedDescription)) }
         case "quit":
             // Through the termination gate, like the rail's Quit (spec §7.4), but only once the
             // reply is written: the gate's first step stops this server.

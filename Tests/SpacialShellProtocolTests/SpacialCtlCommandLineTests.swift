@@ -26,6 +26,13 @@ import Foundation
         #expect(req("quit") == IPCRequest(id: 1, cmd: "quit"))
     }
 
+    /// #196
+    @Test func karabinerRulesPrintsOrWrites() {
+        #expect(req("karabiner-rules") == IPCRequest(id: 1, cmd: "karabiner-rules"))
+        #expect(req("karabiner-rules", "--write") == IPCRequest(id: 1, cmd: "karabiner-rules", args: ["write": .bool(true)]))
+        #expect(req("karabiner-rules", "--force") == nil)
+    }
+
     @Test func callSendsAnyVerbWithItsArgs() {
         #expect(req("call", "version") == IPCRequest(id: 1, cmd: "version"))
         let sent = req("call", "move-window", #"{"window":{"id":42,"pid":501},"workspace":"W","follow":false}"#)

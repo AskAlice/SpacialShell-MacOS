@@ -18,6 +18,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let openConfigFile: () -> Void
     private let checkForUpdates: (() -> Void)?
     private let resetState: (() -> Void)?
+    private let karabiner: KarabinerBridge?
     private let configPath: String
 
     public init(file: Config, overrides: SettingsOverrides,
@@ -25,8 +26,10 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
                 openConfigFile: @escaping () -> Void,
                 checkForUpdates: (() -> Void)? = nil,
                 resetState: (() -> Void)? = nil,
+                karabiner: KarabinerBridge? = nil,
                 onChange: @escaping (SettingsOverrides) -> Void) {
         self.resetState = resetState
+        self.karabiner = karabiner
         self.file = file
         self.overrides = overrides
         self.configPath = configPath
@@ -84,7 +87,8 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
             configPath: configPath,
             openConfigFile: openConfigFile,
             checkForUpdates: checkForUpdates,
-            resetState: resetState)
+            resetState: resetState,
+            karabiner: karabiner)
         if let host = window.contentView as? NSHostingView<SettingsView> {
             host.rootView = view
         } else {

@@ -154,6 +154,9 @@ public enum Command: Sendable, Hashable {
     case quit
     /// #192: the rail cog's "Update to X available" entry. App-layer: Sparkle's dialog, in focus.
     case checkForUpdates
+    /// #196: a rail cog entry's "Dismiss" (`Problem.canDismiss`). App-layer: remembered in
+    /// settings.json, like #138's "Don't warn again", and cleared.
+    case dismissProblem(String)
 
     /// Commands the app layer handles (overview, settings, the layout surfaces) — no-ops in the
     /// model. Every command source, the hotkey tap and the control socket alike, routes these to
@@ -164,6 +167,7 @@ public enum Command: Sendable, Hashable {
         case .switchAppWindow, .cancelAppWindowSwitch: true   // #188
         case .reloadConfig, .showAbout, .quit: true   // #111
         case .checkForUpdates: true   // #192
+        case .dismissProblem: true   // #196
         default: false
         }
     }

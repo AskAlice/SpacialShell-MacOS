@@ -603,8 +603,8 @@ public enum CommandRunner {
             if wasActive, w.focus.screen == loc.screen, let f = w.focus.window { effects.append(.focus(f)) }
             effects.append(.relayout)
 
-        case .reloadConfig, .showAbout, .quit, .checkForUpdates:
-            break   // app-layer (#111, #192), like `.openSettings`
+        case .reloadConfig, .showAbout, .quit, .checkForUpdates, .dismissProblem:
+            break   // app-layer (#111, #192, #196), like `.openSettings`
         }
         return (w, effects)
     }

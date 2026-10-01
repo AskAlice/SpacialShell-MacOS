@@ -20,6 +20,10 @@ public enum SpacialCtlCommandLine {
       call <cmd> [<json-object>]
                            send any socket verb with its args, e.g.
                            call move-window '{"window":{"id":42,"pid":501},"workspace":"<uuid>"}'
+      karabiner-rules [--write]
+                           SpacialShell's hotkeys as a Karabiner-Elements rules file (JSON), so they
+                           work in password fields; --write saves it to Karabiner's
+                           assets/complex_modifications/spacialshell.json
       subscribe            stream events, one JSON object per line: a `shell` snapshot first, then
                            only changes (workspace-activated, focus-changed, window-adopted, ...)
     """
@@ -31,6 +35,9 @@ public enum SpacialCtlCommandLine {
         case "subscribe": return IPCRequest(id: 1, cmd: "subscribe")
         case "quit": return IPCRequest(id: 1, cmd: "quit")
         case "reset-state": return IPCRequest(id: 1, cmd: "reset-state")   // #139
+        case "karabiner-rules" where args.count == 1: return IPCRequest(id: 1, cmd: "karabiner-rules")   // #196
+        case "karabiner-rules" where args == ["karabiner-rules", "--write"]:
+            return IPCRequest(id: 1, cmd: "karabiner-rules", args: ["write": .bool(true)])
         // #109: extra words are passed through, so `run switch 42` is the daemon's clear "unknown command".
         case "run" where args.count >= 2:
             return IPCRequest(id: 1, cmd: "run", args: ["command": .string(args.dropFirst().joined(separator: " "))])

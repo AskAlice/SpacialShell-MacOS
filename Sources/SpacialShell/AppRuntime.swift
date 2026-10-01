@@ -209,6 +209,10 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             },
             checkForUpdates: updater.map { updater in { updater.checkForUpdates(nil) } },
             resetState: { [weak self] in self?.resetState() },
+            // #196: offered only when Karabiner-Elements is installed.
+            karabiner: Karabiner.isInstalled ? KarabinerBridge(
+                rulesPath: Karabiner.rulesFile.path, rulesExist: { Karabiner.rulesExist },
+                write: { [weak self] in try self?.writeKarabinerRules() }, open: Karabiner.open) : nil,
             onChange: { [weak self] new in
                 Task { @MainActor in self?.applyOverrides(new) }
             })
@@ -255,6 +259,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                     NSApp.activate(ignoringOtherApps: true)
                     self?.updater?.checkForUpdates(nil)
                 }
+            case .dismissProblem(let key):
+                // #196: for good, in settings.json, like "Don't warn again" (#138).
+                Task { @MainActor in
+                    self?.silence(key)
+                    ProblemCenter.shared.clear(key)
+                }
             case .quit:
                 // Spec §7.4 and the M2 ruling: through the gate, never `NSApp.terminate` — the same
                 // path, on the same queue, as SIGTERM, so every parked window is put back first.
@@ -288,7 +298,16 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             wireState: { await store.wireState() },
             run: { await store.run($0) },
             route: route,
-            resetState: { await MainActor.run { [weak self] in self?.resetState() } ?? "not running" })
+            resetState: { await MainActor.run { [weak self] in self?.resetState() } ?? "not running" },
+            // #196: `spacialctl karabiner-rules [--write]`; passing --write is the consent.
+            karabinerRules: { write in
+                try await MainActor.run { [weak self] in
+                    guard let self else { return .null }
+                    guard write else { return try JSONDecoder().decode(JSONValue.self, from: Karabiner.rules(for: self.config)) }
+                    try self.writeKarabinerRules()
+                    return .object(["message": .string("Wrote \(Karabiner.rulesFile.path). \(Karabiner.enableHint)")])
+                }
+            })
         let ipc = IPCServer(reply: { await dispatch.handle($0) })
         do {
             try ipc.start()
@@ -398,6 +417,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         log.info("stage 8/8: config watch and signal handlers")
         watchConfig()
         installSignalHandlers()
+        refreshKarabiner()   // #196: a new build may live at a new path
         log.info("SpacialShell running")
     }
 
@@ -482,6 +502,29 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         applyOverrides(new)
     }
 
+    // MARK: - Karabiner-Elements (#196)
+
+    /// The settings button and `spacialctl karabiner-rules --write`: the user asked.
+    private func writeKarabinerRules() throws {
+        try Karabiner.write(for: config)
+        log.info("karabiner rules written to \(Karabiner.rulesFile.path, privacy: .public)")
+        ProblemCenter.shared.clear(Problem.Key.karabiner)
+    }
+
+    /// Keeps a written rules file current (deleting it is the opt-out), and otherwise offers it
+    /// once under the rail cog while Karabiner-Elements is installed and the offer not dismissed.
+    private func refreshKarabiner() {
+        if Karabiner.rulesExist {
+            do {
+                if try Karabiner.write(for: config) { log.info("karabiner rules re-exported") }
+            } catch {
+                log.error("karabiner rules re-export failed: \(String(describing: error), privacy: .public)")
+            }
+        } else if Karabiner.isInstalled, !silencedWarnings.contains(Problem.Key.karabiner) {
+            ProblemCenter.shared.report(.karabinerOffer)
+        }
+    }
+
     /// Watches the *directory*, not the file: editors replace configs by rename, which leaves the
     /// watched file descriptor pointing at an unlinked inode.
     private func watchConfig() {
@@ -532,6 +575,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // #172: before the guard, on every push — each watcher acts only on its own settings, and
         // #138's "Don't warn again" changes the silenced set, not the config.
         watchers.apply(config)
+        // #196: a rebind or preset change re-exports; same bytes are not rewritten. Before the
+        // guard too, so "Warn again" brings a dismissed offer back now.
+        refreshKarabiner()
         // #139: switched off live, pending and future writes stop; switched on, they resume.
         if persistence.enabled != config.persistState {
             persistence.enabled = config.persistState

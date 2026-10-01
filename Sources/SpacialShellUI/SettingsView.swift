@@ -38,6 +38,11 @@ struct SettingsView: View {
     /// `nil` hides the button.
     var resetState: (() -> Void)? = nil
     @State private var confirmingReset = false
+    /// #196: the Karabiner-Elements bridge, from the app target. `nil` (Karabiner is not
+    /// installed) hides the section.
+    var karabiner: KarabinerBridge? = nil
+    @State private var karabinerWrote = false
+    @State private var karabinerError: String?
 
     @State private var pane: Pane = .general
     /// The command currently listening for a chord, if any. One at a time: two recorders would
@@ -142,6 +147,11 @@ struct SettingsView: View {
                             .help("Warn again about everything you chose Don't warn again for")
                     }
                 } reset: {}
+            }
+
+            if let karabiner {
+                Divider()
+                karabinerSection(karabiner)
             }
 
             Divider()
@@ -408,7 +418,35 @@ struct SettingsView: View {
 
     /// A silenced problem key as the user knows it: the `other-window-managers` entry it names.
     static func warningLabel(_ key: String) -> String {
-        key.hasPrefix(Problem.Key.otherWindowManagerPrefix) ? String(key.dropFirst(Problem.Key.otherWindowManagerPrefix.count)) : key
+        if key == Problem.Key.karabiner { return "Karabiner-Elements offer" }   // #196
+        return key.hasPrefix(Problem.Key.otherWindowManagerPrefix) ? String(key.dropFirst(Problem.Key.otherWindowManagerPrefix.count)) : key
+    }
+
+    /// #196: asks, and writes only on the button: the rules file, never karabiner.json.
+    private func karabinerSection(_ k: KarabinerBridge) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Karabiner-Elements").font(.system(size: 12, weight: .semibold))
+            Text("Hotkeys stop working while an app has a password field focused (secure input). Karabiner-Elements can deliver them anyway. Write SpacialShell's rules for Karabiner?")
+                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text(k.rulesPath)
+                .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.secondary)
+                .textSelection(.enabled).lineLimit(2).truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Write rules file") {
+                    do { try k.write(); karabinerError = nil; karabinerWrote = true }
+                    catch { karabinerError = error.localizedDescription }
+                }
+                Button("Open Karabiner-Elements", action: k.open)
+            }
+            if let karabinerError {
+                Text(karabinerError).font(.system(size: 11)).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if karabinerWrote || k.rulesExist() {
+                Text("Now enable it in Karabiner-Elements \u{2192} Settings \u{2192} Complex Modifications \u{2192} Add predefined rule \u{2192} SpacialShell. SpacialShell keeps this file current when you change a hotkey; Karabiner keeps its own copy of an enabled rule, so remove the rule there and add it again to pick up the change.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     // MARK: pieces
@@ -473,5 +511,16 @@ struct SettingsView: View {
                 if byte(c.alphaComponent) < 255 { hex += String(format: "%02X", byte(c.alphaComponent)) }
                 overrides[keyPath: key] = hex
             })
+    }
+}
+
+/// #196: what the settings window needs of the Karabiner-Elements bridge; the file IO is the app's.
+public struct KarabinerBridge {
+    public var rulesPath: String
+    public var rulesExist: () -> Bool
+    public var write: () throws -> Void
+    public var open: () -> Void
+    public init(rulesPath: String, rulesExist: @escaping () -> Bool, write: @escaping () throws -> Void, open: @escaping () -> Void) {
+        self.rulesPath = rulesPath; self.rulesExist = rulesExist; self.write = write; self.open = open
     }
 }

@@ -186,6 +186,20 @@ import SpacialShellProtocol
         #expect(WireState.test(world: world()).capabilities == caps)
     }
 
+    /// #196: `write` reaches the app's closure, and a failed write is the reply's error.
+    @Test func karabinerRulesPrintsWritesOrFails() async {
+        struct Denied: LocalizedError { var errorDescription: String? { "permission denied" } }
+        var dispatch = Harness(world()).dispatch
+        dispatch.karabinerRules = { write in .object(["write": .bool(write)]) }
+        let printed = await dispatch.handle(request("karabiner-rules")).response
+        #expect(printed.ok && printed.data?["write"] == .bool(false))
+        let written = await dispatch.handle(request("karabiner-rules", ["write": .bool(true)])).response
+        #expect(written.data?["write"] == .bool(true))
+        dispatch.karabinerRules = { _ in throw Denied() }
+        let failed = await dispatch.handle(request("karabiner-rules", ["write": .bool(true)])).response
+        #expect(!failed.ok && failed.error == "permission denied")
+    }
+
     @Test func versionAndStateAnswer() async throws {
         let h = Harness(world())
         let version = await h.dispatch.handle(request("version")).response

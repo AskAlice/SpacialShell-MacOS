@@ -108,6 +108,15 @@ socket is local and readable only by your user, so nothing leaves the machine th
 captured stream like a screenshot of your tab bar. Telemetry is separate: spans record only the
 request verb (`ipc.cmd = "subscribe"`), never a title or any event payload.
 
+## Karabiner-Elements rules (`karabiner-rules`, #196)
+
+`{"id":1,"cmd":"karabiner-rules"}` replies with the hotkeys as a Karabiner-Elements
+complex-modifications file in `data`; `spacialctl karabiner-rules` prints it. With
+`"args":{"write":true}` (`spacialctl karabiner-rules --write`) the shell writes it to
+`~/.config/karabiner/assets/complex_modifications/spacialshell.json` and `data.message` says so. A
+failed write is `ok: false` with the reason. See
+[keybindings: secure input and Karabiner-Elements](keybindings.md#secure-input-and-karabiner-elements).
+
 ## Resetting saved state (`reset-state`, #139)
 
 `{"id":1,"cmd":"reset-state"}` deletes `state.json` and stops the shell writing it until it next

@@ -75,6 +75,15 @@ import SpacialShellProtocol
         #expect(Problem.screenRecordingMissing.action == nil)   // the others stay read-only
     }
 
+    // #196: the Karabiner-Elements offer opens settings, and is the one entry that can be dismissed.
+    @Test func theKarabinerOfferOpensSettingsAndCanBeDismissed() {
+        let offer = Problem.karabinerOffer
+        #expect(offer.action?.command == .openSettings)
+        #expect(offer.canDismiss && !offer.interrupts && !offer.canSilence)
+        #expect(!Problem.updateAvailable(version: "1").canDismiss && !Problem.accessibilityMissing.canDismiss)
+        #expect(Command.dismissProblem(offer.key).isAppLayer)
+    }
+
     @Test func showingOrDismissingTheUpdateClearsIt() {
         var p = Problems()
         p.report(.updateAvailable(version: "0.5.0"))

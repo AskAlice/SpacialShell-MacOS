@@ -293,6 +293,47 @@ Three-finger drag (Accessibility → Pointer Control → Trackpad Options) turns
 into a drag and also conflicts. While a conflicting setting is on, a warning under the rail cog says
 which to change; it clears the next time you leave System Settings with it fixed.
 
+## Secure input and Karabiner-Elements
+
+While an app has a password field focused, macOS turns on **Secure Event Input**: key-downs are
+hidden from every event tap, SpacialShell's included, so the hotkeys do nothing until you leave the
+field (#193). A password prompt can also hold it while hidden behind other windows.
+
+[Karabiner-Elements](https://karabiner-elements.pqrs.org) seizes the keyboard below the
+WindowServer, through its own virtual HID driver, so its rules still fire in password fields.
+SpacialShell can hand its hotkeys to Karabiner as a rules file (#196):
+
+1. **Settings → General → Karabiner-Elements → Write rules file.** The section is there only when
+   `/Applications/Karabiner-Elements.app` is installed, and nothing is written until you click.
+   With Karabiner installed and no rules file, the rail cog lists the offer once; **Dismiss** puts
+   it away for good (Settings → General → Silenced warnings → **Warn again** brings it back).
+2. **Enable it in Karabiner-Elements → Settings → Complex Modifications → Add predefined rule →
+   SpacialShell.** **Open Karabiner-Elements** in the same section gets you there.
+
+The file is `~/.config/karabiner/assets/complex_modifications/spacialshell.json`, Karabiner's
+import folder. SpacialShell never edits `karabiner.json`. The file holds one rule with one entry per
+bound chord, Fn as Karabiner's `fn` modifier. Each runs `spacialctl run <command>`, with the full
+path of the `spacialctl` inside the app. For dotfiles, `spacialctl karabiner-rules` prints the same
+JSON, and `spacialctl karabiner-rules --write` writes the file.
+
+**Keeping it current.** Once the file exists, SpacialShell rewrites it whenever your bindings or the
+preset change, and at each launch (the app may have moved). Karabiner copies a rule into its own
+config when you enable it, so to pick up a change remove the SpacialShell rule in Karabiner and add
+it again. Delete the file to opt out; SpacialShell then stops writing it.
+
+**What is different through Karabiner:**
+
+- Karabiner consumes the chord, so SpacialShell's own tap never also sees it: nothing fires twice.
+- Each chord spawns `spacialctl`, which costs about 5–20 ms more than the tap. If you press a second
+  chord while the first `spacialctl` is still running, Karabiner kills the first one, so very fast
+  repeats can drop a step.
+- A chord fires once per press. Holding it does not repeat, and holding `Fn+W`/`Fn+S` does not open
+  the spatial view (#132).
+- The app window switcher (`` ⌘` ``, `` Fn+` ``, #188) is left out: it opens on the press and picks on the
+  release, which a one-shot command cannot follow. The rule's description in Karabiner lists these.
+- The rules run everywhere, not just in password fields. Karabiner's rule wins over the tap, so the
+  hotkeys work as before, plus the spawn cost above.
+
 ## Conflicts and edge cases
 
 - `Fn+F` is intentionally unbound (Apple full screen). `Fn+F1…F20` are never bindable (media keys /
@@ -300,7 +341,8 @@ which to change; it clears the next time you leave System Settings with it fixed
 - Tapping `Fn` **alone** still triggers whatever "Press 🌐 key to" is set to in System Settings
   (emoji picker, dictation…); SpacialShell only matches Fn *held* with another key.
 - While a **password field has focus** (Secure Input), macOS stops delivering keystrokes to every
-  event tap; hotkeys are deaf until you leave the field. This is by design of macOS.
+  event tap; hotkeys are deaf until you leave the field. This is by design of macOS. With
+  Karabiner-Elements they keep working: see [Secure input and Karabiner-Elements](#secure-input-and-karabiner-elements).
 - Another window manager or hotkey daemon that also consumes these chords (skhd, Hammerspoon,
   BetterTouchTool, Raycast's Fn hotkeys) wins or loses depending on which tap was installed first —
   run one at a time.
