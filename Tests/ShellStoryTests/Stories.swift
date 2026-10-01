@@ -618,7 +618,10 @@ enum Stories {
                                        windows: [], isActive: true, isPinned: false, isTrailingEmpty: false,
                                        category: .web, layout: .split)
         let workspaceMenu = RailMenu.workspace(webRow, layouts: tabs([]).layouts,
-                                               categories: Config.defaultCategoryOrder, send: send)
+                                               categories: Config.defaultCategoryOrder, rail: [webRow],
+                                               windowInfo: { RailMenu.WindowInfo(ref: $0, title: "", isFloating: false,
+                                                                                 isPinned: false, isPlaceholder: false) },
+                                               metaFor: meta, send: send)
         add("rail-workspace-menu", nil, MenuPreview(menu: workspaceMenu))
         add("rail-workspace-menu-category", nil, MenuPreview(menu: workspaceMenu.items[0].submenu!))
         add("rail-workspace-menu-symbol", nil, MenuPreview(menu: workspaceMenu.items[1].submenu!))
@@ -633,7 +636,7 @@ enum Stories {
             railItem(3, name: "Workspace", symbol: "plus", count: 0, trailing: true),
         ], metaFor: meta, send: send)
         add("tab-menu", nil, MenuPreview(menu: tabMenu))
-        add("tab-menu-move", nil, MenuPreview(menu: submenu(tabMenu, "Move to workspace")))
+        add("tab-menu-move", nil, MenuPreview(menu: submenu(tabMenu, "Move to Workspace")))
         // #129: a pinned placeholder's menu — Unpin, and Close disabled until it is unpinned.
         add("tab-menu-pinned-placeholder", nil, MenuPreview(menu: RailMenu.tab(placeholder(3, title: "~/code — zsh", pinned: true), rail: [
             railItem(0, name: "Workspace", symbol: "globe", count: 2, active: true),

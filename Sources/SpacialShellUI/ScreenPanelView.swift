@@ -33,6 +33,10 @@ struct ScreenPanelView: View {
     var onHoverProblems: (Bool, CGRect) -> Void = { _, _ in }
     /// #112: `category-order`, which the workspace menu's "Set category" lists first.
     var categories: [AppCategory] = Config.defaultCategoryOrder
+    /// #201: what a tile's per-window submenus need about a window: its title, and whether it is
+    /// floating, pinned or a placeholder. The shell controller answers from its world; without
+    /// one (stories) a window is a tiled tab named after its app.
+    var windowInfo: ((SpacialShellProtocol.WindowRef) -> RailMenu.WindowInfo)? = nil
     /// #115: `rail-icon-style` and `category-colors`.
     var iconStyle: RailIconStyle = .app
     var categoryColors: [AppCategory: String] = [:]
@@ -104,8 +108,7 @@ struct ScreenPanelView: View {
                     if !item.isTrailingEmpty {
                         RailClickCatcher(
                             onRight: {
-                                RailMenu.workspace(item, layouts: state.layouts, categories: categories, send: send)
-                                    .popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+                                tileMenu(item).popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
                             },
                             onMiddle: { send(.removeWorkspace(item.id)) })
                     }
@@ -338,5 +341,17 @@ private struct Reorderable: ViewModifier {
         } else {
             content.draggable({ began(); return DraggedWorkspace(workspace: item.id) }())
         }
+    }
+}
+
+extension ScreenPanelView {
+    /// #112, #201: a tile's menu, its windows first.
+    func tileMenu(_ item: WorkspaceRailItem) -> NSMenu {
+        let info = windowInfo ?? { [metaFor] ref in
+            RailMenu.WindowInfo(ref: ref, title: metaFor(ref.pid).name, isFloating: false, isPinned: false,
+                                isPlaceholder: ref.isPlaceholder)
+        }
+        return RailMenu.workspace(item, layouts: state.layouts, categories: categories, rail: state.rail,
+                                  windowInfo: info, metaFor: metaFor, send: send)
     }
 }

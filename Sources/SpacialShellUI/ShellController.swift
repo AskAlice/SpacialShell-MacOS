@@ -48,6 +48,8 @@ public final class ShellController: NSObject {
     private var railEdges: [DisplayID: (home: NSRect, zone: NSRect)] = [:]
     /// The display the hover card was last opened from — it pins that display's rail.
     private var hoverDisplay: DisplayID?
+    /// #201: each display's rail as last drawn, for the window menus' "Move to Workspace".
+    private var rails: [DisplayID: [WorkspaceRailItem]] = [:]
     private var pointerMonitors: [Any] = []
     private var ticker: Timer?
     /// The Dock-like slide; Reduce Motion makes it instant.
@@ -64,6 +66,7 @@ public final class ShellController: NSObject {
         hover = RailHoverController(send: send)
         layoutPopover = LayoutPopoverController(send: send)
         super.init()
+        hover.windowMenu = { [weak self] in self?.windowMenu($0) }   // #201
         // #182: the rail the card was opened from, while it is on screen — the pointer safety net
         // keeps the card while the pointer is on it.
         hover.railFrame = { [weak self] in
@@ -137,6 +140,7 @@ public final class ShellController: NSObject {
             let id = DisplayTopology.uuid(for: nsScreen)
             guard let state = ShellUI.state(for: id, in: world, layouts: layouts, titles: titles, attention: attention) else { continue }
             seen.insert(id)
+            rails[id] = state.rail
             let p = panels[id] ?? makePanels(for: state)
             panels[id] = p
 
@@ -170,6 +174,8 @@ public final class ShellController: NSObject {
                                                                                  display: id, screen: nsScreen)
                                                   },
                                                   categories: config.categoryOrder,
+                                                  windowInfo: { [weak self] in self?.windowInfo($0) ?? RailMenu.WindowInfo(
+                                                      ref: $0, title: "", isFloating: false, isPinned: false, isPlaceholder: $0.isPlaceholder) },
                                                   iconStyle: config.railIconStyle,
                                                   categoryColors: config.categoryColors)
             p.barHost.rootView = WorkspacePanelView(state: state, metaFor: appMeta.meta(for:), sizing: config.tabSizing,
@@ -340,5 +346,21 @@ public final class ShellController: NSObject {
     /// The views hold this, not `send` itself, so they stay agnostic of the store's threading.
     private func forward(_ command: Command) {
         send(command)
+    }
+
+    /// #201: what a window menu needs, from the world and the titles: its title (else its app's
+    /// name), and whether it floats, is pinned, or is a placeholder.
+    func windowInfo(_ ref: SpacialShellProtocol.WindowRef) -> RailMenu.WindowInfo {
+        let row = world?.screens.values.flatMap(\.workspaces).first { $0.windows.contains(ref) }
+        let title = titles[ref].flatMap { $0.isEmpty ? nil : $0 } ?? appMeta.meta(for: ref.pid).name
+        return RailMenu.WindowInfo(ref: ref, title: title, isFloating: row?.floating.contains(ref) ?? false,
+                                   isPinned: world?.pinnedTabs.contains(ref) ?? false, isPlaceholder: ref.isPlaceholder)
+    }
+
+    /// #201: a window's menu, with the rail of the display the window is on.
+    func windowMenu(_ ref: SpacialShellProtocol.WindowRef) -> NSMenu? {
+        guard let world, let display = world.screens.first(where: { $0.value.workspaces.contains { $0.windows.contains(ref) } })?.key
+            ?? hoverDisplay, let rail = rails[display] else { return nil }
+        return RailMenu.window(windowInfo(ref), rail: rail, metaFor: appMeta.meta(for:), send: { [send] in send($0) })
     }
 }

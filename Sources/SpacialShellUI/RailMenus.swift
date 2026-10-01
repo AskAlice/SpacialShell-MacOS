@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import SpacialShellKit
+import SpacialShellProtocol
 
 /// M3 B3's two rail menus (#111, #112). Both are `NSMenu`s popped from the non-activating rail,
 /// like the switcher's ⋯ (`LayoutMenu`): system menus are keyboard-navigable and never take key
@@ -32,10 +33,29 @@ enum RailMenu {
 
     /// #112: a tile's right-click menu. `categories` is `category-order`, the configured ones; the
     /// rest follow, as in the settings pane, so any category can be a workspace's identity.
+    /// #201: it leads with the tile's windows, each a submenu holding that window's own menu.
     static func workspace(_ item: WorkspaceRailItem, layouts: [LayoutChoice], categories: [AppCategory],
-                          send: @escaping (Command) -> Void) -> NSMenu {
+                          rail: [WorkspaceRailItem], windowInfo: (SpacialShellProtocol.WindowRef) -> WindowInfo,
+                          metaFor: (Int32) -> AppMeta, send: @escaping (Command) -> Void) -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let id = item.id
+        if !item.windows.isEmpty {
+            let header = NSMenuItem(title: "Windows", action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for ref in item.windows {
+                let info = windowInfo(ref)
+                let entry = submenu(info.title, window(info, rail: rail, metaFor: metaFor, send: send))
+                entry.image = metaFor(ref.pid).icon.map { icon in
+                    let small = icon.copy() as! NSImage
+                    small.size = NSSize(width: 16, height: 16)
+                    return small
+                }
+                menu.addItem(entry)
+            }
+            menu.addItem(.separator())
+        }
 
         let category = NSMenu()
         for c in categories + AppCategory.allCases.filter({ !categories.contains($0) }) {
@@ -72,44 +92,82 @@ enum RailMenu {
         return menu
     }
 
-    /// #127: a tab's right-click menu. "Move to workspace" lists this display's other rows as the
-    /// hover card names them — category (the row's own, else its apps'), else the name, and the
-    /// position — then "+" as "New workspace". It is a drop in menu form: it does not follow (#95).
+    /// #201: what a window menu needs to know; a tab has it all, a window elsewhere gets it from
+    /// the shell controller's world.
+    struct WindowInfo {
+        let ref: SpacialShellProtocol.WindowRef
+        let title: String
+        let isFloating: Bool, isPinned: Bool, isPlaceholder: Bool
+        /// #129: a pinned placeholder cannot be closed until it is unpinned.
+        var canClose: Bool { !(isPlaceholder && isPinned) }
+    }
+
+    /// #127: a tab's right-click menu — #201's window menu, built from the tab.
     static func tab(_ tab: WindowTabItem, rail: [WorkspaceRailItem], metaFor: (Int32) -> AppMeta,
                     send: @escaping (Command) -> Void) -> NSMenu {
+        window(WindowInfo(ref: tab.ref, title: tab.title, isFloating: tab.isFloating, isPinned: tab.isPinned,
+                          isPlaceholder: tab.isPlaceholder), rail: rail, metaFor: metaFor, send: send)
+    }
+
+    /// #201: one window menu wherever a window appears — a tab (#127), a sidebar card's preview
+    /// (#179), a tile's per-window submenu. "Move to Workspace" lists this display's other rows as
+    /// the hover card names them, then "+" as "New workspace": a drop in menu form, not followed
+    /// (#95). Hide and Quit act on the app itself (the store sees the result like any other).
+    /// A placeholder (#128) has no window: Open and Close only.
+    static func window(_ w: WindowInfo, rail: [WorkspaceRailItem], metaFor: (Int32) -> AppMeta,
+                       send: @escaping (Command) -> Void) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false   // `isEnabled` below is the truth, not target/action validation
-        let ref = tab.ref
-        // #128: a placeholder's menu opens its app first; "Close" forgets the slot. It has no
-        // window to float, so Float/Tile is shown but disabled — the menu keeps one shape.
-        if tab.isPlaceholder { menu.addItem(ActionMenuItem("Open") { send(.focusWindowRef(ref)) }) }
-        // #129: a pinned placeholder cannot be closed until it is unpinned (material-shell P17).
-        let close = ActionMenuItem("Close") { send(.closeWindowRef(ref)) }
-        close.isEnabled = tab.canClose
-        menu.addItem(close)
-        let float = ActionMenuItem(tab.isFloating ? "Tile" : "Float") { send(.toggleFloatRef(ref)) }
-        float.isEnabled = !tab.isPlaceholder
-        menu.addItem(float)
-        let pin = ActionMenuItem(tab.isPinned ? "Unpin" : "Pin") { send(.togglePinRef(ref)) }
-        pin.image = NSImage(systemSymbolName: tab.isPinned ? "pin.slash" : "pin.circle", accessibilityDescription: nil)
-        menu.addItem(pin)
-
-        let move = NSMenu()
-        for item in rail where !item.isActive {
-            if item.isTrailingEmpty, !move.items.isEmpty { move.addItem(.separator()) }
-            var seen: Set<Int32> = []
-            let apps = item.windows.compactMap { seen.insert($0.pid).inserted ? metaFor($0.pid).category : nil }
-            let label = (item.category ?? AppCategories.summarise(apps))?.label
-            let title = item.isTrailingEmpty ? "New workspace"
-                : "\(label.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? item.name) (\(item.index + 1))"
-            let entry = ActionMenuItem(title) { send(.moveWindowRefToWorkspace(ref, item.id, follow: false)) }
-            entry.image = NSImage(systemSymbolName: item.isTrailingEmpty ? "plus" : item.symbol, accessibilityDescription: nil)
-            move.addItem(entry)
+        let ref = w.ref
+        if w.isPlaceholder {
+            menu.addItem(ActionMenuItem("Open") { send(.focusWindowRef(ref)) })
+            let close = ActionMenuItem("Close") { send(.closeWindowRef(ref)) }
+            close.isEnabled = w.canClose
+            menu.addItem(close)
+            return menu
         }
-        let moveItem = submenu("Move to workspace", move)
-        moveItem.isEnabled = !move.items.isEmpty
+        menu.addItem(ActionMenuItem("Switch to Window") { send(.focusWindowRef(ref)) })
         menu.addItem(.separator())
+        let others = rail.filter { !$0.windows.contains(ref) }
+        let move = workspaceList(others, metaFor: metaFor) { send(.moveWindowRefToWorkspace(ref, $0, follow: false)) }
+        let moveItem = submenu("Move to Workspace", move)
+        moveItem.isEnabled = !move.items.isEmpty
         menu.addItem(moveItem)
+        let app = workspaceList(others, metaFor: metaFor) { send(.moveAppRefToWorkspace(ref, $0)) }   // #98
+        let appItem = submenu("Move App to Workspace", app)
+        appItem.isEnabled = !app.items.isEmpty
+        menu.addItem(appItem)
+        menu.addItem(.separator())
+        menu.addItem(ActionMenuItem(w.isFloating ? "Tile" : "Float") { send(.toggleFloatRef(ref)) })
+        let pin = ActionMenuItem(w.isPinned ? "Unpin" : "Pin") { send(.togglePinRef(ref)) }
+        pin.image = NSImage(systemSymbolName: w.isPinned ? "pin.slash" : "pin.circle", accessibilityDescription: nil)
+        menu.addItem(pin)
+        menu.addItem(.separator())
+        let name = metaFor(ref.pid).name
+        let hide = ActionMenuItem("Hide App") { NSRunningApplication(processIdentifier: ref.pid)?.hide() }
+        hide.toolTip = "Hide \(name)"
+        menu.addItem(hide)
+        menu.addItem(ActionMenuItem("Close Window") { send(.closeWindowRef(ref)) })
+        let quit = ActionMenuItem("Quit App") { NSRunningApplication(processIdentifier: ref.pid)?.terminate() }
+        quit.toolTip = "Quit \(name)"
+        menu.addItem(quit)
+        return menu
+    }
+
+    /// This display's rows as a menu of destinations, named as the hover card names them (#183),
+    /// with "+" last as "New workspace".
+    private static func workspaceList(_ rows: [WorkspaceRailItem], metaFor: (Int32) -> AppMeta,
+                                      pick: @escaping (UUID) -> Void) -> NSMenu {
+        let menu = NSMenu()
+        for item in rows {
+            if item.isTrailingEmpty, !menu.items.isEmpty { menu.addItem(.separator()) }
+            let category = AppCategories.rowCategory(item.category, windows: item.windows) { metaFor($0).category }
+            let title = item.isTrailingEmpty ? "New workspace"
+                : "\(AppCategories.rowTitle(name: item.name, category: category, isTrailingEmpty: false)) (\(item.index + 1))"
+            let entry = ActionMenuItem(title) { pick(item.id) }
+            entry.image = NSImage(systemSymbolName: item.isTrailingEmpty ? "plus" : item.symbol, accessibilityDescription: nil)
+            menu.addItem(entry)
+        }
         return menu
     }
 

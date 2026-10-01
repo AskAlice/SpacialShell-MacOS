@@ -75,6 +75,10 @@ final class RailHoverController {
     /// two previews swaps the peek without putting the first window back in between.
     static let peekDwell = Duration.milliseconds(150)
 
+    /// #201: a preview's right-click menu, built by the shell controller (it has the world, the
+    /// titles and the rail the menu's "Move to Workspace" lists). Nil: no menu.
+    var windowMenu: (SpacialShellProtocol.WindowRef) -> NSMenu? = { _ in nil }
+
     init(send: @escaping @Sendable (Command) -> Void, peekDwell: Duration = RailHoverController.peekDwell,
          pointer: @escaping () -> CGPoint = { NSEvent.mouseLocation },
          now: @escaping () -> ContinuousClock.Instant = { .now },
@@ -365,6 +369,12 @@ final class RailHoverController {
             onSelect: { [weak self] in self?.select($0) },
             highlighted: highlighted,
             onHoverPreview: { [weak self] ref, inside in self?.previewHovered(ref, inside: inside) },
+            onPreviewMenu: { [weak self] ref in
+                guard let self, let menu = self.windowMenu(ref) else { return }
+                self.endPeek()   // the menu is a decision about the window, not a look at it
+                menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+            },
+            onPreviewClose: { [weak self] ref in self?.send(.closeWindowRef(ref)) },
             onProblemAction: { [weak self] command in
                 self?.send(command)
                 self?.hideNow("clicked")   // the dialog it opens is where the user's attention goes

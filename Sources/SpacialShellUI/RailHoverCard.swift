@@ -42,6 +42,9 @@ struct RailHoverCard: View {
     var highlighted: SpacialShellProtocol.WindowRef?
     /// #179: the pointer entered (true) or left (false) a preview.
     var onHoverPreview: (SpacialShellProtocol.WindowRef, Bool) -> Void = { _, _ in }
+    /// #201: a preview was right-clicked (its window menu) or middle-clicked (close it, as a tab).
+    var onPreviewMenu: (SpacialShellProtocol.WindowRef) -> Void = { _ in }
+    var onPreviewClose: (SpacialShellProtocol.WindowRef) -> Void = { _ in }
     /// #192: a problem's button was clicked (`Problem.action`).
     var onProblemAction: (Command) -> Void = { _ in }
 
@@ -161,6 +164,12 @@ struct RailHoverCard: View {
         .contentShape(Rectangle())
         .onHover { onHoverPreview(item.ref, $0) }
         .onTapGesture { onSelect(item.ref) }
+        // #201: right-click is the window's menu, middle-click closes it — as on its tab. The
+        // catcher claims only those two; left clicks and hovers reach the preview as before.
+        .overlay {
+            RailClickCatcher(onRight: { onPreviewMenu(item.ref) },
+                             onMiddle: { if !item.ref.isPlaceholder { onPreviewClose(item.ref) } })
+        }
     }
 }
 
