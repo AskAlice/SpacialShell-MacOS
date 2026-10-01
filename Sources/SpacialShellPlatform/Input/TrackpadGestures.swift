@@ -44,6 +44,8 @@ public final class TrackpadGestures {
     private let logFrames: Bool
     private var bindings = SwipeBindings()
     private var recognizer = SwipeRecognizer(bindings: SwipeBindings())
+    /// #202: only contacts that move together are fingers; a resting palm or thumb is not.
+    private var contacts = ContactFilter()
     private var enabled = false
     private var tapPort: CFMachPort?
     private var source: CFRunLoopSource?
@@ -148,6 +150,12 @@ public final class TrackpadGestures {
     private func reset() {
         liftCheck?.cancel(); liftCheck = nil
         if let end = recognizer.reset() { deliver(.drag(end)) }
+        contacts = ContactFilter()
+    }
+
+    /// #202: the touches on the trackpad, filtered to the fingers that move together, then recognized.
+    fileprivate func handle(_ touches: [TouchContact], time: TimeInterval) {
+        handle(contacts.frame(touches, time: time))
     }
 
     fileprivate func handle(_ frame: TouchFrame) {
@@ -192,12 +200,14 @@ public final class TrackpadGestures {
         }
     }
 
-    /// The fingers on the trackpad now: touches that have not ended or been cancelled, and are not
-    /// resting (a thumb parked on a Magic Trackpad's edge is not part of the swipe).
-    public nonisolated static func frame(_ touches: Set<NSTouch>, time: TimeInterval? = nil) -> TouchFrame {
-        let down = touches.filter { NSTouch.Phase.touching.contains($0.phase) && !$0.isResting }
-        return TouchFrame(positions: down.map { (x: Double($0.normalizedPosition.x), y: Double($0.normalizedPosition.y)) },
-                          time: time)
+    /// The contacts on the trackpad now: touches that have not ended or been cancelled, and are not
+    /// marked resting (a thumb parked on a Magic Trackpad's edge is not part of the swipe). #202:
+    /// each keyed by its touch's identity, so `ContactFilter` can tell the movers from a palm.
+    public nonisolated static func contacts(_ touches: Set<NSTouch>) -> [TouchContact] {
+        touches.filter { NSTouch.Phase.touching.contains($0.phase) && !$0.isResting }.map {
+            TouchContact(id: ($0.identity as AnyObject).hash,
+                         x: Double($0.normalizedPosition.x), y: Double($0.normalizedPosition.y))
+        }
     }
 
     // MARK: - macOS's own gestures
@@ -252,8 +262,8 @@ private func trackpadTapCallback(
         MainActor.assumeIsolated { gestures.reenable() }
     default:
         guard let ns = NSEvent(cgEvent: event), ns.type == .gesture else { break }
-        let frame = TrackpadGestures.frame(ns.allTouches(), time: ns.timestamp)
-        MainActor.assumeIsolated { gestures.handle(frame) }
+        let touches = TrackpadGestures.contacts(ns.allTouches()), time = ns.timestamp
+        MainActor.assumeIsolated { gestures.handle(touches, time: time) }
     }
     return Unmanaged.passUnretained(event)
 }
