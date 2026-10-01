@@ -40,6 +40,9 @@ struct OverviewView: View {
     /// #200: the keyboard's place in the results. The search field keeps the focus, so typing
     /// always searches; arrows, Tab and Return work on the selection, as in Spotlight.
     @State private var selection = GridSelection(sections: [])
+    /// Where the pointer was when it last chose: a panel opening under a resting pointer (or a
+    /// scroll moving cells under it) is not the pointer choosing, so only a moved one selects.
+    @State private var pointer = NSEvent.mouseLocation
 
     /// #200: fixed columns, so ↑/↓ move by the rows the user sees: four pictures, seven apps.
     static let windowColumns = 4, appColumns = 7
@@ -116,7 +119,7 @@ struct OverviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator.opacity(0.5)))
-        .onAppear { searchFocused = true; selection = GridSelection(sections: sections) }
+        .onAppear { searchFocused = true; selection = GridSelection(sections: sections); pointer = NSEvent.mouseLocation }
         // A new search starts at its first result, as Spotlight's does.
         .onChange(of: query) { selection = GridSelection(sections: sections) }
     }
@@ -144,7 +147,12 @@ struct OverviewView: View {
                     .padding(4)
                     .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.primary.opacity(selection.at == at ? 0.10 : 0)))
-                    .onHover { if $0 { selection.select(at) } }
+                    .onHover { inside in
+                        let now = NSEvent.mouseLocation
+                        guard inside, now != pointer else { return }
+                        pointer = now
+                        selection.select(at)
+                    }
                     .id(Self.cellID(at))
             }
         }
