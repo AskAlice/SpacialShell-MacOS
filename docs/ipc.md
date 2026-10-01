@@ -11,7 +11,8 @@ newline-delimited JSON: one request object per line, `{"id":1,"cmd":"state","arg
 At launch the shell connects to the socket before touching it. If another SpacialShell answers,
 the new one prints "SpacialShell is already running" and exits 1 before it moves a window. A socket
 file nobody answers on (the last shell crashed) is stale: it is removed and replaced. Quit the
-running shell first with `spacialctl quit` or the rail menu's Quit.
+running shell first with `spacialctl quit` or the rail menu's Quit, or restart it in place with
+`spacialctl reload` (below).
 
 ## Verbs
 
@@ -26,6 +27,7 @@ shell may be too old for. The list only grows: `v` stays 1 and a new verb adds a
 | `run` | `command` | a bound command by name, exactly like its hotkey (`spacialctl run focus-workspace-2`) |
 | `set-layout` | `layout`, `workspace?` | a workspace's layout; the focused one when `workspace` is absent |
 | `quit` | — | quits through the same path as the rail menu's Quit: every window is put back first. The reply comes before the shell stops; its process exits a few seconds later. |
+| `reload` | — | `quit`, then the same SpacialShell.app starts again ([below](#reloading-reload-194)). The reply comes before the quit. |
 | `subscribe` | — | the event stream (below) |
 
 **Id-addressed verbs.** These are the shell's own clicks and drags with wire names. Each names its
@@ -124,3 +126,18 @@ launches, which then starts fresh. The windows stay where they are for the rest 
 The reply's `data.message` says what happened; `spacialctl reset-state` prints it. It is the same
 action as the settings window's **Reset saved state…** button; see
 [config: resetting saved state](config.md#resetting-saved-state).
+
+## Reloading (`reload`, #194)
+
+`{"id":1,"cmd":"reload"}` quits the way `quit` does, so every parked window is put back on screen
+first, then starts the same bundle again: a reload of `/Applications/SpacialShell.app` reopens that
+one, a reload of a dev bundle reopens the dev bundle. Just before it exits, the shell starts a
+small `/bin/sh` helper that waits for its pid to be gone (at most 12 s) and then `open`s the bundle,
+asking again for 5 s while LaunchServices refuses (-600), as `Scripts/install.sh --relaunch-only`
+does. The new shell restores `state.json` (when saving is on) and re-tiles. A quit that arrives while a
+reload is under way wins: the shell stays quit.
+
+The reply comes before the quit, so `spacialctl reload` exits 0 at once. The same action is
+**Reload SpacialShell** in Settings → General, in the rail's app menu next to Quit, and in the
+Raycast extension. The bare `Scripts/dev.sh` binary has no bundle to reopen, so there it only quits.
+Not to be confused with the rail menu's **Reload config**, which re-reads `config.toml` in place.

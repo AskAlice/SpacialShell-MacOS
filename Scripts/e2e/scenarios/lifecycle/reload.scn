@@ -1,0 +1,17 @@
+# #194: `spacialctl reload` quits through the termination gate (every parked window back on
+# screen) and the same bundle comes back with a new pid, then re-tiles the same windows.
+# VM only (`sh`): it restarts the shell. reload.txt in the artefacts has the pids and timings.
+open 2 as r
+settle
+require same-workspace r1 r2
+focus r1
+settle
+note focused as A
+expect onscreen A
+sh ctl=/Applications/SpacialShell.app/Contents/MacOS/spacialctl; now() { perl -MTime::HiRes=time -e 'printf "%.2f", time'; }; old=$(pgrep -x SpacialShell); t0=$(now); $ctl reload || exit 1; while pgrep -x SpacialShell | grep -qx "$old"; do sleep 0.05; done; gone=$(now); i=0; until $ctl version >/dev/null 2>&1; do i=$((i + 1)); [ "$i" -lt 300 ] || { echo "reload: no shell answering 15 s after the old one went" >&2; exit 1; }; sleep 0.05; done; back=$(now); new=$(pgrep -x SpacialShell); [ -n "$new" ] && [ "$new" != "$old" ] || { echo "reload: pid $old, then $new" >&2; exit 1; }; perl -e 'printf "reload: pid %s -> %s; old gone after %.2f s, new answering after %.2f s\n", @ARGV[0,1], $ARGV[3]-$ARGV[2], $ARGV[4]-$ARGV[2]' "$old" "$new" "$t0" "$gone" "$back" | tee "$E2E_OUT/reload.txt"
+wait 2
+settle
+expect tab r1
+expect tab r2
+expect same-workspace r1 r2
+expect onscreen A

@@ -24,6 +24,7 @@ import Foundation
         // Not validated here: the daemon's "unknown workspace" is the one answer for a bad id.
         #expect(req("focus-workspace", "nope")?.args["workspace"] == .string("nope"))
         #expect(req("quit") == IPCRequest(id: 1, cmd: "quit"))
+        #expect(req("reload") == IPCRequest(id: 1, cmd: "reload"))   // #194
     }
 
     /// #196

@@ -37,6 +37,8 @@ struct SettingsView: View {
     /// #139: deletes state.json and stops saving until the next launch (`AppRuntime.resetState`).
     /// `nil` hides the button.
     var resetState: (() -> Void)? = nil
+    /// #194: quit through the termination gate and start the same bundle again. `nil` hides it.
+    var reload: (() -> Void)? = nil
     @State private var confirmingReset = false
     /// #196: the Karabiner-Elements bridge, from the app target. `nil` (Karabiner is not
     /// installed) hides the section.
@@ -193,6 +195,15 @@ struct SettingsView: View {
                     Text("SpacialShell checks for a new release once a day.")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     Button("Check for Updates…", action: checkForUpdates)
+                }
+            }
+            if let reload {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Reload").font(.system(size: 12, weight: .semibold))
+                    Text("Quit, putting every window back on screen, and start SpacialShell again.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                    Button("Reload SpacialShell", action: reload)
                 }
             }
         }

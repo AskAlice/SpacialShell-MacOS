@@ -118,7 +118,7 @@ import Foundation
 
     @Test func appMenuVerbsAreAppLayerAndUnbound() {
         let w = base()
-        for cmd: Command in [.reloadConfig, .showAbout, .quit] {
+        for cmd: Command in [.reloadConfig, .showAbout, .quit, .reload] {
             #expect(cmd.isAppLayer)
             let (after, e) = run(w, cmd)
             #expect(after == w && e.isEmpty)

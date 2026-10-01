@@ -152,6 +152,8 @@ public enum Command: Sendable, Hashable {
     case reloadConfig
     case showAbout
     case quit
+    /// #194: `quit`, then the same bundle starts again (`Relaunch`). App-layer, like `quit`.
+    case reload
     /// #192: the rail cog's "Update to X available" entry. App-layer: Sparkle's dialog, in focus.
     case checkForUpdates
     /// #196: a rail cog entry's "Dismiss" (`Problem.canDismiss`). App-layer: remembered in
@@ -165,7 +167,7 @@ public enum Command: Sendable, Hashable {
         switch self {
         case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
         case .switchAppWindow, .cancelAppWindowSwitch: true   // #188
-        case .reloadConfig, .showAbout, .quit: true   // #111
+        case .reloadConfig, .showAbout, .quit, .reload: true   // #111, #194
         case .checkForUpdates: true   // #192
         case .dismissProblem: true   // #196
         default: false

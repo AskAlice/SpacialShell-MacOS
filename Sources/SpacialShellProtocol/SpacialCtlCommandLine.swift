@@ -15,6 +15,7 @@ public enum SpacialCtlCommandLine {
                            switch to a workspace by id, on whichever display holds it; an unknown
                            id exits 1
       quit                 quit the shell the way the rail menu does: every window is put back
+      reload               quit as above, then start the same SpacialShell.app again
       reset-state          delete the saved state (state.json); the windows stay where they are,
                            nothing more is saved, and the next launch starts fresh
       call <cmd> [<json-object>]
@@ -34,6 +35,7 @@ public enum SpacialCtlCommandLine {
         case "state": return IPCRequest(id: 1, cmd: "state")
         case "subscribe": return IPCRequest(id: 1, cmd: "subscribe")
         case "quit": return IPCRequest(id: 1, cmd: "quit")
+        case "reload": return IPCRequest(id: 1, cmd: "reload")   // #194
         case "reset-state": return IPCRequest(id: 1, cmd: "reset-state")   // #139
         case "karabiner-rules" where args.count == 1: return IPCRequest(id: 1, cmd: "karabiner-rules")   // #196
         case "karabiner-rules" where args == ["karabiner-rules", "--write"]:

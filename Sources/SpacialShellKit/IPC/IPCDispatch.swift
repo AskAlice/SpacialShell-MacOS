@@ -59,7 +59,7 @@ public struct IPCDispatch: Sendable {
     }
 
     /// The verbs `handle` answers, plus `subscribe`. Order is the wire's: older verbs first.
-    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state", "karabiner-rules"] + idVerbs.keys.sorted()
+    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state", "karabiner-rules", "reload"] + idVerbs.keys.sorted()
 
     public func handle(_ request: IPCRequest) async -> IPCReply {
         let id = request.id
@@ -92,6 +92,9 @@ public struct IPCDispatch: Sendable {
             // Through the termination gate, like the rail's Quit (spec §7.4), but only once the
             // reply is written: the gate's first step stops this server.
             return IPCReply(CommandReport.done.response(id: id)) { [route] in route(.quit) }
+        case "reload":
+            // #194: the same, then the bundle starts again.
+            return IPCReply(CommandReport.done.response(id: id)) { [route] in route(.reload) }
         default:
             switch Self.command(for: request) {
             case nil: return IPCReply(.failure(id: id, "unknown cmd \(request.cmd)"))

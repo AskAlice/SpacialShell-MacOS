@@ -156,6 +156,19 @@ import SpacialShellProtocol
         #expect(!KeyBindings.commandNames.keys.contains("quit"))   // not a hotkey, not `run quit`
     }
 
+    /// #194: `quit`'s door, with `.reload` routed instead — the gate, then the bundle again.
+    @Test func reloadRepliesFirstAndRoutesThroughTheGateAfter() async throws {
+        let h = Harness(world())
+        let reply = await h.dispatch.handle(request("reload"))
+        #expect(reply.response.ok && reply.response.data?["outcome"]?.stringValue == "ok")
+        #expect(h.routed.isEmpty)
+        let after = try #require(reply.afterSend)
+        after()
+        #expect(h.routed == [.reload])
+        #expect(IPCDispatch.verbs.contains("reload"))
+        #expect(!KeyBindings.commandNames.keys.contains("reload"))
+    }
+
     @Test func runStillRoutesAppLayerCommandsAndRunsModelOnes() async throws {
         let h = Harness(world())
         let overview = await h.dispatch.handle(request("run", ["command": .string("toggle-overview")])).response

@@ -500,6 +500,11 @@ windows go, and start fresh:
    see [Where the file lives](#where-the-file-lives)).
 3. **Relaunch SpacialShell.** It starts from your `[[workspace]]` seeds and category routing.
 
+To restart SpacialShell instead, use **Reload SpacialShell** (Settings → General, or the rail's
+app menu) or `spacialctl reload`: steps 1 and 3 in one. It keeps `state.json` as a quit does, so
+the workspaces come back unless saving is off (`persist-state = false`, or a reset this session).
+See [ipc: reloading](ipc.md#reloading-reload-194).
+
 Or, with SpacialShell running, **`spacialctl reset-state`** or the settings window's **Reset saved
 state…** button (General pane) does steps 1–2 for you without quitting: it deletes `state.json`
 and stops writing it for the rest of the session. The windows stay where they are; the next launch

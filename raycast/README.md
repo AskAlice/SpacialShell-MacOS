@@ -11,6 +11,7 @@ Control the [SpacialShell](https://github.com/AskAlice/spacial-shell) tiling win
 
 - **Switch Workspace** — list every display's workspaces (categories), focused display first, and jump to one by id
 - **No-view verbs** — cycle layout, focus workspace up/down, focus/move window in all four directions, toggle float, close window. Bind Raycast hotkeys to any of them.
+- **Reload SpacialShell** — `spacialctl reload`: quits the shell (every window is put back on screen first) and starts the same SpacialShell.app again
 
 ## Known limits (v0)
 

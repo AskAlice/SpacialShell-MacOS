@@ -16,6 +16,7 @@ Scripts/e2e/e2e.sh --vm                         # every scenario, in a fresh gue
 Scripts/e2e/e2e.sh --vm --record                # same, and write the screenshots as references
 Scripts/e2e/e2e.sh --vm --dry-run               # print the tart commands only
 Scripts/e2e/e2e.sh --vm --suite snapshots       # the visual snapshot suite (#81), scenarios/snapshots/
+Scripts/e2e/e2e.sh --vm --suite lifecycle       # spacialctl reload: same windows, new pid (#194)
 ```
 
 No scenario argument means all of `scenarios/*.scn` (`--suite NAME` adds `scenarios/NAME/*.scn`). Exit status is non-zero when any check

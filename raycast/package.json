@@ -19,7 +19,8 @@
     { "name": "move-window-left", "title": "Move Window One Tab Left", "description": "Swap the focused window with its neighbour on the left", "mode": "no-view" },
     { "name": "move-window-right", "title": "Move Window One Tab Right", "description": "Swap the focused window with its neighbour on the right", "mode": "no-view" },
     { "name": "toggle-float", "title": "Float or Re-tile Window", "description": "Float the focused window, or put a floating one back in the tiling", "mode": "no-view" },
-    { "name": "close-window", "title": "Close Focused Window", "description": "Close the focused window", "mode": "no-view" }
+    { "name": "close-window", "title": "Close Focused Window", "description": "Close the focused window", "mode": "no-view" },
+    { "name": "reload", "title": "Reload SpacialShell", "description": "Quit SpacialShell, putting every window back on screen, and start it again", "mode": "no-view" }
   ],
   "preferences": [
     {

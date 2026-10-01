@@ -214,6 +214,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             karabiner: Karabiner.isInstalled ? KarabinerBridge(
                 rulesPath: Karabiner.rulesFile.path, rulesExist: { Karabiner.rulesExist },
                 write: { [weak self] in try self?.writeKarabinerRules() }, open: Karabiner.open) : nil,
+            reload: { gate.quit(relaunching: Bundle.main.bundleURL) },   // #194
             onChange: { [weak self] new in
                 Task { @MainActor in self?.applyOverrides(new) }
             })
@@ -269,7 +270,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             case .quit:
                 // Spec §7.4 and the M2 ruling: through the gate, never `NSApp.terminate` — the same
                 // path, on the same queue, as SIGTERM, so every parked window is put back first.
-                TerminationGate.queue.async { gate.run(onMainThread: false); exit(0) }
+                gate.quit()
+            case .reload:
+                gate.quit(relaunching: Bundle.main.bundleURL)   // #194
             default:
                 Task { await store.run(command) }
             }
@@ -682,6 +685,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        termination.cancelRelaunch()   // #194: a logout during a reload is a logout
         termination.run(onMainThread: true)
     }
 }
@@ -714,6 +718,8 @@ final class TerminationGate: @unchecked Sendable {
     private var watchers: Watchers?
     private var tracing: TracerProviderSdk?
     private var didTerminate = false
+    /// #194: a plain quit (or an AppKit termination) arrived while a reload was under way; it wins.
+    private var relaunchCancelled = false
     /// #139: whether the exit path writes state.json. Off with `persist-state = false` and after a
     /// reset; the restore of parked windows runs either way.
     private var writesState = true
@@ -754,6 +760,30 @@ final class TerminationGate: @unchecked Sendable {
     /// Called from `WorldStore`'s `onChange`, off the main actor.
     func note(world: World) {
         lock.lock(); lastWorld = world; lock.unlock()
+    }
+
+    /// The rail's Quit and `spacialctl quit`: `run` on `queue`, the same path as SIGTERM, then out.
+    /// #194: with a bundle (a reload), a helper that reopens it once this process is gone is
+    /// started after the windows are back and before the exit.
+    func quit(relaunching bundle: URL? = nil) {
+        // Set now, not on `queue`: a reload already there ends in `exit(0)`, and this would never run.
+        if bundle == nil { cancelRelaunch() }
+        Self.queue.async { [self] in
+            run(onMainThread: false)
+            if let bundle, !lock.withLock({ relaunchCancelled }) {
+                do {
+                    if try Relaunch.start(bundle: bundle) { Self.log.info("reloading: \(bundle.path, privacy: .public) reopens once we exit") }
+                    else { Self.log.error("reload: \(bundle.path, privacy: .public) is not an app bundle; quitting only") }
+                } catch {
+                    Self.log.error("reload: the relaunch helper did not start (\(String(describing: error), privacy: .public)); quitting only")
+                }
+            }
+            exit(0)
+        }
+    }
+
+    func cancelRelaunch() {
+        lock.withLock { relaunchCancelled = true }
     }
 
     /// Idempotent: SIGTERM followed by `applicationWillTerminate` must not restore twice.

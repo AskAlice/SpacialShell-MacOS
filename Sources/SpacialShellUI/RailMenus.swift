@@ -15,6 +15,7 @@ enum RailMenu {
         menu.addItem(ActionMenuItem("Settings\u{2026}") { send(.openSettings) })
         menu.addItem(ActionMenuItem("About SpacialShell") { send(.showAbout) })
         menu.addItem(.separator())
+        menu.addItem(ActionMenuItem("Reload SpacialShell") { send(.reload) })   // #194
         menu.addItem(ActionMenuItem("Quit SpacialShell") { send(.quit) })
         return menu
     }
