@@ -66,16 +66,19 @@ import Foundation
         #expect(ContinuousClock.now - started < .seconds(1))
     }
 
-    /// The writes go out together: fifty that each take 100 ms all land within a 2 s deadline, which
-    /// one after another they could not, so one slow app cannot use up every other window's time.
+    /// The writes go out together, so one slow app cannot use up every other window's time: all
+    /// fifty are in flight before the first answers. Counted, not timed — a wall-clock bound failed
+    /// on a loaded machine (load average ~80) though the writes were concurrent.
     @Test func manyWritesRunAtOnce() {
         let frames = Dictionary(uniqueKeysWithValues: (1...50).map { (WindowRef(id: WindowID($0), pid: Int32($0)), CGRect(x: 0, y: 0, width: 10, height: 10)) })
-        let written = Written()
-        let failures = TerminationRestore.run(frames, deadline: 2) { ref, _, done in
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { written.add(ref); done(.success(())) }
+        let written = Written(), inFlight = InFlight()
+        let failures = TerminationRestore.run(frames, deadline: 30) { ref, _, done in
+            inFlight.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { inFlight.end(); written.add(ref); done(.success(())) }
         }
         #expect(failures.isEmpty)
-        #expect(written.refs == Set(frames.keys))   // one after another would be 5 s, past the deadline
+        #expect(written.refs == Set(frames.keys))
+        #expect(inFlight.peak == frames.count, "every write was started before any answered")
     }
 
     @Test func nothingParkedReturnsAtOnce() {
@@ -110,6 +113,14 @@ import Foundation
         if case .failure(let e) = result { #expect(e == outcome) } else { #expect(outcome == nil) }
         #expect(calls.count == writes)
         if writes == 2 { #expect(calls == [target.size, nil]) }   // the retry is position-only
+    }
+
+    private final class InFlight: @unchecked Sendable {
+        private let lock = NSLock()
+        private var now = 0, top = 0
+        func start() { lock.withLock { now += 1; top = max(top, now) } }
+        func end() { lock.withLock { now -= 1 } }
+        var peak: Int { lock.withLock { top } }
     }
 
     private final class Written: @unchecked Sendable {
