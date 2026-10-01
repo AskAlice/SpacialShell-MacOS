@@ -207,7 +207,31 @@ enum Stories {
             guard let look = looks[chip.ref.id] else { continue }
             out[chip.ref] = windowShot(aspect: chip.frame.width * state.aspect / chip.frame.height, look)
         }
+        // #197: a row's other tabs are maximized windows too: the display's shape.
+        for ref in state.rows.flatMap(\.offscreen) {
+            guard let look = looks[ref.id] else { continue }
+            out[ref] = windowShot(aspect: state.aspect, look)
+        }
         return out
+    }
+    /// #197: one maximize workspace of four browser tabs (the focused one on the mini-desktop, the
+    /// other three beside it), above and below a row of their own.
+    static func spatialTabs() -> SpatialState {
+        func w(_ id: Int, _ pid: Int32) -> SpacialShellProtocol.WindowRef { WindowRef(id: WindowID(id), pid: pid) }
+        let (b1, b2, b3, b4, t1, n1) = (w(1, 1), w(2, 1), w(3, 1), w(4, 1), w(5, 3), w(6, 2))
+        let d: SpacialShellProtocol.DisplayID = "D1"
+        let rows = [
+            Workspace(name: "Code", layout: .maximize, windows: [t1], anchor: t1, category: .coding),
+            Workspace(name: "Web", layout: .maximize, windows: [b1, b2, b3, b4], anchor: b1, category: .web),
+            Workspace(name: "Notes", layout: .maximize, windows: [n1], anchor: n1),
+            Workspace(name: "Workspace", layout: .maximize),
+        ]
+        let world = World(screens: [d: Screen(display: d, workspaces: rows, activeIndex: 1)], screenOrder: [d],
+                          focus: Focus(screen: d, window: b1), ephemeral: [], ignored: [], hidden: [],
+                          parents: [:], defaultLayout: .maximize)
+        let titles = [b1: "Pull requests · AskAlice/SpacialShell-MacOS", b2: "developer.apple.com — AXUIElement",
+                      b3: "Hacker News", b4: "YouTube", t1: "~/code/spacial-shell — zsh", n1: "Shopping list"]
+        return SpatialView.state(for: d, in: world, layouts: .builtins, titles: titles, viewport: CGSize(width: 1440 - 48 - 16, height: 900 - 34 - 16))!
     }
     /// A stand-in window of `aspect` (width / height) as the thumbnail cache holds one,
     /// `WindowThumbnails.longSide` px on the long side: a title bar, then lines of "text".
@@ -698,6 +722,16 @@ enum Stories {
         // editor, the focused terminal, #general and two notes. Still the icon and title: the
         // second Safari, the other terminal and the middle note, whose captures are pending or
         // failed. The aside's Mail stays an icon.
+        // #197: a maximize workspace's other tabs are previewed beside it, not just listed: two
+        // with pictures, the fourth (YouTube) still on its icon.
+        let tabbed = spatialTabs()
+        add("spatial-view-other-tabs", CGSize(width: 1440, height: 900),
+            SpatialStripView(state: tabbed, metaFor: meta, send: send,
+                             thumbnails: spatialThumbnails(tabbed, [
+                                 1: (0xF5F5F7, 0xDCDCE0, 0x8E8E93), 2: (0xFFFFFF, 0xE8E8ED, 0x0A84FF),
+                                 3: (0xF6F6EF, 0xFF6600, 0x828282), 5: (0x101010, 0x2A2A2A, 0x3FC56B),
+                             ]),
+                             reduceMotion: true))
         let pictured = spatial(active: 1)
         add("spatial-view-thumbnails", CGSize(width: 1440, height: 900),
             SpatialStripView(state: pictured, metaFor: meta, send: send,

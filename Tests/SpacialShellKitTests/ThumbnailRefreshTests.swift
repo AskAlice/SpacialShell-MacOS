@@ -82,8 +82,8 @@ import Foundation
 
     /// #181: opening the spatial view refreshes the stale thumbnails of the chips in the rows it
     /// shows, a batch per row, the active row first and then outwards, so the pictures the user is
-    /// looking at land first. Not the "also in this row" icons, and never a placeholder (#128),
-    /// whose id is its own and has no window to take.
+    /// looking at land first. #197: a row's other tabs (`offscreen`) too, after its chips. Never a
+    /// placeholder (#128), whose id is its own and has no window to take.
     @Test func openingTheSpatialViewRefreshesTheStaleChipsInViewActiveRowFirst() {
         func ref(_ id: WindowID, pid: Int32 = 1) -> WindowRef { WindowRef(id: id, pid: pid) }
         func chips(_ refs: [WindowRef]) -> [SpatialChip] { refs.map { SpatialChip(ref: $0, frame: .zero) } }
@@ -97,16 +97,27 @@ import Foundation
         ]
         let state = SpatialState(display: "D1", rows: rows, aspect: 1.6)
         let fresh: Set<WindowID> = [3, 8]
-        let batches = R.onOpen(state, visible: 1..<5, isStale: { !fresh.contains($0) })
-        #expect(batches == [[ref(4)], [ref(2)], [ref(7)]])
+        let batches = R.onOpen(state, visible: 1..<5, skip: [], isStale: { !fresh.contains($0) })
+        #expect(batches == [[ref(4), ref(6)], [ref(2)], [ref(7)]])
     }
 
     @Test func openingTheSpatialViewWithEverythingFreshTakesNothing() {
         let row = SpatialRow(id: UUID(), index: 0, name: "Web",
                              chips: [SpatialChip(ref: WindowRef(id: 1, pid: 1), frame: .zero)], isActive: true)
         let state = SpatialState(display: "D1", rows: [row], aspect: 1.6)
-        #expect(R.onOpen(state, visible: 0..<1, isStale: { _ in false }).isEmpty)
-        #expect(R.onOpen(state, visible: 0..<0, isStale: { _ in true }).isEmpty)
+        #expect(R.onOpen(state, visible: 0..<1, skip: [], isStale: { _ in false }).isEmpty)
+        #expect(R.onOpen(state, visible: 0..<0, skip: [], isStale: { _ in true }).isEmpty)
+    }
+
+    /// #197: an other tab a capture cannot resolve (minimized or app-hidden, fullscreen, off-Space —
+    /// the caller's `skip`) or a placeholder is not asked for; the rest are, after the chips.
+    @Test func otherTabsTheCaptureCannotReachAreSkipped() {
+        let a = WindowRef(id: 1, pid: 1), parked = WindowRef(id: 2, pid: 1), hidden = WindowRef(id: 3, pid: 1)
+        let full = WindowRef(id: 4, pid: 1), slot = WindowRef(id: 5, pid: -9)
+        let row = SpatialRow(id: UUID(), index: 0, name: "Web", chips: [SpatialChip(ref: a, frame: .zero)],
+                             offscreen: [parked, hidden, full, slot], isActive: true)
+        let state = SpatialState(display: "D1", rows: [row], aspect: 1.6)
+        #expect(R.onOpen(state, visible: 0..<1, skip: [hidden, full], isStale: { _ in true }) == [[a, parked]])
     }
 
     /// #189: opening the overview refreshes the stale thumbnails of the windows it lists, in its

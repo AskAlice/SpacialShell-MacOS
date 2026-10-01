@@ -128,23 +128,25 @@ public final class SpatialController {
                                               rowHeight: SpatialStripView.rowHeight(in: vf.size, aspect: state.aspect),
                                               spacing: SpatialStripView.spacing, viewHeight: vf.height)
         let key = RefreshKey(display: state.display, active: state.activeIndex,
-                             chips: Set(state.rows[visible].flatMap { $0.chips.map(\.ref) }))
+                             chips: Set(state.rows[visible].flatMap(\.windows)))
         guard refreshedFor != key else { return }
         refreshedFor = key
-        ThumbnailRefresher.shared.refresh(ThumbnailRefresh.onOpen(state, visible: visible, isStale: thumbs.isStale)) {
+        ThumbnailRefresher.shared.refresh(ThumbnailRefresh.onOpen(
+            state, visible: visible, skip: world.hidden.union(world.offSpace).union(world.fullscreen), isStale: thumbs.isStale)) {
             [weak self] in
             guard let self, self.isOpen else { return }
             self.render()
         }
     }
 
-    /// The cached picture of every chip that has one. A placeholder (#128) has no window, and its
-    /// id is its own, so a picture cached under the same number belongs to some real window.
+    /// The cached picture of every chip, and (#197) every other tab beside it, that has one. A
+    /// placeholder (#128) has no window, and its id is its own, so a picture cached under the same
+    /// number belongs to some real window.
     private static func thumbnails(for state: SpatialState,
                                    from thumbs: WindowThumbnails) -> [SpacialShellProtocol.WindowRef: NSImage] {
         var out: [SpacialShellProtocol.WindowRef: NSImage] = [:]
-        for chip in state.rows.flatMap(\.chips) where !chip.ref.isPlaceholder {
-            out[chip.ref] = thumbs.image(for: chip.ref.id)
+        for ref in state.rows.flatMap(\.windows) where !ref.isPlaceholder {
+            out[ref] = thumbs.image(for: ref.id)
         }
         return out
     }

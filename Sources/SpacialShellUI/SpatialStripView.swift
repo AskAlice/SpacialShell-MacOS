@@ -63,7 +63,7 @@ struct SpatialStripView: View {
             label(row).frame(width: Self.labelWidth, alignment: .trailing)
             desktop(row, height: height)
             // Held open when empty, so every mini-desktop lines up under the others.
-            ZStack(alignment: .leading) { Color.clear; aside(row) }.frame(width: Self.asideWidth)
+            ZStack(alignment: .leading) { Color.clear; aside(row, height: height) }.frame(width: Self.asideWidth)
         }
         .frame(height: height)
         .opacity(row.isActive ? 1 : 0.72)
@@ -195,25 +195,65 @@ struct SpatialStripView: View {
 
     // MARK: the rest of the row
 
+    /// #197: the row's other tabs, the windows its layout does not show (in maximize, every tab
+    /// but the focused one), as previews beside the mini-desktop: the window's picture when there
+    /// is one (#181), its app icon otherwise, a click going to that window. One column for up to
+    /// two, two beyond, each cell sized to fit the row; past `maxAside`, "+n" in the label.
     @ViewBuilder
-    private func aside(_ row: SpatialRow) -> some View {
+    private func aside(_ row: SpatialRow, height: CGFloat) -> some View {
         if !row.offscreen.isEmpty {
             let shown = Array(row.offscreen.prefix(Self.maxAside))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Also in this row").font(.system(size: 10)).foregroundStyle(.secondary)
-                HStack(spacing: 3) {
+            let more = row.offscreen.count - shown.count
+            let gap: CGFloat = 4, labelHeight: CGFloat = 14
+            let (columns, cell) = Self.tabGrid(count: shown.count, aspect: state.aspect, gap: gap,
+                                               height: height - labelHeight - gap)
+            VStack(alignment: .leading, spacing: gap) {
+                Text(more > 0 ? "Other tabs  +\(more)" : "Other tabs").font(.system(size: 10)).foregroundStyle(.secondary)
+                    .frame(height: labelHeight)
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cell.width), spacing: gap), count: columns),
+                          alignment: .leading, spacing: gap) {
                     ForEach(shown, id: \.self) { ref in
-                        appIcon(metaFor(ref.pid), side: 20)
+                        tabPreview(ref, size: cell)
                             .onTapGesture { send(.focusWindowRef(ref)); dismiss() }
                             .help(metaFor(ref.pid).name)
-                    }
-                    if row.offscreen.count > shown.count {
-                        Text("+\(row.offscreen.count - shown.count)")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded)).foregroundStyle(.secondary)
                     }
                 }
             }
         }
+    }
+
+    /// #197: one column or two for `count` previews in the aside, whichever gives each the larger
+    /// picture; each at the display's shape (a maximized window's), fitting `height` in rows.
+    static func tabGrid(count: Int, aspect: CGFloat, gap: CGFloat, height: CGFloat) -> (Int, CGSize) {
+        let a = max(aspect, 0.1)
+        return [1, 2].map { columns -> (Int, CGSize) in
+            let lines = (count + columns - 1) / columns
+            let fitW = (asideWidth - CGFloat(columns - 1) * gap) / CGFloat(columns)
+            let fitH = max(16, (height - CGFloat(lines - 1) * gap) / CGFloat(lines))
+            let h = min(fitH, fitW / a)
+            return (columns, CGSize(width: min(fitW, h * a), height: h))
+        }.max { $0.1.width * $0.1.height < $1.1.width * $1.1.height }!
+    }
+
+    /// One other tab (#197): its picture, aspect-filled, with the app icon on the corner; or the
+    /// icon alone on material while there is none.
+    private func tabPreview(_ ref: SpacialShellProtocol.WindowRef, size: CGSize) -> some View {
+        let meta = metaFor(ref.pid)
+        let badge = min(16, max(10, size.height * 0.3))
+        return ZStack(alignment: .bottomTrailing) {
+            if let picture = thumbnails[ref] {
+                Image(nsImage: picture).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                    .frame(width: size.width, height: size.height).clipped()
+                appIcon(meta, side: badge).padding(3)
+            } else {
+                appIcon(meta, side: min(24, size.height * 0.6))
+                    .frame(width: size.width, height: size.height)
+                    .background(Self.chipShape.fill(.regularMaterial))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(Self.chipShape)
+        .overlay(Self.chipShape.strokeBorder(.separator, lineWidth: 0.5))
     }
 
     @ViewBuilder
