@@ -143,6 +143,24 @@ import SpacialShellProtocol
         #expect(h.world.focus.screen == "D2" && h.world.focus.window == c)
     }
 
+    // MARK: - #199: focus-window by app and title
+
+    /// No window id: the window is found by app (and/or title) against today's state, then
+    /// focused like any id; several matches are refused with the list, and `index` picks one.
+    @Test func focusWindowByAppFindsItOrListsTheChoices() async {
+        let h = Harness(world())
+        let one = await h.dispatch.handle(request("focus-window", ["app": .string("2")])).response
+        #expect(one.ok && h.world.focus.window == c)
+
+        let two = await h.dispatch.handle(request("focus-window", ["app": .string("1")])).response
+        #expect(!two.ok && (two.error ?? "").contains("[2]"), "\(two.error ?? "")")
+        let picked = await h.dispatch.handle(request("focus-window", ["app": .string("1"), "index": .int(2)])).response
+        #expect(picked.ok && h.world.focus.window == b)
+
+        let none = await h.dispatch.handle(request("focus-window", ["app": .string("safari")])).response
+        #expect(!none.ok && none.error == "no window matches app \"safari\"")
+    }
+
     // MARK: - quit
 
     @Test func quitRepliesFirstAndRoutesThroughTheGateAfter() async throws {
@@ -211,6 +229,20 @@ import SpacialShellProtocol
         dispatch.karabinerRules = { _ in throw Denied() }
         let failed = await dispatch.handle(request("karabiner-rules", ["write": .bool(true)])).response
         #expect(!failed.ok && failed.error == "permission denied")
+    }
+
+    /// #199: the app's closure gets the window and its path is the reply; a failure is the error.
+    @Test func windowPreviewReturnsThePathOrFails() async {
+        struct NoPicture: LocalizedError { var errorDescription: String? { "no picture of that window" } }
+        var dispatch = Harness(world()).dispatch
+        dispatch.windowPreview = { ref in "/tmp/previews/\(ref.id).png" }
+        let ok = await dispatch.handle(request("window-preview", ["window": window(a)])).response
+        #expect(ok.ok && ok.data?["path"]?.stringValue == "/tmp/previews/1.png")
+        dispatch.windowPreview = { _ in throw NoPicture() }
+        let failed = await dispatch.handle(request("window-preview", ["window": window(a)])).response
+        #expect(!failed.ok && failed.error == "no picture of that window")
+        let bad = await dispatch.handle(request("window-preview")).response
+        #expect(!bad.ok)
     }
 
     @Test func versionAndStateAnswer() async throws {

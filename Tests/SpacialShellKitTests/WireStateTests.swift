@@ -34,3 +34,71 @@ import SpacialShellProtocol
     }
 }
 
+
+/// #199: finding a window by app and title — what `spacialctl focus-window --app … --title …` asks.
+@Suite struct FindWindowTests {
+    let pr = WindowRef(id: 1, pid: 7), docs = WindowRef(id: 2, pid: 7), zsh = WindowRef(id: 3, pid: 9)
+    let notes = WindowRef(id: 4, pid: 11)
+
+    /// Row 1: the two Brave tabs; row 2: the terminal and a note. Focus on the terminal.
+    func state() -> WireState {
+        var w = World.empty(screens: ["D1"], defaultLayout: .maximize)
+        w.adopt(pr, kind: .tile, on: "D1"); w.adopt(docs, kind: .tile, on: "D1")
+        let second = w.screens["D1"]!.workspaces[1].id
+        w.adopt(zsh, kind: .tile, on: "D1", workspace: second); w.adopt(notes, kind: .tile, on: "D1", workspace: second)
+        w.focus = Focus(screen: "D1", window: zsh)
+        return WireState.test(world: w,
+                              bundleIDs: [pr: "com.brave.Browser.origin", docs: "com.brave.Browser.origin",
+                                          zsh: "co.zeit.hyper", notes: "com.apple.Notes"],
+                              titles: [pr: "Pull requests · AskAlice/SpacialShell", docs: "AXUIElement docs",
+                                       zsh: "~/code — zsh", notes: "Shopping list"],
+                              appNames: [7: "Brave Origin", 9: "Hyper", 11: "Notes"])
+    }
+
+    @Test func appAndTitleTogether() {
+        #expect(state().findWindow(app: "brave", title: "PULL REQ", index: nil, first: false) == .success(pr))
+    }
+
+    @Test func appByNameBundleIDOrPid() {
+        let s = state()
+        #expect(s.findWindow(app: "hyper", title: nil, index: nil, first: false) == .success(zsh))
+        #expect(s.findWindow(app: "com.apple.Notes", title: nil, index: nil, first: false) == .success(notes))
+        #expect(s.findWindow(app: "Notes", title: nil, index: nil, first: false) == .success(notes))   // bundle-id suffix or name
+        #expect(s.findWindow(app: "9", title: nil, index: nil, first: false) == .success(zsh))
+    }
+
+    @Test func titleAlone() {
+        #expect(state().findWindow(app: nil, title: "shopping", index: nil, first: false) == .success(notes))
+    }
+
+    /// Several matches: an error that lists them, numbered in display, row, tab order — the order
+    /// `--index` counts in, from 1.
+    @Test func ambiguityListsThemAndIndexPicks() {
+        let s = state()
+        guard case .failure(let e) = s.findWindow(app: "brave", title: nil, index: nil, first: false) else {
+            Issue.record("ambiguous"); return
+        }
+        #expect(e.message.contains("[1] Brave Origin · Pull requests"))
+        #expect(e.message.contains("[2] Brave Origin · AXUIElement docs"))
+        #expect(s.findWindow(app: "brave", title: nil, index: 2, first: false) == .success(docs))
+        guard case .failure(let out) = s.findWindow(app: "brave", title: nil, index: 3, first: false) else {
+            Issue.record("out of range"); return
+        }
+        #expect(out.message.contains("[2]"))
+    }
+
+    /// `--first`: the focused window if it matches, else one in the focused display's shown row,
+    /// else the first listed.
+    @Test func firstPrefersTheFocusedThenTheShownRow() {
+        let s = state()
+        #expect(s.findWindow(app: nil, title: "o", index: nil, first: true) == .success(zsh))
+        #expect(s.findWindow(app: "brave", title: nil, index: nil, first: true) == .success(pr))
+    }
+
+    @Test func noneMatchesOrNothingAsked() {
+        let s = state()
+        #expect(s.findWindow(app: "safari", title: nil, index: nil, first: false) == .failure(FindWindowRefusal("no window matches app \"safari\"")))
+        guard case .failure = s.findWindow(app: nil, title: nil, index: nil, first: false) else { Issue.record("needs one"); return }
+        guard case .failure = s.findWindow(app: "brave", title: nil, index: 1, first: true) else { Issue.record("exclusive"); return }
+    }
+}

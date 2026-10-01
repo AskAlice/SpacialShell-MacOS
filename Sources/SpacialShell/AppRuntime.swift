@@ -311,7 +311,9 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                     try self.writeKarabinerRules()
                     return .object(["message": .string("Wrote \(Karabiner.rulesFile.path). \(Karabiner.enableHint)")])
                 }
-            })
+            },
+            // #199: `spacialctl window-preview <id> <pid>`, for Raycast's Switch to Window….
+            windowPreview: { ref in try await WindowPreviewFile.write(ref) })
         let ipc = IPCServer(reply: { await dispatch.handle($0) })
         do {
             try ipc.start()

@@ -161,3 +161,36 @@ enum WindowTitles {
         return out
     }
 }
+
+/// #199: a window's thumbnail as a PNG on disk, for clients outside the shell (Raycast's Switch to
+/// Window… shows it beside the list). Taken now when missing or stale, then written to
+/// `~/Library/Caches/sh.emu.SpacialShell/previews/<id>.png`, overwritten each time.
+// ponytail: one file per window, never pruned; a closed window's PNG lingers in Caches until the
+// next preview of that id overwrites it or macOS purges the cache. Prune on `retain` if it matters.
+public enum WindowPreviewFile {
+    public struct NoPicture: LocalizedError {
+        public var errorDescription: String? {
+            "no picture of that window (it may not be capturable, or Screen Recording is not granted)"
+        }
+    }
+
+    @MainActor
+    public static func write(_ ref: SpacialShellProtocol.WindowRef) async throws -> String {
+        let thumbs = WindowThumbnails.shared
+        if thumbs.isStale(ref.id) {
+            let taken = ContinuousClock.now
+            let images = await WindowPreviewCapture.images(for: [ref], longSide: WindowThumbnails.longSide)
+            await thumbs.add(Array(images), taken: taken)
+        }
+        guard let image = thumbs.image(for: ref.id),
+              let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:])
+        else { throw NoPicture() }
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("sh.emu.SpacialShell/previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("\(ref.id).png")
+        try png.write(to: file, options: .atomic)
+        return file.path
+    }
+}

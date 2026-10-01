@@ -10,6 +10,7 @@
   "commands": [
     { "name": "switch", "title": "Switch to Workspace…", "description": "Pick a workspace on any display and switch to it", "mode": "view" },
     { "name": "change-layout", "title": "Change Layout…", "description": "Pick a layout for the focused workspace", "mode": "view" },
+    { "name": "switch-window", "title": "Switch to Window…", "description": "Find any window by app or title, with a preview, and switch to it", "mode": "view" },
     { "name": "cycle-layout", "title": "Cycle Workspace Layout", "description": "Switch the active workspace to its next layout", "mode": "no-view" },
     { "name": "focus-workspace-up", "title": "Switch to Workspace Above", "description": "Switch to the workspace above the current one", "mode": "no-view" },
     { "name": "focus-workspace-down", "title": "Switch to Workspace Below", "description": "Switch to the workspace below the current one", "mode": "no-view" },

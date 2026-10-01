@@ -12,6 +12,13 @@ public enum SpacialCtlCommandLine {
       change-layout <id> [--workspace <uuid>]
                            change a workspace's layout (default: the focused one), e.g.
                            `change-layout split`; unknown ids exit 1 (`set-layout` still works)
+      focus-window --app <name|bundle-id|pid> --title <text> [--index N | --first]
+                           switch to a window by its app and/or a piece of its title
+                           (case-insensitive); several matches exit 1 listing them, numbered
+                           for --index; --first takes the focused, else the shown one
+      window-preview <id> <pid>
+                           write the window's thumbnail to a PNG and print its path
+                           (needs Screen Recording); used by Raycast's Switch to Window…
       focus-workspace <uuid>
                            switch to a workspace by id, on whichever display holds it; an unknown
                            id exits 1
@@ -50,6 +57,11 @@ public enum SpacialCtlCommandLine {
              "change-layout" where args.count == 4 && args[2] == "--workspace":
             return IPCRequest(id: 1, cmd: "set-layout", args: ["layout": .string(args[1]), "workspace": .string(args[3])])
         // #131: passed through unparsed — an id that is not a UUID is the daemon's "unknown workspace".
+        case "window-preview" where args.count == 3:   // #199: the window's thumbnail as a PNG path
+            guard let id = Int(args[1]), let pid = Int(args[2]) else { return nil }
+            return IPCRequest(id: 1, cmd: "window-preview", args: ["window": .object(["id": .int(id), "pid": .int(pid)])])
+        case "focus-window" where args.count > 1:   // #199: by app and/or title
+            return focusWindow(Array(args.dropFirst()))
         case "focus-workspace" where args.count == 2:
             return IPCRequest(id: 1, cmd: "focus-workspace", args: ["workspace": .string(args[1])])
         case "call" where args.count == 2:
@@ -60,5 +72,27 @@ public enum SpacialCtlCommandLine {
             return IPCRequest(id: 1, cmd: args[1], args: object)
         default: return nil
         }
+    }
+
+    /// `focus-window --app <a> --title <t> [--index N | --first]`: at least one of app and title;
+    /// a flag without its value, an unknown flag or a non-positive index is a usage error.
+    static func focusWindow(_ flags: [String]) -> IPCRequest? {
+        var args: [String: JSONValue] = [:], i = 0
+        while i < flags.count {
+            switch flags[i] {
+            case "--app", "--title":
+                guard i + 1 < flags.count else { return nil }
+                args[String(flags[i].dropFirst(2))] = .string(flags[i + 1]); i += 2
+            case "--index":
+                guard i + 1 < flags.count, let n = Int(flags[i + 1]), n > 0 else { return nil }
+                args["index"] = .int(n); i += 2
+            case "--first":
+                args["first"] = .bool(true); i += 1
+            default:
+                return nil
+            }
+        }
+        guard args["app"] != nil || args["title"] != nil else { return nil }
+        return IPCRequest(id: 1, cmd: "focus-window", args: args)
     }
 }

@@ -1,5 +1,11 @@
 import Foundation
 
+/// #199: why `focus-window --app/--title` names no single window; `spacialctl` prints it, exit 1.
+public struct FindWindowRefusal: Error, Equatable, Sendable {
+    public let message: String
+    public init(_ message: String) { self.message = message }
+}
+
 public struct SetLayoutRefusal: Error, Equatable, Sendable {
     public let message: String
     public init(_ message: String) { self.message = message }
@@ -135,6 +141,50 @@ public struct WireState: Codable, Equatable, Sendable {
         }
         guard let target else { return .failure(SetLayoutRefusal("no active workspace")) }
         return .success(.setWorkspaceLayout(target, LayoutID(rawValue: layout)))
+    }
+
+    /// #199: the window `spacialctl focus-window --app … --title …` means. `app` matches the app's
+    /// name (case-insensitive substring: "brave" is "Brave Origin"), its bundle id (exact, or the
+    /// last component), or its pid; `title` is a case-insensitive substring of the window's title.
+    /// Candidates are in display, row, tab order — the order an ambiguity lists them in and
+    /// `index` (1-based) counts in. `first` takes the focused window if it matches, else one in the
+    /// focused display's shown row, else the first listed. Placeholders (#128) are never matched.
+    public func findWindow(app: String?, title: String?, index: Int?, first: Bool) -> Result<WindowRef, FindWindowRefusal> {
+        let app = app?.trimmingCharacters(in: .whitespaces).lowercased(), title = title?.lowercased()
+        guard (app?.isEmpty == false) || (title?.isEmpty == false) else {
+            return .failure(FindWindowRefusal("focus-window needs --app, --title, or a window id"))
+        }
+        if index != nil && first { return .failure(FindWindowRefusal("--index and --first cannot be used together")) }
+        struct Hit { let ref: WindowRef; let label: String; let focused: Bool; let shown: Bool }
+        var hits: [Hit] = []
+        for screen in screens {
+            for (row, ws) in screen.workspaces.enumerated() {
+                for w in ws.windows where w.isPlaceholder != true {
+                    if let app {
+                        let name = w.appName?.lowercased() ?? "", bundle = w.bundleID?.lowercased() ?? ""
+                        let ok = name.contains(app) || bundle == app || bundle.hasSuffix("." + app) || String(w.pid) == app
+                        if !ok { continue }
+                    }
+                    if let title, !title.isEmpty, !(w.title?.lowercased().contains(title) ?? false) { continue }
+                    let label = [w.appName ?? w.bundleID ?? "pid \(w.pid)", w.title ?? "untitled",
+                                 "\(row + 1) \(ws.title ?? ws.name)"].joined(separator: " · ")
+                    hits.append(Hit(ref: WindowRef(id: w.id, pid: w.pid), label: label, focused: w.isFocused,
+                                    shown: screen.isFocused && ws.isActive))
+                }
+            }
+        }
+        let asked = [app.map { "app \"\($0)\"" }, title.map { "title \"\($0)\"" }].compactMap { $0 }.joined(separator: " and ")
+        guard !hits.isEmpty else { return .failure(FindWindowRefusal("no window matches \(asked)")) }
+        let list = hits.enumerated().map { "  [\($0.offset + 1)] \($0.element.label)" }.joined(separator: "\n")
+        if let index {
+            guard (1...hits.count).contains(index) else {
+                return .failure(FindWindowRefusal("--index \(index) is out of range; \(hits.count) match \(asked):\n\(list)"))
+            }
+            return .success(hits[index - 1].ref)
+        }
+        if hits.count == 1 { return .success(hits[0].ref) }
+        if first { return .success((hits.first(where: \.focused) ?? hits.first(where: \.shown) ?? hits[0]).ref) }
+        return .failure(FindWindowRefusal("\(hits.count) windows match \(asked); add --index N or --first:\n\(list)"))
     }
 
     /// A pre-#9 payload has no `layouts`, a pre-#109 one no `problems`; both still decode.

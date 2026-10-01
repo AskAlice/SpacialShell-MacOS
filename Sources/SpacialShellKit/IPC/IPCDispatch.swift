@@ -48,18 +48,22 @@ public struct IPCDispatch: Sendable {
     /// #196: `write` false, the Karabiner rules file as JSON; true, it is written and the reply
     /// says where. Throws what went wrong.
     public var karabinerRules: @Sendable (_ write: Bool) async throws -> JSONValue
+    /// #199: the window's thumbnail written to a PNG (taken now if missing or stale); returns its
+    /// path. Throws when there is no picture (no Screen Recording grant, or not capturable).
+    public var windowPreview: @Sendable (WindowRef) async throws -> String
 
     public init(version: String, wireState: @escaping @Sendable () async -> WireState,
                 run: @escaping @Sendable (Command) async -> CommandReport,
                 route: @escaping @Sendable (Command) -> Void,
                 resetState: @escaping @Sendable () async -> String = { "not running" },
-                karabinerRules: @escaping @Sendable (Bool) async throws -> JSONValue = { _ in .null }) {
+                karabinerRules: @escaping @Sendable (Bool) async throws -> JSONValue = { _ in .null },
+                windowPreview: @escaping @Sendable (WindowRef) async throws -> String = { _ in throw IPCRefusal.badArgs("no previews here") }) {
         self.version = version; self.wireState = wireState; self.run = run; self.route = route
-        self.resetState = resetState; self.karabinerRules = karabinerRules
+        self.resetState = resetState; self.karabinerRules = karabinerRules; self.windowPreview = windowPreview
     }
 
     /// The verbs `handle` answers, plus `subscribe`. Order is the wire's: older verbs first.
-    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state", "karabiner-rules", "reload"] + idVerbs.keys.sorted()
+    public static let verbs: [String] = ["run", "state", "version", "subscribe", "set-layout", "quit", "reset-state", "karabiner-rules", "reload", "window-preview"] + idVerbs.keys.sorted()
 
     public func handle(_ request: IPCRequest) async -> IPCReply {
         let id = request.id
@@ -82,6 +86,23 @@ public struct IPCDispatch: Sendable {
                                                workspace: request.args["workspace"]?.stringValue) {
             case .success(let command): return IPCReply(await run(command).response(id: id))
             case .failure(let refusal): return IPCReply(.failure(id: id, refusal.message))
+            }
+        case "focus-window" where request.args["window"] == nil:
+            // #199: by app and/or title, found against today's state; with an id it is the id verb.
+            let a = request.args
+            switch await wireState().findWindow(app: a["app"]?.stringValue, title: a["title"]?.stringValue,
+                                                index: a["index"]?.intValue, first: a["first"]?.boolValue == true) {
+            case .success(let ref): return IPCReply(await run(.focusWindowRef(ref)).response(id: id))
+            case .failure(let refusal): return IPCReply(.failure(id: id, refusal.message))
+            }
+        case "window-preview":
+            do {
+                let ref = try Args(verb: "window-preview", values: request.args).window()
+                return IPCReply(.ok(id: id, data: .object(["path": .string(try await windowPreview(ref))])))
+            } catch let refusal as IPCRefusal {
+                return IPCReply(refusal.response(id: id))
+            } catch {
+                return IPCReply(.failure(id: id, error.localizedDescription))
             }
         case "reset-state":
             return IPCReply(.ok(id: id, data: .object(["message": .string(await resetState())])))

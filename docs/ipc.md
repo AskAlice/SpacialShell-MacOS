@@ -25,6 +25,7 @@ shell may be too old for. The list only grows: `v` stays 1 and a new verb adds a
 | `version` | — | `data.version` |
 | `state` | — | the model: screens, workspaces, windows, layouts, problems, `capabilities` |
 | `run` | `command` | a bound command by name, exactly like its hotkey (`spacialctl run focus-workspace-2`) |
+| `window-preview` | `window` | #199: writes the window's thumbnail (taken now if missing) to `~/Library/Caches/sh.emu.SpacialShell/previews/<id>.png`; `data.path` is the file. Needs Screen Recording |
 | `set-layout` | `layout`, `workspace?` | changes a workspace's layout; the focused one when `workspace` is absent. `spacialctl change-layout <id>` sends it (`spacialctl set-layout` still works) |
 | `quit` | — | quits through the same path as the rail menu's Quit: every window is put back first. The reply comes before the shell stops; its process exits a few seconds later. |
 | `reload` | — | `quit`, then the same SpacialShell.app starts again ([below](#reloading-reload-194)). The reply comes before the quit. |
@@ -38,7 +39,7 @@ only the first ten. A workspace is its `id` from `state`. A window is `{"id": <w
 | `cmd` | `args` | Same as |
 |---|---|---|
 | `focus-workspace` | `workspace` | a rail click: that workspace becomes active on its display, and that display gets focus |
-| `focus-window` | `window` | a tab click; a minimized or hidden window is brought back |
+| `focus-window` | `window`, or `app?` `title?` `index?` `first?` | a tab click; a minimized or hidden window is brought back. #199: without `window`, the window is found by `app` (name substring, bundle id or its last part, pid) and/or `title` (case-insensitive substring); several matches are refused with a numbered list (display, row, tab order) unless `index` (1-based) or `first` (the focused, else the shown one) picks |
 | `close-window` | `window` | a tab's close button |
 | `toggle-float` | `window` | the tab menu's Float / Tile |
 | `recover-window` | `window` | the rail tray: bring back a window no tab reaches |
@@ -64,6 +65,8 @@ and your request can at worst turn it into `unknown-…`, never move the wrong t
 ws=$(spacialctl state | jq -r '.screens[1].workspaces[0].id')
 spacialctl focus-workspace "$ws"                     # a row on the second display
 spacialctl change-layout split                       # the focused workspace's layout (#198)
+spacialctl focus-window --app brave --title "pull requests"   # by app and title (#199)
+spacialctl focus-window --app brave --index 2       # several match: the second as listed
 spacialctl call move-window "{\"window\":{\"id\":4242,\"pid\":501},\"workspace\":\"$ws\",\"follow\":false}"
 spacialctl quit
 ```

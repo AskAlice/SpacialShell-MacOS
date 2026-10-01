@@ -21,6 +21,21 @@ import Foundation
         #expect(req("change-layout", "grid", "--workspace", "W") == req("set-layout", "grid", "--workspace", "W"))
     }
 
+    /// #199: a window by app and/or title, with `--index N` or `--first` for several.
+    @Test func focusWindowByAppAndTitle() {
+        #expect(req("focus-window", "--app", "brave", "--title", "pull requests") ==
+                IPCRequest(id: 1, cmd: "focus-window", args: ["app": .string("brave"), "title": .string("pull requests")]))
+        #expect(req("focus-window", "--title", "zsh", "--index", "2") ==
+                IPCRequest(id: 1, cmd: "focus-window", args: ["title": .string("zsh"), "index": .int(2)]))
+        #expect(req("focus-window", "--app", "brave", "--first") ==
+                IPCRequest(id: 1, cmd: "focus-window", args: ["app": .string("brave"), "first": .bool(true)]))
+        #expect(req("focus-window") == nil)                                  // nothing to find it by
+        #expect(req("focus-window", "--index", "2") == nil)
+        #expect(req("focus-window", "--app") == nil)                         // a flag without its value
+        #expect(req("focus-window", "--app", "x", "--index", "zero") == nil)
+        #expect(req("focus-window", "--app", "x", "--color", "red") == nil)
+    }
+
     @Test func focusWorkspaceAndQuit() {
         let id = UUID().uuidString
         #expect(req("focus-workspace", id) == IPCRequest(id: 1, cmd: "focus-workspace", args: ["workspace": .string(id)]))
