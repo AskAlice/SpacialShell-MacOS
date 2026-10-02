@@ -413,6 +413,23 @@ import OpenTelemetryApi
         #expect(w.invariantViolations().isEmpty)
     }
 
+    /// 2026-10-02: an activation report that is no longer true when the store gets to it — another
+    /// app is frontmost by then — is history. Acting on it switched workspaces; the switch's raise
+    /// queued another late report behind the rest, and six apps took turns in front, with no input,
+    /// for over a minute (each report ~2 s late: past `FocusEchoes.echoWindow`, so not our echo).
+    @Test func aLateActivationOfAnAppNoLongerFrontmostSurfacesNothing() async {
+        let other = WindowRef(id: 3, pid: 9)
+        let (store, be) = await make(snap([win(a), win(other, bundle: "com.other")], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))        // `other` left parked in ws0
+        let before = await store.world
+        await be.setFrontmost(1)                              // app 1 is in front now, not app 9
+        await store.apply(.appActivated(pid: 9))
+        #expect(await store.world == before, "a stale activation switched workspaces")
+        await be.setFrontmost(9)                              // the same report, still true: surfaces
+        await store.apply(.appActivated(pid: 9))
+        #expect(await store.world.focus.window == other)
+    }
+
     /// …but an app that already has a visible, focused window must not be disturbed: re-activating
     /// the app you are already in should change nothing.
     @Test func activatingTheAppYouAreAlreadyInChangesNothing() async {

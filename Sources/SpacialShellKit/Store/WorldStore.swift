@@ -392,8 +392,20 @@ public actor WorldStore {
             // of its windows is raised must not pull the model onto the window being peeked.
             // #195: nor onto a password prompt raised out of its row.
             if world.peek?.pid == pid || prompts.contains(where: { $0.pid == pid }), !focusEchoes.humanRecently { return }
+            // 2026-10-02: a report true when macOS sent it may be history by now — events queue
+            // behind a slow switch, and our own raise's echo then outlives `echoWindow` and reads
+            // as the user's. Acting on one switched workspaces, and that switch's raise queued
+            // another late report: apps took turns in front with no input. Only an app still in
+            // front is acted on. Unknown (nil) acts as before.
+            let front = await backend.frontmostPid()
+            if let front, front != pid {
+                Self.log.notice("activation pid=\(pid) dropped: stale, pid=\(front) is frontmost now")
+                return
+            }
             // #170: our own raise's activation is ignored (`FocusEchoes.activationReported`).
-            switch focusEchoes.activationReported(pid: pid, world: world) {
+            let verdict = focusEchoes.activationReported(pid: pid, world: world)
+            Self.log.info("activation pid=\(pid) \(self.bundleIDForPid(pid), privacy: .public) verdict=\(String(describing: verdict), privacy: .public) frontmost=\(front.map(String.init) ?? "?", privacy: .public) human=\(self.focusEchoes.humanRecently)")
+            switch verdict {
             case .intrusion(let fs): interceptFocus(by: candidateWindow(ofPid: pid), behind: fs)
             case .change: surfaceActivatedApp(pid)
             case .ownEcho, .repeated, .stale: return
@@ -624,6 +636,11 @@ public actor WorldStore {
         world.focus.window = target
         world.screens[loc.screen]!.workspaces[loc.index].anchor = target
         world.normalize()
+    }
+
+    /// For logs: the bundle id of any window the app has, else "-".
+    private func bundleIDForPid(_ pid: Int32) -> String {
+        records.bundleIDs.first { $0.key.pid == pid }?.value ?? "-"
     }
 
     /// The window to show for an app: its workspace's anchor if that belongs to the app, else the

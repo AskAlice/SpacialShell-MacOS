@@ -125,5 +125,8 @@ public protocol WindowBackend: Sendable {
     /// #107: move the pointer there. Only ever for a keyboard or command focus change to another
     /// display — `WorldStore` decides; this just moves it.
     func warpPointer(to point: CGPoint) async
+    /// The app macOS has in front right now; nil when it cannot be read. The store checks an
+    /// activation report against it, since a report can reach the store seconds after it was true.
+    func frontmostPid() async -> Int32?
     var events: AsyncStream<BackendEvent> { get }
 }

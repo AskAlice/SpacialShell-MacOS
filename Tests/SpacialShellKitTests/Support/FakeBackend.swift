@@ -64,6 +64,10 @@ actor FakeBackend: WindowBackend {
     func pointerLocation() -> CGPoint? { pointer }
     func warpPointer(to p: CGPoint) { calls.append(.warpPointer(p)); pointer = p }
     func setPointer(_ p: CGPoint?) { pointer = p }
+    /// The app in front, as macOS says now; nil (unknown) unless a test sets it.
+    private var front: Int32?
+    func frontmostPid() -> Int32? { front }
+    func setFrontmost(_ pid: Int32?) { front = pid }
 
     func push(_ e: BackendEvent) { if case .snapshot(let s) = e { snapshot = s; for w in s.windows where frames[w.ref] == nil { frames[w.ref] = w.frame } }; continuation.yield(e) }
     func reset() { calls = []; writeCount = 0 }

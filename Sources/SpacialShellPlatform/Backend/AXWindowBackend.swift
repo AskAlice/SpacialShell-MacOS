@@ -277,6 +277,9 @@ public final class AXWindowBackend: WindowBackend {
     /// own earlier raise as a human switching back. A hung app delays the activations behind it
     /// by at most one `axTimeoutMs`.
     private func resolveActivation(_ pid: pid_t) {
+        // When macOS said so: against the store's "activation pid=… verdict=…" line, the gap is how
+        // late the report reached the store (2026-10-02: ~2 s late reports made a focus loop).
+        Self.log.info("activation reported by macOS pid=\(pid)")
         let previous = activationChain
         activationChain = Task { @MainActor [weak self, registry, continuation] in
             await previous?.value
@@ -464,6 +467,9 @@ public final class AXWindowBackend: WindowBackend {
     /// #107. A fresh null-source event reads the current pointer in global top-left coordinates —
     /// the same space as AX frames and `DisplayInfo`.
     public nonisolated func pointerLocation() async -> CGPoint? { CGEvent(source: nil)?.location }
+    public nonisolated func frontmostPid() async -> Int32? {
+        await MainActor.run { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+    }
 
     /// #107. `CGWarpMouseCursorPosition` does not post a mouse event, and afterwards macOS ignores
     /// physical mouse movement for a moment (the local-events suppression interval); re-associating
