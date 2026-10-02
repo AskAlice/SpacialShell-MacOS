@@ -117,7 +117,7 @@ Semantics worth knowing:
   pinned. A pinned placeholder cannot be closed (Close is disabled, middle-click does nothing)
   until you **Unpin** it. Pins survive relaunch.
 - **Dragging placeholders** (#129): a placeholder tab drags like any tab — along its bar, onto
-  another display's bar, onto a rail row (with ⌥, the whole app's tabs). It has no window to grab
+  another display's bar, onto a rail row (with ⇧ or ⌥ held, every window of that app goes too). It has no window to grab
   by a title bar, so the tab is the handle; the drag-swap verb (`dropWindow`) accepts it on either
   side, swapping within a row or taking a slot in another. Focus never follows a placeholder.
 - Move window left/right at the end of the row (or as the only tab) carries the window to the

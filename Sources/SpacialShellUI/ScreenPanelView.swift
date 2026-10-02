@@ -124,8 +124,8 @@ struct ScreenPanelView: View {
                     defer { reordering = nil }
                     switch items.first {
                     case .window(let dropped)?:
-                        // #98: Option held on the drop moves the window's whole app.
-                        send(NSEvent.modifierFlags.contains(.option)
+                        // #98, #206: Shift or Option held on the drop moves the window's whole app.
+                        send(WholeAppDrop.held(NSEvent.modifierFlags)
                              ? .moveAppRefToWorkspace(dropped.ref, item.id)
                              : .moveWindowRefToWorkspace(dropped.ref, item.id, follow: false))
                         return true

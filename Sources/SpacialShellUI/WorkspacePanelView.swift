@@ -251,10 +251,10 @@ struct WorkspacePanelView: View {
         }
     }
 
-    /// #98: Option held on the drop moves the window's whole app to this bar's workspace (appended,
-    /// not before the tab aimed at). Nil without Option: an ordinary tab drop.
+    /// #98: Shift or Option held on the drop moves the window's whole app to this bar's workspace
+    /// (appended, not before the tab aimed at). Nil without: an ordinary tab drop.
     private func appDrop(_ ref: SpacialShellProtocol.WindowRef) -> Command? {
-        NSEvent.modifierFlags.contains(.option) ? state.appDrop(ref) : nil
+        WholeAppDrop.held(NSEvent.modifierFlags) ? state.appDrop(ref) : nil
     }
 
     /// Where the dragged tab would land. An insertion caret rather than a highlight on the target
@@ -357,4 +357,10 @@ struct TabCloseButton: View {   // #203: also on the sidebar card's previews
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.12)) { hovered = inside }
         }
     }
+}
+
+/// #98, #206: which modifiers make a tab drop move the window's whole app — Shift (the user's
+/// ask: "hold shift and drag a tab") or Option (#98's original). One rule for every drop target.
+enum WholeAppDrop {
+    static func held(_ flags: NSEvent.ModifierFlags) -> Bool { !flags.isDisjoint(with: [.shift, .option]) }
 }
