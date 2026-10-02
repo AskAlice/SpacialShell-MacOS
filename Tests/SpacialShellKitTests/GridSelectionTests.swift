@@ -1,4 +1,5 @@
 import Testing
+import CoreGraphics
 @testable import SpacialShellKit
 
 /// #200: the overview's keyboard selection over its sections (windows, then applications), each
@@ -79,4 +80,47 @@ import Testing
         s.move(.down)
         #expect(s.at == nil)
     }
+
+    /// #205: Fn+Tab's cycling walks every result in reading order, across sections, and wraps.
+    @Test func stepWalksAllResultsAndWraps() {
+        var s = S(sections: [.init(count: 2, columns: 4), .init(count: 2, columns: 7)])
+        s.step(forward: true); #expect(s.at == .init(section: 0, index: 1))
+        s.step(forward: true); #expect(s.at == .init(section: 1, index: 0))
+        s.step(forward: true); s.step(forward: true)
+        #expect(s.at == .init(section: 0, index: 0), "wraps to the first")
+        s.step(forward: false)
+        #expect(s.at == .init(section: 1, index: 1), "and back to the last")
+    }
 }
+
+/// #205: Fn+Tab held like alt-tab: Tab and ⇧Tab cycle while the modifier is down, and letting go
+/// opens the selection — but only after cycling; a plain Fn+Tab tap keeps the overview for search.
+@Suite struct OverviewHoldTests {
+    let fn: CGEventFlags = .maskSecondaryFn
+
+    @Test func cyclingThenReleasingOpens() {
+        var h = OverviewHold(held: fn)!
+        h.stepped()
+        #expect(h.flagsChanged(fn) == .holding)
+        #expect(h.flagsChanged([]) == .open)
+    }
+
+    @Test func aPlainTapKeepsTheOverviewOpen() {
+        var h = OverviewHold(held: fn)!
+        #expect(h.flagsChanged([]) == .letGo)
+    }
+
+    @Test func nothingHeldIsNoHold() {
+        #expect(OverviewHold(held: [.maskShift]) == nil)
+    }
+
+    /// Tab and ⇧Tab with the held modifiers step; nothing else is bound.
+    @Test func theStepChordsUseTheHeldModifiers() {
+        let chords = OverviewHold(held: [.maskControl, .maskAlternate])!.stepChords
+        let tab = KeyCodes.byName["tab"]!
+        #expect(chords[Chord(keyCode: tab, fn: false, control: true, option: true, shift: false, command: false)] == .overviewStep(reverse: false))
+        #expect(chords[Chord(keyCode: tab, fn: false, control: true, option: true, shift: true, command: false)] == .overviewStep(reverse: true))
+        #expect(chords.count == 2)
+    }
+}
+

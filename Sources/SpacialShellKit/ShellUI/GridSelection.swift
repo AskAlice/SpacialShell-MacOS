@@ -69,6 +69,14 @@ public struct GridSelection: Equatable, Sendable {
         at = position
     }
 
+    /// #205: one result on (or back) in reading order, across sections, wrapping at either end —
+    /// Fn+Tab's cycling, where the arrows' grid moves would stop at an edge.
+    public mutating func step(forward: Bool) {
+        let flat = sections.indices.flatMap { s in (0..<sections[s].count).map { Position(section: s, index: $0) } }
+        guard let at, let i = flat.firstIndex(of: at), !flat.isEmpty else { return }
+        self.at = flat[(i + (forward ? 1 : flat.count - 1)) % flat.count]
+    }
+
     /// The next (or previous) section with results, wrapping; its first result.
     public mutating func tab(backward: Bool) {
         guard let at else { return }

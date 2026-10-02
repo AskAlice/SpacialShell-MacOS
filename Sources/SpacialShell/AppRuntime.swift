@@ -194,6 +194,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             Task { await store.run(command) }
         }
         appWindows.onModal = { tap.update(modal: $0) }
+        overview.onModal = { tap.update(modal: $0) }   // #205
         self.appWindows = appWindows
 
         // Same rule: captured directly, never through `self`. `onChange` hops back onto the main
@@ -243,6 +244,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                 Task { @MainActor in spatial.toggle() }
             case .switchAppWindow, .cancelAppWindowSwitch:
                 Task { @MainActor in appWindows.handle(command) }
+            case .overviewStep(let reverse):   // #205
+                Task { @MainActor in overview.step(reverse: reverse) }
             case .openSettings:
                 Task { @MainActor in settings.toggle() }
             case .editLayout, .setDefaultLayout, .showLayoutOnBar:
@@ -371,6 +374,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
                     cheatSheet.flagsChanged(flags)
                     spatial.flagsChanged(flags)   // #132: a held-open spatial view lands on release
                     appWindows.flagsChanged(flags)   // #188: so does the app window switcher
+                    overview.flagsChanged(flags)     // #205: and a held Fn+Tab overview opens its pick
                 }
             },
             keyDown: {

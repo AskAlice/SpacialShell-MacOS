@@ -17,6 +17,13 @@ public final class OverviewController {
     private var world: World?
     private var titles: [SpacialShellProtocol.WindowRef: String] = [:]
     private var isOpen = false
+    /// #205: opened with Fn (or ⌃⌥) still down, held like alt-tab until it is let go.
+    private var hold: OverviewHold?
+    private var driver = OverviewDriver()
+    /// #205: binds Tab and ⇧Tab in the hotkey tap while held, ahead of the normal table.
+    public var onModal: ([Chord: Command]) -> Void = { _ in }
+    /// The modifiers physically down now. Tests pass `{ [] }` (as #188's switcher does).
+    public var keyboard: () -> CGEventFlags = { CGEventSource.flagsState(.combinedSessionState) }
     /// URL → item, kept across opens; the directory listing is cheap, the icon loads are not.
     private var appCache: [URL: OverviewAppItem] = [:]
 
@@ -45,6 +52,9 @@ public final class OverviewController {
         isOpen = true
         let windows = windowItems(world)
         let thumbs = WindowThumbnails.shared
+        driver = OverviewDriver()
+        hold = OverviewHold(held: keyboard())
+        if let hold { onModal(hold.stepChords) }
         let view = OverviewView(
             windows: windows,
             apps: installedApps(),
@@ -56,7 +66,8 @@ public final class OverviewController {
             onLaunchApp: { [weak self] url in
                 self?.close(restoreFocus: false)   // the launched app takes focus when its window adopts
                 NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-            })
+            },
+            driver: driver)
         // A fresh hosting view per open: state (query text, scroll) must not leak between opens,
         // and a fresh identity is also what re-fires `onAppear`, which focuses the search field.
         let host = NSHostingView(rootView: view)
@@ -94,9 +105,36 @@ public final class OverviewController {
         return out
     }
 
+    /// #205: Tab or ⇧Tab with the held modifier.
+    public func step(reverse: Bool) {
+        guard isOpen, hold != nil else { return }
+        hold?.stepped()
+        driver.step(reverse: reverse)
+    }
+
+    /// #205: fed from the tap's `onFlags`. Let go after stepping: the selection opens; let go
+    /// without: the overview stays for searching and the Tab bindings go.
+    public func flagsChanged(_ flags: CGEventFlags) {
+        guard isOpen, var h = hold else { return }
+        let release = h.flagsChanged(flags)
+        hold = h
+        switch release {
+        case .holding: return
+        case .open: endHold(); driver.open()
+        case .letGo: endHold()
+        }
+    }
+
+    private func endHold() {
+        guard hold != nil else { return }
+        hold = nil
+        onModal([:])
+    }
+
     private func close(restoreFocus: Bool = true) {
         guard isOpen else { return }
         isOpen = false
+        endHold()
         // #189: the open's captures are left to finish (a few windows, once; they stay in the
         // cache). `cancelRefresh` would cancel whichever request is current, maybe the spatial view's.
         panel.orderOut(nil)   // fires resignKey → onDismiss → this method; the flag above ends the loop

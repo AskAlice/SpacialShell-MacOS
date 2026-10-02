@@ -28,6 +28,17 @@ struct OverviewAppItem: Identifiable {
 /// #189: a window is drawn as its picture from `thumbnails`, with its app icon as a corner badge,
 /// or as its icon alone while the capture is pending or after it failed. The view captures
 /// nothing: `OverviewController` hands the pictures in and swaps in new ones as they land.
+/// #205: the controller's hand on the view's selection while Fn+Tab is held: Tab and ⇧Tab step it,
+/// letting go opens it. Ticks, not values, so the same step twice is two steps.
+@MainActor
+final class OverviewDriver: ObservableObject {
+    @Published private(set) var steps = 0
+    private(set) var reverse = false
+    @Published private(set) var opens = 0
+    func step(reverse: Bool) { self.reverse = reverse; steps += 1 }
+    func open() { opens += 1 }
+}
+
 struct OverviewView: View {
     let windows: [OverviewWindowItem]
     let apps: [OverviewAppItem]
@@ -35,6 +46,7 @@ struct OverviewView: View {
     let onSelectWindow: (SpacialShellProtocol.WindowRef) -> Void
     let onLaunchApp: (URL) -> Void
 
+    @ObservedObject var driver = OverviewDriver()
     @State private var query = ""
     @FocusState private var searchFocused: Bool
     /// #200: the keyboard's place in the results. The search field keeps the focus, so typing
@@ -122,6 +134,9 @@ struct OverviewView: View {
         .onAppear { searchFocused = true; selection = GridSelection(sections: sections); pointer = NSEvent.mouseLocation }
         // A new search starts at its first result, as Spotlight's does.
         .onChange(of: query) { selection = GridSelection(sections: sections) }
+        // #205: Fn+Tab held — Tab and ⇧Tab step through every result, letting go opens it.
+        .onChange(of: driver.steps) { selection.step(forward: !driver.reverse) }
+        .onChange(of: driver.opens) { openSelection() }
     }
 
     /// Return opens the selected result (#200): the first one until the keys or pointer move it.

@@ -72,6 +72,8 @@ public enum Command: Sendable, Hashable {
     case switchAppWindow(reverse: Bool)
     /// #188: Esc while the switcher is held open. Unnamed: the hotkey tap binds it only then.
     case cancelAppWindowSwitch
+    /// #205: Tab or ⇧Tab while the Fn+Tab overview is held: step its selection. App layer.
+    case overviewStep(reverse: Bool)
     /// Tab dragged onto a rail row. Absolute where `moveWindowToWorkspace(Vertical)` is relative:
     /// a drag names both the window and the destination, and neither need be the focused one.
     /// `follow` (#95): the store's own moves follow the window, as the keyboard does; a drop passes
@@ -167,6 +169,7 @@ public enum Command: Sendable, Hashable {
         switch self {
         case .toggleOverview, .toggleSpatialView, .openSettings, .editLayout, .setDefaultLayout, .showLayoutOnBar: true
         case .switchAppWindow, .cancelAppWindowSwitch: true   // #188
+        case .overviewStep: true   // #205
         case .reloadConfig, .showAbout, .quit, .reload: true   // #111, #194
         case .checkForUpdates: true   // #192
         case .dismissProblem: true   // #196
