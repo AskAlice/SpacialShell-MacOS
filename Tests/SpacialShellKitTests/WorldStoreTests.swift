@@ -430,6 +430,33 @@ import OpenTelemetryApi
         #expect(await store.world.focus.window == other)
     }
 
+    /// #208: "say i'm in the 2nd workspace and i drag a tab to another, it should stay in the 2nd
+    /// workspace when i let go and the window moves". The dropped tab was the focused one: focus
+    /// falls to its neighbour, and the late reports macOS still makes of the dropped window and its
+    /// app (it was in front until the neighbour's raise lands) must not follow it out of the row.
+    @Test func droppingTheFocusedTabOnAnotherRowStaysInThisRow() async {
+        let other = WindowRef(id: 3, pid: 9)
+        let (store, be) = await make(snap([win(a), win(b), win(other, bundle: "com.other")], focused: a))
+        await store.run(.moveWindowToWorkspace(.down))                 // a → ws1, followed
+        let ws1 = await store.world.screens["D1"]!.workspaces[1].id
+        await store.run(.moveWindowRefToWorkspace(other, ws1, follow: false))
+        await store.run(.focusWindowRef(a))
+        let ws0 = await store.world.screens["D1"]!.workspaces[0].id
+        #expect(await store.world.screens["D1"]!.activeIndex == 1)
+
+        await store.apply(.humanInput)                                 // the mouse-up of the drop
+        await store.run(.moveWindowRefToWorkspace(a, ws0, follow: false))
+        var w = await store.world
+        #expect(w.screens["D1"]!.activeIndex == 1 && w.focus.window == other)
+
+        await be.setFrontmost(1)                                       // a's app still in front
+        await store.apply(.focusChanged(a))
+        await store.apply(.appActivated(pid: 1))
+        w = await store.world
+        #expect(w.screens["D1"]!.activeIndex == 1, "a late report of the dropped tab followed it")
+        #expect(w.focus.window == other)
+    }
+
     /// …but an app that already has a visible, focused window must not be disturbed: re-activating
     /// the app you are already in should change nothing.
     @Test func activatingTheAppYouAreAlreadyInChangesNothing() async {
