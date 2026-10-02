@@ -14,7 +14,7 @@ import Foundation
 
     @Test func missingThumbnailsComeFirstThenTheOldest() {
         var r = R()
-        let taken: [WindowID: ContinuousClock.Instant] = [1: t0 - .seconds(40), 2: t0 - .seconds(90)]
+        let taken: [WindowID: ContinuousClock.Instant] = [1: t0 - R.cadence - .seconds(10), 2: t0 - R.cadence - .seconds(60)]
         #expect(step(&r, [1, 2, 3], taken) == .capture(3))     // never taken: preload
         r.finished()
         #expect(step(&r, [1, 2, 3], taken) == .capture(2))     // then the oldest
@@ -31,7 +31,7 @@ import Foundation
         var r = R()
         let taken: [WindowID: ContinuousClock.Instant] = [1: t0 - .seconds(10), 2: t0 - .seconds(20)]
         #expect(step(&r, [1, 2], taken) == .wait(R.cadence - .seconds(20)))
-        #expect(step(&r, [1, 2], taken, at: 10) == .capture(2))
+        #expect(step(&r, [1, 2], taken, at: Double(R.cadence.components.seconds - 20)) == .capture(2))
     }
 
     @Test func oneInFlight() {
@@ -47,7 +47,7 @@ import Foundation
         #expect(step(&r, [1]) == .capture(1))
         r.finished()                                          // no picture came back
         #expect(step(&r, [1], at: 1) == .wait(R.cadence - .seconds(1)))
-        #expect(step(&r, [1], at: 30) == .capture(1))
+        #expect(step(&r, [1], at: Double(R.cadence.components.seconds)) == .capture(1))
     }
 
     @Test func perMinuteCap() {

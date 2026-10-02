@@ -13,9 +13,11 @@ import Foundation
 /// - **Never** while the capture gate does not admit prefetch (#92: not before the first capture has
 ///   succeeded, and not after a decline), nor while the screen is locked or the display asleep.
 public struct ThumbnailRefresh: Sendable {
-    /// How old a rail window's thumbnail may get before the background takes it again.
-    public static var cadence: Duration { .seconds(30) }
-    /// Captures started in any minute. About 10 windows kept at `cadence`; more are refreshed less
+    /// How old a rail window's thumbnail may get before the background takes it again: about one
+    /// picture a window a minute, which is what the user asked for (#209) — every capture costs
+    /// WindowServer a composite and `tccd` a check (#207).
+    public static var cadence: Duration { .seconds(60) }
+    /// Captures started in any minute. About 20 windows kept at `cadence`; more are refreshed less
     /// often, oldest first. A cold rail of 20 windows warms up in a minute.
     public static var perMinute: Int { 20 }
 
