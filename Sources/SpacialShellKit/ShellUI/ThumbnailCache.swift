@@ -10,7 +10,7 @@ import Foundation
 public struct ThumbnailCache<Image> {
     /// ~400 px on the long side is ~400 KB a thumbnail (400×250×4), so the cap holds memory to ~60 MB worst case.
     public static var capacity: Int { 150 }
-    /// The same age #77's switch pictures may reach before they are taken again.
+    /// A hover or an opened view takes anything older again: user-initiated, so kept short.
     public static var freshFor: Duration { .seconds(3) }
 
     private struct Entry { var image: Image; var taken: ContinuousClock.Instant; var used: UInt64 }

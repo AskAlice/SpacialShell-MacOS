@@ -26,8 +26,13 @@ public struct SwitchPictureCache<Pictures> {
     // ponytail: up to ~7 sets of full-viewport backdrops (tens of MB each on a 5K display); share
     // one backdrop per display if memory shows up.
     public static var kept: Int { 3 }
-    /// Older than this, the prefetch takes a set again. It is still flown until then.
-    public static var freshFor: Duration { .seconds(3) }
+    /// Older than this, the prefetch takes a set again. It is still flown until then. The prefetch
+    /// runs after every finished reconcile pass, which any window event starts: at 3 s it re-took
+    /// every predicted switch every couple of seconds while idle (~140 captures a minute), each a
+    /// screen-recording check in `tccd`, which piled them up, ran out of files and restarted —
+    /// and its restarts put system prompts in front of the focused window (#207). The rail
+    /// thumbnails' background `cadence` is the same trade.
+    public static var freshFor: Duration { ThumbnailRefresh.cadence }
 
     private struct Entry { let key: Key; let pictures: Pictures; let taken: ContinuousClock.Instant }
     private var flown: [Entry] = []

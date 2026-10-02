@@ -17,6 +17,8 @@ import Foundation
         var c = Cache()
         c.add(key(1), "old", taken: t0)
         #expect(!c.needsRefresh(key(1), now: t0 + .seconds(1)))
+        // #207: the prefetch follows every reconcile pass; a set seconds old is not taken again.
+        #expect(!c.needsRefresh(key(1), now: t0 + .seconds(10)))
         #expect(c.needsRefresh(key(1), now: t0 + Cache.freshFor), "the prefetch takes it again")
         #expect(c.take(key(1)) == "old", "however old, it still flies")
         #expect(c.needsRefresh(key(2), now: t0), "never seen")
