@@ -50,22 +50,23 @@ enum WindowPreviewCapture {
     static func images(for refs: [SpacialShellProtocol.WindowRef],
                        longSide: CGFloat) async -> [WindowID: CGImage] {
         guard !refs.isEmpty, ScreenRecordingAccess.isGranted else { return [:] }
-        // onScreenWindowsOnly: false — a window in an inactive workspace is parked in a corner
-        // sliver, and an inactive workspace is exactly the one worth previewing.
-        guard let content = await CaptureGate.listing({
-            try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
-        }) else { return [:] }
+        // Since #18 `ref.id` is minted by SpacialShell, not a window-server handle, so it cannot
+        // index `SCWindow.windowID` directly any more. `captureIDs` does the public match, and
+        // returns nothing for a window it cannot pin down — in which case the card falls back to
+        // the name and icon it already has. A missing thumbnail is the whole cost.
+        let captureIDs = WindowIdentities.captureIDs(for: refs.map(\.id))
+        // #210: a recent listing serves, unless a window it should hold is not in it (just opened).
+        var content = await listing(refresh: false)
+        if let c = content, captureIDs.values.contains(where: { id in !c.windows.contains { $0.windowID == id } }) {
+            content = await listing(refresh: true)
+        }
+        guard let content else { return [:] }
 
         let ownPID = ProcessInfo.processInfo.processIdentifier
         var candidates: [CGWindowID: SCWindow] = [:]
         for window in content.windows where window.owningApplication?.processID != ownPID {
             candidates[window.windowID] = window
         }
-        // Since #18 `ref.id` is minted by SpacialShell, not a window-server handle, so it cannot
-        // index `SCWindow.windowID` directly any more. `captureIDs` does the public match, and
-        // returns nothing for a window it cannot pin down — in which case the card falls back to
-        // the name and icon it already has. A missing thumbnail is the whole cost.
-        let captureIDs = WindowIdentities.captureIDs(for: refs.map(\.id))
 
         var out: [WindowID: CGImage] = [:]
         for ref in refs {
@@ -86,6 +87,25 @@ enum WindowPreviewCapture {
             out[ref.id] = cgImage
         }
         return out
+    }
+
+    /// #210: a listing builds an `SCRunningApplication` per window, each a LaunchServices round
+    /// trip, and the background refresh takes one window at a time: one listing per picture was
+    /// most of the shell's idle CPU. Reused for `listingFreshFor`; a stale one's window frames only
+    /// size the picture, which is scaled to the card anyway.
+    static let listingFreshFor = Duration.seconds(10)
+    nonisolated(unsafe) private static var recent: (listing: SCShareableContent, at: ContinuousClock.Instant)?
+    private static let recentLock = NSLock()
+
+    private static func listing(refresh: Bool) async -> SCShareableContent? {
+        if !refresh, let r = recentLock.withLock({ recent }), ContinuousClock.now - r.at < listingFreshFor { return r.listing }
+        // onScreenWindowsOnly: false — a window in an inactive workspace is parked in a corner
+        // sliver, and an inactive workspace is exactly the one worth previewing.
+        guard let fresh = await CaptureGate.listing({
+            try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: false)
+        }) else { return nil }
+        recentLock.withLock { recent = (fresh, .now) }
+        return fresh
     }
 }
 

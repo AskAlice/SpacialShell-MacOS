@@ -60,8 +60,9 @@ private final class Stage {
     /// that has since been dropped does nothing.
     private var token = 0
     private var busy = false
-    /// The sets switches flew and the current prefetches; `listing` evicts what the window server
-    /// no longer has.
+    /// The sets switches flew (the last `kept`) and the current prefetches (what the predictions
+    /// still want). A set of a window since closed is never taken — keys come from the live world —
+    /// and goes as those bounds move on.
     private var cache = SwitchPictureCache<Pictures>()
     private var prefetchTask: Task<Void, Never>?
     /// A prefetch that arrived mid-flight; it starts once the overlay lands.
@@ -258,19 +259,16 @@ private final class Stage {
         }
     }
 
-    /// The window server's listing, reused for `listingFreshFor`. Every new one evicts the pictures
-    /// of windows it no longer has.
+    /// The window server's listing, reused for `listingFreshFor`.
     private func listing(refresh: Bool) async -> SCShareableContent? {
         if !refresh, let content, ContinuousClock.now - content.at < Self.listingFreshFor { return content.listing }
         guard let listing = await CaptureGate.listing({
             try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
         }) else { return nil }
+        // #210: no eviction pass here. It resolved every cached key's windows (`captureIDs`: a
+        // window-server list and AX reads into other apps) on the main actor, once per key, while
+        // a switch waited on its capture budget — a 186 ms capture held a tab click 194 ms.
         content = (listing, .now)
-        let live = Set(listing.windows.map(\.windowID))
-        cache.removeAll { key in
-            let ids = WindowIdentities.captureIDs(for: key.ids)
-            return !key.ids.allSatisfy { ids[$0].map(live.contains) == true }
-        }
         return listing
     }
 

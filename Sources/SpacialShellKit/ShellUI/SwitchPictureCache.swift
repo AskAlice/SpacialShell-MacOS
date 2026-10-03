@@ -17,8 +17,8 @@ public struct SwitchPictureKey: Equatable, Sendable {
 /// Stale-while-revalidate (#97): a switch flies the newest set it has for its key, however old. A
 /// slightly stale picture during a 200 ms slide is barely visible; a capture you can feel before
 /// anything moves is worse. `needsRefresh` tells the prefetch, after landing, which sets to take
-/// again. A key comes from the store's world, so its windows still exist; the overlay also drops
-/// the sets of windows the window server no longer lists (`removeAll(where:)`), to free the memory.
+/// again. A key comes from the store's world, so its windows still exist; the memory a closed
+/// window's set holds is bounded by `kept` and by `keepPrefetches`.
 public struct SwitchPictureCache<Pictures> {
     public typealias Key = SwitchPictureKey
 
@@ -89,10 +89,6 @@ public struct SwitchPictureCache<Pictures> {
         tries.removeAll { !wanted.contains($0.key) }
     }
 
-    public mutating func removeAll(where dead: (Key) -> Bool) {
-        flown.removeAll { dead($0.key) }
-        prefetched.removeAll { dead($0.key) }
-    }
 }
 
 extension Task where Failure == Never, Success: Sendable {

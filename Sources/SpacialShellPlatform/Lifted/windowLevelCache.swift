@@ -5,6 +5,12 @@ import Foundation
 
 @MainActor
 private var cache: [WindowID: MacOsWindowLevel] = [:]
+/// #210: when a window that did not resolve was last tried. Minimized, off-Space and same-frame
+/// sibling windows never resolve, and every 2 s backstop tick asked again — two window-server
+/// lists and AX reads into their app, on the main thread.
+@MainActor
+private var tried: [WindowID: ContinuousClock.Instant] = [:]
+private let retryAfter = Duration.seconds(30)
 
 /// Levels for many windows in one `CGWindowList` pass.
 ///
@@ -18,16 +24,19 @@ private var cache: [WindowID: MacOsWindowLevel] = [:]
 @MainActor
 func getWindowLevels(for ids: [WindowID]) -> [WindowID: MacOsWindowLevel] {
     var out: [WindowID: MacOsWindowLevel] = [:]
+    let now = ContinuousClock.now
     let uncached = ids.filter { id in
         if let existing = cache[id] { out[id] = existing; return false }
-        return true
+        return tried[id].map { now - $0 >= retryAfter } ?? true
     }
     guard !uncached.isEmpty else { return out }
+    for id in uncached { tried[id] = now }
 
     var levelByCGID: [CGWindowID: MacOsWindowLevel] = [:]
     for listed in WindowIdentities.onScreenList() {
         levelByCGID[listed.id] = .new(windowLevel: listed.layer)
     }
+    // ponytail: `captureIDs` lists the window server again; pass this list in if it shows up.
     for (id, cgID) in WindowIdentities.captureIDs(for: uncached) {
         guard let level = levelByCGID[cgID] else { continue }
         // A window's level does not change while the window lives, so this is cached for good.
@@ -44,7 +53,7 @@ func getWindowLevel(for windowId: WindowID) -> MacOsWindowLevel? {
 
 /// A closed window's id must not keep a level alive for a future id to collide with.
 @MainActor
-func forgetWindowLevel(_ id: WindowID) { cache.removeValue(forKey: id) }
+func forgetWindowLevel(_ id: WindowID) { cache.removeValue(forKey: id); tried.removeValue(forKey: id) }
 
 enum MacOsWindowLevel: Sendable, Equatable {
     case normalWindow

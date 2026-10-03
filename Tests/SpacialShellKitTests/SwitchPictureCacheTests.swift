@@ -59,14 +59,6 @@ import Foundation
         #expect(c.take(key(2)) == "b")
     }
 
-    @Test func deadWindowsAreDropped() {
-        var c = Cache()
-        c.add(key(1), "a", taken: t0)
-        c.prefetch(key(2), "b", taken: t0)
-        c.removeAll { $0.ids.contains(1) || $0.ids.contains(2) }
-        #expect(c.take(key(1)) == nil && c.take(key(2)) == nil)
-    }
-
     /// #210: the prefetch follows every reconcile pass, and the backstop refresh makes one every
     /// 2 s. A key whose capture failed (a window the window server does not list, one picture that
     /// did not come back) was tried again on every one of them — two window-server listings each,
