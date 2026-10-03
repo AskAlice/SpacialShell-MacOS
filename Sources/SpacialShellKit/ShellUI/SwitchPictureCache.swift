@@ -37,6 +37,8 @@ public struct SwitchPictureCache<Pictures> {
     private struct Entry { let key: Key; let pictures: Pictures; let taken: ContinuousClock.Instant }
     private var flown: [Entry] = []
     private var prefetched: [Entry] = []
+    /// #210: when the prefetch last tried each key, whether or not a set came of it.
+    private var tries: [(key: Key, at: ContinuousClock.Instant)] = []
 
     public init() {}
 
@@ -52,9 +54,17 @@ public struct SwitchPictureCache<Pictures> {
         return e.pictures
     }
 
-    /// No set for `key`, or only one taken `freshFor` or longer ago.
+    /// No set for `key`, or only one taken `freshFor` or longer ago — and no try in that time
+    /// either (#210): a capture that failed is not retried on every reconcile pass.
     public func needsRefresh(_ key: Key, now: ContinuousClock.Instant) -> Bool {
-        newest(key).map { now - $0.taken >= Self.freshFor } ?? true
+        if let t = tries.last(where: { $0.key == key }), now - t.at < Self.freshFor { return false }
+        return newest(key).map { now - $0.taken >= Self.freshFor } ?? true
+    }
+
+    /// #210: the prefetch is about to capture `key`.
+    public mutating func tried(_ key: Key, at: ContinuousClock.Instant) {
+        tries.removeAll { $0.key == key }
+        tries.append((key, at))
     }
 
     /// A set a switch flew or captured for itself, now the most recently used. A set taken before
@@ -76,6 +86,7 @@ public struct SwitchPictureCache<Pictures> {
     /// Drops the prefetches no prediction wants any more.
     public mutating func keepPrefetches(_ wanted: [Key]) {
         prefetched.removeAll { !wanted.contains($0.key) }
+        tries.removeAll { !wanted.contains($0.key) }
     }
 
     public mutating func removeAll(where dead: (Key) -> Bool) {

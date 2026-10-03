@@ -67,6 +67,35 @@ import Foundation
         #expect(c.take(key(1)) == nil && c.take(key(2)) == nil)
     }
 
+    /// #210: the prefetch follows every reconcile pass, and the backstop refresh makes one every
+    /// 2 s. A key whose capture failed (a window the window server does not list, one picture that
+    /// did not come back) was tried again on every one of them — two window-server listings each,
+    /// most of the shell's idle CPU. A try counts like a picture: not again for `freshFor`.
+    @Test func aFailedTryIsNotRetriedUntilFreshForHasPassed() {
+        var c = Cache()
+        c.tried(key(1), at: t0)
+        #expect(!c.needsRefresh(key(1), now: t0 + .seconds(2)), "retried on the next pass")
+        #expect(c.needsRefresh(key(1), now: t0 + Cache.freshFor))
+        #expect(c.needsRefresh(key(2), now: t0 + .seconds(2)), "only that key")
+    }
+
+    /// #210: a stale set whose re-take just failed is not retried every pass either.
+    @Test func aStaleSetWithAFailedRetakeWaits() {
+        var c = Cache()
+        c.prefetch(key(1), "old", taken: t0)
+        c.tried(key(1), at: t0 + Cache.freshFor)
+        #expect(!c.needsRefresh(key(1), now: t0 + Cache.freshFor + .seconds(2)))
+        #expect(c.take(key(1)) == "old", "still flies")
+    }
+
+    /// #210: tries of keys no prediction wants are forgotten with their prefetches.
+    @Test func triesNoPredictionWantsAreForgotten() {
+        var c = Cache()
+        c.tried(key(1), at: t0)
+        c.keepPrefetches([key(2)])
+        #expect(c.needsRefresh(key(1), now: t0 + .seconds(1)))
+    }
+
     @Test func aTaskWithinBudgetGivesItsValue() async {
         let fast = Task { 7 }
         #expect(await fast.value(within: .seconds(5)) == 7)

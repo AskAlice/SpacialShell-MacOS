@@ -246,8 +246,13 @@ private final class Stage {
             for ts in predicted {
                 guard let self, !Task.isCancelled, !self.busy else { return }
                 let missing = ts.filter { self.cache.needsRefresh(Key($0), now: .now) }
-                guard !missing.isEmpty, let pictures = await self.capture(missing, rules: MotionRules(missing)),
-                      !Task.isCancelled else { continue }
+                for t in missing { self.cache.tried(Key(t), at: .now) }
+                guard !missing.isEmpty else { continue }
+                guard let pictures = await self.capture(missing, rules: MotionRules(missing)), !Task.isCancelled else {
+                    // #210: tried again after `freshFor`, not on the next pass.
+                    if !Task.isCancelled { Self.log.notice("prefetch: \(missing.count) switch(es) not captured") }
+                    continue
+                }
                 for p in pictures { self.cache.prefetch(p.key, p, taken: p.taken) }
             }
         }

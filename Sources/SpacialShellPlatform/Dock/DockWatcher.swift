@@ -80,6 +80,9 @@ public struct DockReader {
     private static let refreshEvery = 8
     private var reads = 0
     private var pids: [String: [Int32]] = [:]
+    /// #210: each app's bundle path, by pid. `bundleURL` is a LaunchServices round trip per app,
+    /// and a process's bundle never changes, so only pids not seen before are asked.
+    private var paths: [Int32: String] = [:]
     private var edge = DockEdge.bottom
 
     public init() {}
@@ -87,7 +90,7 @@ public struct DockReader {
     /// Nil when there is no Dock to read (not running, or no Accessibility grant).
     public mutating func read() -> DockSample? {
         guard let items = children() else { return nil }
-        if reads % Self.refreshEvery == 0 { pids = Self.runningPids(); edge = Self.edge() }
+        if reads % Self.refreshEvery == 0 { pids = runningPids(); edge = Self.edge() }
         reads += 1
         var out: [DockItemSample] = []
         for item in items {
@@ -132,12 +135,15 @@ public struct DockReader {
 
     /// Bundle path → pids of its running, finished-launching instances. A launch bounce is the
     /// Dock saying "starting", not "look at me", so a launching app has no pids here.
-    private static func runningPids() -> [String: [Int32]] {
-        var out: [String: [Int32]] = [:]
+    private mutating func runningPids() -> [String: [Int32]] {
+        var out: [String: [Int32]] = [:], seen: [Int32: String] = [:]
         for app in NSWorkspace.shared.runningApplications where app.isFinishedLaunching {
-            guard let url = app.bundleURL else { continue }
-            out[url.standardizedFileURL.path, default: []].append(app.processIdentifier)
+            let pid = app.processIdentifier
+            guard let path = paths[pid] ?? app.bundleURL?.standardizedFileURL.path else { continue }
+            seen[pid] = path
+            out[path, default: []].append(pid)
         }
+        paths = seen   // the exited are forgotten
         return out
     }
 
