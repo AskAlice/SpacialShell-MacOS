@@ -32,7 +32,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private static let saveDebounce = Duration.milliseconds(500)
 
     /// What `config.toml` says, untouched. The settings window shows this as the baseline every
-    /// "Use file" returns to, and it is never written back — see `Settings`.
+    /// control falls back to, and it is never written back — see `Settings`.
     private var fileConfig = Config()
     /// What the settings window has set on top. App-owned, written to `Paths.settingsFile`.
     private var overrides = SettingsOverrides()
@@ -575,7 +575,7 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private func reloadConfig() {
         let previous = config
         loadConfig()
-        settingsWindow?.update(file: fileConfig)   // the baseline "Use file" returns to has moved
+        settingsWindow?.update(file: fileConfig)   // the baseline every control falls back to has moved
         push(previous: previous)
     }
 

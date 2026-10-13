@@ -4,9 +4,9 @@ import SpacialShellKit
 
 /// The settings window's contents: a sidebar of panes over the knobs the shell actually reads.
 ///
-/// Everything here edits `SettingsOverrides`, never `config.toml` — see `Settings` for why. That
-/// is not an implementation detail the user should have to infer, so a knob the file has set and
-/// the window has overridden says so, and offers the way back.
+/// Everything here edits `SettingsOverrides`, never `config.toml` — see `Settings` for why. Each
+/// control shows the value the shell runs on; setting one back to the file's value drops the
+/// override (#211).
 struct SettingsView: View {
     enum Pane: String, CaseIterable, Identifiable {
         case general = "General", appearance = "Appearance", layout = "Layout", workspaces = "Workspaces"
@@ -93,54 +93,55 @@ struct SettingsView: View {
     private var general: some View {
         VStack(alignment: .leading, spacing: 18) {
             header("General", "Anything set here wins over config.toml. The file is never written.")
-            row("Modifier", overridden: overrides.keybindingPreset != nil) {
+            row("Modifier") {
                 Picker("", selection: binding(\.keybindingPreset, default: file.keybindingPreset)) {
                     Text("fn").tag(KeybindingPreset.fn); Text("\u{2303}\u{2325}").tag(KeybindingPreset.ctrlAlt)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
-            } reset: { overrides.keybindingPreset = nil }
+            }
 
-            row("Rail side", overridden: overrides.railSide != nil) {
+            row("Rail side") {
                 Picker("", selection: binding(\.railSide, default: file.railSide)) {
                     Text("Left").tag(RailSide.left); Text("Right").tag(RailSide.right)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
-            } reset: { overrides.railSide = nil }
+            }
 
-            row("Pointer follows focus", overridden: overrides.pointerWarp != nil) {
+            row("Pointer follows focus") {
                 Toggle("", isOn: binding(\.pointerWarp, default: file.pointerWarp)).labelsHidden()
-            } reset: { overrides.pointerWarp = nil }
+            }
 
             // #135: opt-in; `focus-follows-mouse-delay-ms` is file-only.
-            row("Focus follows mouse", overridden: overrides.focusFollowsMouse != nil) {
+            row("Focus follows mouse") {
                 Toggle("", isOn: binding(\.focusFollowsMouse, default: file.focusFollowsMouse)).labelsHidden()
                     .help("Rest the pointer on another window for \(file.focusFollowsMouseDelayMs) ms to focus it, as a click on its tab would")
-            } reset: { overrides.focusFollowsMouse = nil }
+            }
 
-            row("Wrap workspaces", overridden: overrides.workspaceWrap != nil) {
+            row("Wrap workspaces") {
                 Toggle("", isOn: binding(\.workspaceWrap, default: file.workspaceWrap)).labelsHidden()
                     .help("Fn+W on the first workspace goes to the last one, and Fn+S on the last back to the first")
-            } reset: { overrides.workspaceWrap = nil }
+            }
 
             // #141: swipes are Fn+W/A/S/D; `gesture-fingers` is file-only.
-            row("Trackpad swipes", overridden: overrides.gestures != nil) {
+            row("Trackpad swipes") {
                 Toggle("", isOn: binding(\.gestures, default: file.gestures)).labelsHidden()
                     .help("Swipe with \(file.gestureFingers) fingers to move between windows (left, right) and workspaces (up, down), like Fn+W/A/S/D")
-            } reset: { overrides.gestures = nil }
+            }
 
             // #160: four fingers; off while swipes are, and when navigation itself takes four.
-            row("Layout swipes", overridden: overrides.gestureLayout != nil) {
+            row("Layout swipes", note: layoutSwipesNote) {
                 Toggle("", isOn: binding(\.gestureLayout, default: file.gestureLayout)).labelsHidden()
-                    .disabled(!(overrides.gestures ?? file.gestures) || file.gestureFingers == SwipeBindings.layoutFingerCount)
+                    .disabled(layoutSwipesNote != nil)
                     .help("Swipe with four fingers up or down to cycle the layout (Fn+Space, Fn+⇧Space); drag them left or right to move the focused tile's edge, like dragging the border with the mouse")
-            } reset: { overrides.gestureLayout = nil }
+            }
 
-            row("Invert swipes", overridden: overrides.gestureInvert != nil) {
+            row("Invert swipes", note: swipesOn ? nil : "Needs Trackpad swipes") {
                 Toggle("", isOn: binding(\.gestureInvert, default: file.gestureInvert)).labelsHidden()
+                    .disabled(!swipesOn)
                     .help("Off: content follows your fingers, as with natural scrolling (swipe left for the next window). On: swipe the way the keys point (swipe left for Fn+A)")
-            } reset: { overrides.gestureInvert = nil }
+            }
 
             // #138: what "Don't warn again" silenced, and the way back. Only shown when there is any.
             if let silenced = overrides.silencedWarnings, !silenced.isEmpty {
-                row("Silenced warnings", overridden: false) {
+                row("Silenced warnings") {
                     HStack(spacing: 8) {
                         Text(silenced.map(Self.warningLabel).joined(separator: ", "))
                             .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -148,7 +149,7 @@ struct SettingsView: View {
                         Button("Warn again") { overrides.silencedWarnings = nil }
                             .help("Warn again about everything you chose Don't warn again for")
                     }
-                } reset: {}
+                }
             }
 
             if let karabiner {
@@ -159,10 +160,10 @@ struct SettingsView: View {
             Divider()
             // #139: what is remembered across launches, and the way to forget it.
             VStack(alignment: .leading, spacing: 10) {
-                row("Save workspaces", overridden: overrides.persistState != nil) {
+                row("Save workspaces") {
                     Toggle("", isOn: binding(\.persistState, default: file.persistState)).labelsHidden()
                         .help("Keep workspaces, their layouts and sizes, and where each app's windows go, across launches (state.json)")
-                } reset: { overrides.persistState = nil }
+                }
                 if let resetState {
                     HStack(spacing: 12) {
                         Color.clear.frame(width: 120, height: 1)
@@ -209,83 +210,97 @@ struct SettingsView: View {
         }
     }
 
+    /// What the shell runs on: the file with the overrides on top. Every disabled-state check reads
+    /// this rather than re-deriving `overrides.x ?? file.x` by hand.
+    private var effective: Config { Settings.effective(config: file, overrides: overrides) }
+    private var swipesOn: Bool { effective.gestures }
+
+    /// #211: why Layout swipes is disabled, or nil when it is not.
+    private var layoutSwipesNote: String? {
+        if !swipesOn { return "Needs Trackpad swipes" }
+        if file.gestureFingers == SwipeBindings.layoutFingerCount { return "Trackpad swipes already use four fingers" }
+        return nil
+    }
+
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
             header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, what the rail's tiles show, switch and re-tile motion, and whether the rail hides.")
-            row("Panel colour", overridden: overrides.panelColor != nil) {
+            row("Panel colour") {
                 HStack(spacing: 8) {
                     ColorPicker("", selection: colorBinding).labelsHidden()
-                    Button("System") { overrides.panelColor = "system" }
+                    Button("System") { overrides.panelColor = file.panelColor == "system" ? nil : "system" }
                         .disabled((overrides.panelColor ?? file.panelColor) == "system")
                 }
-            } reset: { overrides.panelColor = nil }
+            }
 
             // #115: what a rail tile draws. Colours per category are config.toml's `category-colors`.
-            row("Rail icons", overridden: overrides.railIconStyle != nil) {
+            row("Rail icons") {
                 Picker("", selection: binding(\.railIconStyle, default: file.railIconStyle)) {
                     Text("Apps").tag(RailIconStyle.app); Text("Category").tag(RailIconStyle.category)
                     Text("Hybrid").tag(RailIconStyle.hybrid)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 210)
                     .help("Apps: the workspace's app icons. Category: its category's symbol. Hybrid: the symbol over its top apps.")
-            } reset: { overrides.railIconStyle = nil }
+            }
 
             // #126: the Dock's badges and bounces, as a dot on the tile and the tab.
-            row("Attention marks", overridden: overrides.dockAttention != nil) {
+            row("Attention marks") {
                 Toggle("", isOn: binding(\.dockAttention, default: file.dockAttention)).labelsHidden()
                     .help("A red dot on the workspace and the tab of an app whose Dock icon has a badge or is bouncing")
-            } reset: { overrides.dockAttention = nil }
+            }
 
             Divider()
-            row("Switch animation", overridden: overrides.animations != nil) {
+            row("Switch animation") {
                 Toggle("", isOn: binding(\.animations, default: file.animations)).labelsHidden()
-            } reset: { overrides.animations = nil }
+            }
             // #140: off by default; only while switches animate at all.
-            row("Re-tile animation", overridden: overrides.animateRetile != nil) {
+            let animating = effective.animations
+            row("Re-tile animation", note: animating ? nil : "Needs Switch animation") {
                 Toggle("", isOn: binding(\.animateRetile, default: file.animateRetile)).labelsHidden()
-                    .disabled(!(overrides.animations ?? file.animations))
+                    .disabled(!animating)
                     .help("Windows slide to their new places when the layout changes or a window opens or closes. Instant when the capture takes longer than 80 ms, or with Reduce Motion on.")
-            } reset: { overrides.animateRetile = nil }
-            row("Empty cheat sheet", overridden: overrides.emptyCheatsheet != nil) {
+            }
+            row("Empty cheat sheet") {
                 Toggle("", isOn: binding(\.emptyCheatsheet, default: file.emptyCheatsheet)).labelsHidden()
-            } reset: { overrides.emptyCheatsheet = nil }
-            row("Auto-hide rail", overridden: overrides.railAutohide != nil) {
+            }
+            row("Auto-hide rail") {
                 Toggle("", isOn: binding(\.railAutohide, default: file.railAutohide)).labelsHidden()
-            } reset: { overrides.railAutohide = nil }
+            }
         }
     }
 
     private var layout: some View {
         VStack(alignment: .leading, spacing: 18) {
             header("Layout", "Panel sizes, the gap between tiled windows and the gap to the screen edge.")
-            row("Rail width", overridden: overrides.panelWidth != nil) {
+            row("Rail width") {
                 stepper(binding(\.panelWidth, default: file.panelWidth), range: 36...320, suffix: "pt")
-            } reset: { overrides.panelWidth = nil }
+            }
 
-            row("Tab bar height", overridden: overrides.panelHeight != nil) {
+            row("Tab bar height") {
                 stepper(binding(\.panelHeight, default: file.panelHeight), range: 24...80, suffix: "pt")
-            } reset: { overrides.panelHeight = nil }
+            }
 
-            row("Window gap", overridden: overrides.gap != nil) {
+            row("Window gap") {
                 stepper(binding(\.gap, default: file.gap), range: 0...64, suffix: "pt")
-            } reset: { overrides.gap = nil }
+            }
 
             // #124: the row's distance from the screen edge; follows the window gap until set.
-            row("Screen edge gap", overridden: overrides.screenGap != nil) {
-                stepper(binding(\.screenGap, default: file.screenGap ?? overrides.gap ?? file.gap), range: 0...64, suffix: "pt")
-            } reset: { overrides.screenGap = nil }
+            row("Screen edge gap") {
+                stepper(binding(\.screenGap, default: file.screenGap ?? overrides.gap ?? file.gap, clearsAt: file.screenGap),
+                        range: 0...64, suffix: "pt")
+            }
 
-            row("Tab sizing", overridden: overrides.tabSizing != nil) {
+            row("Tab sizing") {
                 Picker("", selection: binding(\.tabSizing, default: file.tabSizing)) {
                     Text("Fit").tag(TabSizing.fit); Text("Equal").tag(TabSizing.equal)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
-            } reset: { overrides.tabSizing = nil }
+            }
 
             // #116: how much a tab shows. The whole title stays in each tab's tooltip.
-            row("Tab style", overridden: overrides.tabStyle != nil) {
+            row("Tab style") {
                 Picker("", selection: binding(\.tabStyle, default: file.tabStyle)) {
                     Text("Full").tag(TabStyle.full); Text("Name").tag(TabStyle.name); Text("Icon").tag(TabStyle.icon)
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
-            } reset: { overrides.tabStyle = nil }
+            }
         }
     }
 
@@ -297,34 +312,39 @@ struct SettingsView: View {
         let off = AppCategory.allCases.filter { !order.contains($0) }
         return VStack(alignment: .leading, spacing: 18) {
             header("Workspaces", "Where an app's first window goes. Apps of a category that is on share one workspace per display, kept at the top in this order. Every other app gets a workspace of its own below them.")
-            row("Categories", overridden: overrides.categoryOrder != nil) {
+            row("Categories") {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(order + off, id: \.self) { categoryRow($0, order: order) }
                 }
-            } reset: { overrides.categoryOrder = nil }
+            }
 
             Divider()
-            row("Maximum", overridden: overrides.maxWorkspaces != nil) {
+            row("Maximum") {
                 let cap = binding(\.maxWorkspaces, default: file.maxWorkspaces)
                 Stepper(value: cap, in: 1...30) {
                     Text("\(cap.wrappedValue) workspaces per display")
                         .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
                 }
-            } reset: { overrides.maxWorkspaces = nil }
+            }
         }
+    }
+
+    /// The file's own order clears the override (#211), like every other control.
+    private func setCategoryOrder(_ o: [AppCategory]) {
+        overrides.categoryOrder = o == file.categoryOrder ? nil : o
     }
 
     private func categoryRow(_ c: AppCategory, order: [AppCategory]) -> some View {
         let i = order.firstIndex(of: c)
         func move(_ by: Int) {
             guard let i else { return }
-            var o = order; o.swapAt(i, i + by); overrides.categoryOrder = o
+            var o = order; o.swapAt(i, i + by); setCategoryOrder(o)
         }
         return HStack(spacing: 8) {
             Toggle(c.label, isOn: Binding(get: { i != nil }, set: { on in
                 var o = order.filter { $0 != c }
                 if on { o.append(c) }
-                overrides.categoryOrder = o
+                setCategoryOrder(o)
             }))
             .labelsHidden().toggleStyle(.switch).controlSize(.mini)
             Text(c.label.prefix(1).uppercased() + c.label.dropFirst())
@@ -339,7 +359,6 @@ struct SettingsView: View {
     }
 
     private var keys: some View {
-        let effective = Settings.effective(config: file, overrides: overrides)
         return VStack(alignment: .leading, spacing: 14) {
             header("Keybindings", "Click a chord and press the keys you want. Escape cancels. A chord needs at least one of fn, \u{2303}, \u{2325} or \u{2318} \u{2014} a bare key would be swallowed everywhere.")
             if effective.keybindingPreset == .fn {
@@ -361,7 +380,6 @@ struct SettingsView: View {
 
     private func keyRow(name: String, label: String, config: Config) -> some View {
         let bound = KeyBindings.command(named: name).flatMap { CheatSheet.primaryDisplay(for: $0, config: config) }
-        let isOverridden = (overrides.keybindingOverrides?[name] ?? nil) != nil
         return HStack(spacing: 12) {
             Text(label).font(.system(size: 12)).frame(width: 190, alignment: .leading)
             Button {
@@ -380,21 +398,18 @@ struct SettingsView: View {
                 if recording == name {
                     ChordRecorder(onCapture: { chord in
                         var m = overrides.keybindingOverrides ?? [:]
-                        m[name] = KeyBindings.serialize(chord)
-                        overrides.keybindingOverrides = m
+                        m[name] = nil
+                        // #211: the chord the file and preset already give this command clears the
+                        // override instead of storing a copy — that is the way back to the file.
+                        var without = overrides
+                        without.keybindingOverrides = m.isEmpty ? nil : m
+                        let base = KeyBindings.table(for: Settings.effective(config: file, overrides: without))
+                        if base[chord] != KeyBindings.command(named: name) { m[name] = KeyBindings.serialize(chord) }
+                        overrides.keybindingOverrides = m.isEmpty ? nil : m
                         recording = nil
                     }, onCancel: { recording = nil })
                     .frame(width: 0, height: 0)
                 }
-            }
-            if isOverridden {
-                Button("Use file") {
-                    var m = overrides.keybindingOverrides ?? [:]
-                    m.removeValue(forKey: name)
-                    overrides.keybindingOverrides = m.isEmpty ? nil : m
-                }
-                .font(.system(size: 11))
-                .help("Stop overriding this and use whatever config.toml and the preset say")
             }
             Spacer(minLength: 0)
         }
@@ -470,18 +485,16 @@ struct SettingsView: View {
         }
     }
 
-    /// One knob. `overridden` is shown rather than hidden: a value that disagrees with the file
-    /// the user is also editing by hand is confusing precisely when it is invisible.
-    private func row(_ label: String, overridden: Bool,
-                     @ViewBuilder control: () -> some View,
-                     reset: @escaping () -> Void) -> some View {
+    /// One knob. No "Use file" escape hatch (#211): the control shows the value the shell runs
+    /// on, and setting it back to the file's value is how the window lets go (see `binding`).
+    /// `note` says why a control is disabled, so a greyed-out switch is never a riddle.
+    private func row(_ label: String, note: String? = nil,
+                     @ViewBuilder control: () -> some View) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label).font(.system(size: 12)).frame(width: 120, alignment: .leading)
             control()
-            if overridden {
-                Button("Use file", action: reset)
-                    .font(.system(size: 11))
-                    .help("Stop overriding this and use whatever config.toml says")
+            if let note {
+                Text(note).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -496,11 +509,20 @@ struct SettingsView: View {
         }
     }
 
-    /// Reads through to the file when unset, and writing always creates the override — which is
-    /// exactly what moving a slider means.
-    private func binding<V>(_ key: WritableKeyPath<SettingsOverrides, V?>, default fallback: V) -> Binding<V> {
+    /// Reads through to the file when unset. Writing the file's own value clears the override
+    /// instead of storing a copy (#211): with "Use file" gone, that is the way back, and it keeps a
+    /// stale copy from silently shadowing a later edit to config.toml.
+    /// `clearsAt` is the file's own value when the shown default is derived from something else:
+    /// the screen edge gap shows the window gap until set, and setting it to that must pin it, not
+    /// let it go on following the window gap.
+    private func binding<V: Equatable>(_ key: WritableKeyPath<SettingsOverrides, V?>, default fallback: V) -> Binding<V> {
+        binding(key, default: fallback, clearsAt: fallback)
+    }
+
+    private func binding<V: Equatable>(_ key: WritableKeyPath<SettingsOverrides, V?>, default fallback: V,
+                                       clearsAt fileValue: V?) -> Binding<V> {
         Binding(get: { overrides[keyPath: key] ?? fallback },
-                set: { overrides[keyPath: key] = $0 })
+                set: { overrides[keyPath: key] = $0 == fileValue ? nil : $0 })
     }
 
     private var colorBinding: Binding<Color> { hexBinding(\.panelColor, default: file.panelColor, system: .gray) }
@@ -520,7 +542,7 @@ struct SettingsView: View {
                 func byte(_ v: CGFloat) -> Int { Int((v * 255).rounded()) }
                 var hex = String(format: "#%02X%02X%02X", byte(c.redComponent), byte(c.greenComponent), byte(c.blueComponent))
                 if byte(c.alphaComponent) < 255 { hex += String(format: "%02X", byte(c.alphaComponent)) }
-                overrides[keyPath: key] = hex
+                overrides[keyPath: key] = HexColor.normalize(fallback) == hex ? nil : hex
             })
     }
 }

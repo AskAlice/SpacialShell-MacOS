@@ -41,7 +41,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         self.onChange = onChange
     }
 
-    /// The file changed on disk while the window is open — the baseline every "Use file" returns
+    /// The file changed on disk while the window is open — the baseline every control reads through
     /// to has moved, so re-render against it.
     public func update(file: Config) {
         self.file = file

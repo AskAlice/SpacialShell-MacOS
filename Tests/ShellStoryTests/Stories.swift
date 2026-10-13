@@ -762,10 +762,12 @@ enum Stories {
         add("drop-target", CGSize(width: 480, height: 320), DropTargetView())
 
         // The settings window's General pane, with #138's silenced warnings and the way back, and
-        // #139's persistence switch and reset, and #194's reload.
+        // #139's persistence switch and reset, and #194's reload. Swipes off (#211): the two
+        // swipe rows that depend on it are disabled and say why.
         var silenced = SettingsOverrides()
         silenced.silence("other-wm:com.knollsoft.Rectangle")
         silenced.silence("other-wm:yabai")
+        silenced.gestures = false
         add("settings-general", nil, SettingsView(
             file: Config(), overrides: .constant(silenced), configPath: "~/.config/spacial-shell/config.toml",
             openConfigFile: {}, checkForUpdates: nil, resetState: {}, reload: {}, standalone: .general))
