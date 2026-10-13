@@ -26,6 +26,13 @@ import SpacialShellKit
         #expect(!first.items.isEmpty)
         // Some running app always has a Dock item (Finder, at the least), and matches by bundle URL.
         #expect(first.items.contains { !$0.pids.isEmpty })
+        // #212: a poll between full reads asks only running apps' items (plus one edge anchor),
+        // and reports every one of them, with the same pids, in the same order.
+        let next = reader.read()
+        let quick = try #require(next)
+        let running = { (s: DockSample) in s.items.map(\.pids).filter { !$0.isEmpty } }
+        #expect(running(quick) == running(first))
+        #expect(quick.items.count <= running(first).count + 1)
         let dock = try #require(NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first).processIdentifier
 
         let n = 80

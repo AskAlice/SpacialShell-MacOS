@@ -107,3 +107,17 @@ public struct AttentionTracker: Equatable, Sendable {
         return out
     }
 }
+
+/// #212: which Dock items a poll between full reads asks, by index. The running apps' items, the
+/// only ones whose badge or bounce can mark a tile (any other maps to no pid), plus one item that is
+/// not running as the edge anchor: `AttentionTracker.lifts` measures from the Dock's edge, and a
+/// frame not read in the same poll goes stale the moment the whole Dock moves (an auto-hide reveal,
+/// a resize) — then every running item would read as lifted.
+public enum DockPoll {
+    public static func live(_ paths: [String?], running: [String: [Int32]]) -> [Int] {
+        let isRunning = { (i: Int) in paths[i].map { !(running[$0] ?? []).isEmpty } ?? false }
+        let live = paths.indices.filter(isRunning)
+        guard let anchor = paths.indices.first(where: { !isRunning($0) }) else { return live }
+        return (live + [anchor]).sorted()
+    }
+}

@@ -130,11 +130,22 @@ final class WindowThumbnails {
     func retain(_ live: Set<WindowID>) { cache.retain(live) }
 
     /// Fire and forget: the one-line hook for pictures taken for something else. Returns at once;
-    /// the downscale runs at utility priority, off the main actor.
+    /// the downscale runs at utility priority, off the main actor. #212: a window whose thumbnail is
+    /// still fresh is skipped — downscaling every full-Retina switch picture regardless was most of
+    /// the shell's CPU in its first minutes.
     func ingest(_ images: some Sequence<(key: WindowID, value: CGImage)>) {
-        let batch = Array(images), taken = ContinuousClock.now
-        Task { await add(batch, taken: taken) }
+        // `downscaling` too: a second switch inside one downscale would otherwise do it all again.
+        let batch = images.filter { cache.isStale($0.key) && !downscaling.contains($0.key) }, taken = ContinuousClock.now
+        guard !batch.isEmpty else { return }
+        let ids = Set(batch.map(\.key))
+        downscaling.formUnion(ids)
+        Task {
+            await add(batch, taken: taken)
+            downscaling.subtract(ids)
+        }
     }
+    /// Windows whose switch picture `ingest` is downscaling right now.
+    private var downscaling: Set<WindowID> = []
 
     func add(_ images: [(key: WindowID, value: CGImage)], taken: ContinuousClock.Instant) async {
         guard !images.isEmpty else { return }

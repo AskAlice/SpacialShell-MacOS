@@ -10,11 +10,14 @@ import os
 /// item refuses `AXValueChanged`), so it has to be read. What a sample *means* is Kit's
 /// `AttentionTracker`; this only reads.
 ///
-/// **Cost.** One poll is one `kAXChildren` read on the Dock's list plus one
-/// `AXUIElementCopyMultipleAttributeValues` per item — a single round trip each, not five. Polls run
-/// every `interval` on a utility queue, never the main thread; the Dock's messaging timeout is
-/// capped so a wedged Dock cannot stall the queue for long. Mean and worst poll times are logged
-/// once a minute (`log stream --predicate 'category == "dock"' --level debug`).
+/// **Cost.** A full read is one `kAXChildren` read on the Dock's list plus one
+/// `AXUIElementCopyMultipleAttributeValues` per item — a single round trip each, not five. #212: it
+/// runs only every `DockReader.refreshEvery` polls; the polls between ask only `DockPoll.live`'s
+/// items — the running apps', the only ones whose badge or bounce can mark a tile, and one anchor.
+/// The running-app map is re-read when an app launches or quits, with a slow backstop. Polls run every `interval` on a utility queue, never the main
+/// thread; the Dock's messaging timeout is capped so a wedged Dock cannot stall the queue for long.
+/// Mean and worst poll times are logged once a minute (`log stream --predicate 'category == "dock"'
+/// --level debug`).
 public final class DockWatcher: @unchecked Sendable {
     /// A bounce is ~1 s of lift every ~2 s, so a poll every half second lands inside every one of
     /// them. Twice as often bought nothing but twice the cost (measured in `DockReaderTests`).
@@ -26,6 +29,8 @@ public final class DockWatcher: @unchecked Sendable {
     // Everything below is confined to `queue`.
     private var timer: (any DispatchSourceTimer)?
     private var reader = DockReader()
+    /// #212: launches and quits, which are what change the running-app map.
+    private var observers: [NSObjectProtocol] = []
     private var polls = 0
     private var total = Duration.zero
     private var worst = Duration.zero
@@ -42,12 +47,20 @@ public final class DockWatcher: @unchecked Sendable {
             t.setEventHandler { [weak self] in self?.poll() }
             t.resume()
             timer = t
+            let center = NSWorkspace.shared.notificationCenter
+            observers = [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification].map {
+                center.addObserver(forName: $0, object: nil, queue: nil) { [weak self] _ in
+                    self?.queue.async { self?.reader.appsChanged() }
+                }
+            }
         }
     }
 
     public func stop() {
         queue.async { [self] in
             timer?.cancel(); timer = nil
+            observers.forEach(NSWorkspace.shared.notificationCenter.removeObserver)
+            observers = []
             reader = DockReader()
         }
     }
@@ -73,13 +86,23 @@ public struct DockReader {
     private static let dockBundleID = "com.apple.dock"
     private static let attributeNames = ["AXSubrole", kAXPositionAttribute, kAXSizeAttribute, "AXStatusLabel", "AXURL"]
     private let attributes = DockReader.attributeNames as CFArray
+    /// #212: what a poll between full reads asks a running app's item — no subrole, no URL.
+    private let liveAttributes = [kAXPositionAttribute, kAXSizeAttribute, "AXStatusLabel"] as CFArray
     private var list: AXUIElement?
-    /// The running-app map and the Dock's edge change rarely and cost more to read than the Dock
-    /// itself, so they are re-read every `refreshEvery` reads (4 s at the watcher's pace): an app
-    /// launched since is matched a few seconds late, and it is still launching then anyway.
-    private static let refreshEvery = 8
+    /// The Dock's app items as of the last full read: their elements, bundle paths, and frames and
+    /// badges as last read. A full read every `refreshEvery` reads (4 s at the watcher's pace)
+    /// picks up an item added or moved since; the reads between ask only running apps' items.
+    static let refreshEvery = 8
+    private struct Item { let element: AXUIElement; let path: String?; var frame: CGRect; var badge: String? }
+    private var items: [Item] = []
     private var reads = 0
     private var pids: [String: [Int32]] = [:]
+    /// #212: set by a launch or quit (`appsChanged`), and to start with. The map is re-read then,
+    /// and otherwise only every `pidsBackstop` reads: listing every running app was ~13% of the
+    /// shell's idle CPU every 4 s. The backstop catches an app the notification arrived for before
+    /// it reported `isFinishedLaunching`.
+    private var appsDirty = true
+    static let pidsBackstop = 120
     /// #210: each app's bundle path, by pid. `bundleURL` is a LaunchServices round trip per app,
     /// and a process's bundle never changes, so only pids not seen before are asked.
     private var paths: [Int32: String] = [:]
@@ -87,24 +110,63 @@ public struct DockReader {
 
     public init() {}
 
+    /// An app launched or quit: the running-app map and the Dock's items (a launched app's tile
+    /// appears, a quit one's goes) are both read again on the next read.
+    public mutating func appsChanged() { appsDirty = true; items = [] }
+
     /// Nil when there is no Dock to read (not running, or no Accessibility grant).
     public mutating func read() -> DockSample? {
-        guard let items = children() else { return nil }
-        if reads % Self.refreshEvery == 0 { pids = runningPids(); edge = Self.edge() }
+        if appsDirty || reads % Self.pidsBackstop == 0 { pids = runningPids(); appsDirty = false }
+        let full = items.isEmpty || reads % Self.refreshEvery == 0
         reads += 1
-        var out: [DockItemSample] = []
-        for item in items {
+        let read: [Int]
+        if full {
+            edge = Self.edge()
+            guard readAll() else { return nil }
+            read = Array(items.indices)
+        } else if let live = readLive() {
+            read = live
+        } else {
+            // An item went away under us (the Dock restarted, or an app quit): a full read now.
+            guard readAll() else { return nil }
+            read = Array(items.indices)
+        }
+        // Only frames read in this poll: a lift is measured against the others (see `DockPoll`).
+        return DockSample(edge: edge, items: read.map { items[$0] }.map {
+            DockItemSample(pids: $0.path.map { pids[$0] ?? [] } ?? [], frame: $0.frame, badge: $0.badge)
+        })
+    }
+
+    /// Every app item, with everything a sample needs.
+    private mutating func readAll() -> Bool {
+        guard let children = children() else { items = []; return false }
+        var out: [Item] = []
+        for item in children {
             var raw: CFArray?
             guard AXUIElementCopyMultipleAttributeValues(item, attributes, AXCopyMultipleAttributeOptions(rawValue: 0), &raw) == .success,
                   let values = raw as? [AnyObject], values.count == 5,
                   values[0] as? String == "AXApplicationDockItem",
                   let origin = Self.point(values[1]), let size = Self.size(values[2]) else { continue }
             let url = CFGetTypeID(values[4]) == CFURLGetTypeID() ? (values[4] as! URL) : nil
-            out.append(DockItemSample(pids: url.map { pids[$0.standardizedFileURL.path] ?? [] } ?? [],
-                                      frame: CGRect(origin: origin, size: size),
-                                      badge: values[3] as? String))
+            out.append(Item(element: item, path: url?.standardizedFileURL.path,
+                            frame: CGRect(origin: origin, size: size), badge: values[3] as? String))
         }
-        return DockSample(edge: edge, items: out)
+        items = out
+        return true
+    }
+
+    /// Only `DockPoll.live`'s items; the indices read, or nil when one of them no longer answers.
+    private mutating func readLive() -> [Int]? {
+        let live = DockPoll.live(items.map(\.path), running: pids)
+        for i in live {
+            var raw: CFArray?
+            guard AXUIElementCopyMultipleAttributeValues(items[i].element, liveAttributes, AXCopyMultipleAttributeOptions(rawValue: 0), &raw) == .success,
+                  let values = raw as? [AnyObject], values.count == 3,
+                  let origin = Self.point(values[0]), let size = Self.size(values[1]) else { return nil }
+            items[i].frame = CGRect(origin: origin, size: size)
+            items[i].badge = values[2] as? String
+        }
+        return live
     }
 
     /// The Dock list's items, finding the list again if the cached one has gone.
