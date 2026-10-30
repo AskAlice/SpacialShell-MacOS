@@ -11,6 +11,9 @@ public struct TouchFrame: Equatable, Sendable {
     /// The event's timestamp in seconds, when known. It lets the recognizer tell a real lift from
     /// the empty frame macOS interleaves with every moving frame (see `SwipeRecognizer.liftGrace`).
     public var time: TimeInterval?
+    /// The count fell because a contact stopped counting as a finger while still down (a palm left
+    /// behind, `ContactFilter`), not because one lifted: the swipe starts again at the new count.
+    public var regrouped = false
 
     public init(fingers: Int, x: Double, y: Double, time: TimeInterval? = nil) {
         self.fingers = fingers; self.x = x; self.y = y; self.time = time
@@ -206,8 +209,9 @@ public struct SwipeRecognizer: Equatable, Sendable {
             return .drag(SwipeDrag(.moved, fingers: k, travel: travel))
         }
         guard let fewest = fingers.min(), n >= fewest else { forget(); return nil }
-        if n > peak {
-            // A finger landed: the swipe starts again at the new count, unless it already fired.
+        if n > peak || frame.regrouped {
+            // A finger landed, or a palm was dropped: the swipe starts again at the new count,
+            // unless it already fired.
             peak = n
             if phase != .done { phase = .idle }
         }

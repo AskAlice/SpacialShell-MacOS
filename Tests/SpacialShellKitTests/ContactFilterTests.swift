@@ -35,6 +35,43 @@ import Foundation
         #expect(swipe(4, palm: true) == Swipe(fingers: 4, direction: .right))
     }
 
+    /// A real palm is not still: it rolls along as the hand swipes, a fraction of the fingers' way,
+    /// or settles a few millimetres as it lands. Neither makes it a finger.
+    func driftingSwipe(_ n: Int, palm: (Int) -> (x: Double, y: Double)) -> Swipe? {
+        var f = ContactFilter(), r = SwipeRecognizer(fingers: [3, 4])
+        var out: Swipe?
+        for i in 0...20 {
+            let t = Double(i) * 0.008, p = palm(i)
+            let contacts = frame(n, dx: Double(i) * 0.012, palm: false, t: t) + [C(id: 99, x: p.x, y: p.y)]
+            if let s = r.feed(f.frame(contacts, time: t)) { out = s }
+        }
+        return out
+    }
+
+    @Test func aPalmRollingWithTheHandIsNoFinger() {
+        let rolling = { (i: Int) in (x: 0.5 + Double(i) * 0.004, y: 0.05) }   // a third of the fingers' way
+        #expect(driftingSwipe(2, palm: rolling) == nil)
+        #expect(driftingSwipe(3, palm: rolling) == Swipe(fingers: 3, direction: .right))
+    }
+
+    @Test func aPalmThatSettledBeforeTheSwipeIsNoFinger() {
+        // Lands, slides 4.5 mm up within the first frames, then rests while the fingers swipe.
+        let settling = { (i: Int) in (x: 0.5, y: 0.05 + 0.01 * Double(min(i, 3))) }
+        var f = ContactFilter()
+        _ = f.frame([C(id: 99, x: 0.5, y: 0.05)], time: 0)
+        _ = f.frame([C(id: 99, x: 0.5, y: 0.08)], time: 0.008)
+        #expect(driftingSwipe(2, palm: settling) == nil)
+        #expect(driftingSwipe(3, palm: settling) == Swipe(fingers: 3, direction: .right))
+    }
+
+    /// The palm rolled along early and was counted; once the fingers outpace it, it is dropped, and
+    /// the swipe is the fingers' own count, not none.
+    @Test func aPalmLeftBehindIsDroppedAndTheSwipeStillFires() {
+        let early = { (i: Int) in (x: 0.5 + 0.008 * Double(min(i, 4)), y: 0.05) }   // keeps up, then stops
+        #expect(driftingSwipe(3, palm: early) == Swipe(fingers: 3, direction: .right))
+        #expect(driftingSwipe(2, palm: early) == nil)
+    }
+
     /// Nothing has moved yet: no fingers. The movers join as they move.
     @Test func onlyMovedContactsCount() {
         var f = ContactFilter()
