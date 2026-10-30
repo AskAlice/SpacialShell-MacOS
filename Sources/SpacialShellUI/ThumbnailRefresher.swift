@@ -20,7 +20,7 @@ final class ThumbnailRefresher {
 
     private var policy = ThumbnailRefresh()
     private var refs: [WindowID: SpacialShellProtocol.WindowRef] = [:]
-    private var order: [WindowID] = []
+    private var order: [SpacialShellProtocol.WindowRef] = []
     private var loop: Task<Void, Never>?
     /// A capture is running; a poke meanwhile is left to the loop, which asks again when it lands.
     private var capturing = false
@@ -37,7 +37,7 @@ final class ThumbnailRefresher {
     /// The windows the rail draws icons for; none while the rail is not shown (Zen, `show-panels`).
     func update(world: World, railShown: Bool) {
         let windows = railShown ? ThumbnailRefresh.candidates(in: world) : []
-        order = windows.map(\.id)
+        order = windows
         refs = Dictionary(windows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         poke()
     }

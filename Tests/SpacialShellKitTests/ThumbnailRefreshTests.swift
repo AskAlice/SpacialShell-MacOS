@@ -9,7 +9,36 @@ import Foundation
     /// One step with the gate open and the screen awake; `taken` is each window's thumbnail time.
     func step(_ r: inout R, _ ids: [WindowID], _ taken: [WindowID: ContinuousClock.Instant] = [:],
               gate: Bool = true, awake: Bool = true, at s: Double = 0) -> R.Decision {
-        r.next(windows: ids, taken: { taken[$0] }, gateOpen: gate, screenAwake: awake, now: t0 + .seconds(s))
+        r.next(windows: ids.map { WindowRef(id: $0, pid: Int32($0)) },   // each window its own app
+               taken: { taken[$0] }, gateOpen: gate, screenAwake: awake, now: t0 + .seconds(s))
+    }
+
+    /// #209: about one picture per app a minute, not per window. Windows 1–3 are one app's.
+    @Test func anAppIsRefreshedOneWindowAMinute() {
+        var r = R()
+        let app = [1, 2, 3].map { WindowRef(id: $0, pid: 7) } + [WindowRef(id: 4, pid: 8)]
+        let taken: [WindowID: ContinuousClock.Instant] = [1: t0 - .seconds(200), 2: t0 - .seconds(30),
+                                                          3: t0 - .seconds(100), 4: t0 - .seconds(90)]
+        func next(at s: Double) -> R.Decision {
+            r.next(windows: app, taken: { taken[$0] }, gateOpen: true, screenAwake: true, now: t0 + .seconds(s))
+        }
+        // The app's newest picture (window 2) is 30 s old: none of its windows is due; the other app is.
+        #expect(next(at: 0) == .capture(4))
+        r.finished()
+        #expect(next(at: 0) == .wait(.seconds(30)))
+        // Then its oldest window, once.
+        #expect(next(at: 30) == .capture(1))
+        r.finished()
+        #expect(next(at: 30) == .wait(.seconds(30)), "next is the other app, a minute after its own")
+    }
+
+    /// A window never taken is preloaded even when its app's others are fresh: the first hover
+    /// still draws a picture.
+    @Test func aNewWindowIsPreloadedWhateverItsApp() {
+        var r = R()
+        let app = [1, 2].map { WindowRef(id: $0, pid: 7) }
+        #expect(r.next(windows: app, taken: { $0 == 1 ? self.t0 : nil }, gateOpen: true, screenAwake: true, now: t0)
+                == .capture(2))
     }
 
     @Test func missingThumbnailsComeFirstThenTheOldest() {

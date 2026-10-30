@@ -9,12 +9,16 @@ import Foundation
 ///   this) and the last background attempt, so a window that will not capture waits its turn
 ///   instead of being retried every step.
 /// - **Due** once `cadence` old; nothing due means wait until something is.
+/// - **Per app (#209):** about one picture an app a minute, not a window. An app's age is its
+///   newest window's, and only its oldest window is taken when that age is due, so an app's
+///   windows take turns. A window never taken is the exception: it is preloaded at once, so the
+///   first hover still draws a picture.
 /// - **Budget:** one capture in flight, at most `perMinute` started in any 60 s.
 /// - **Never** while the capture gate does not admit prefetch (#92: not before the first capture has
 ///   succeeded, and not after a decline), nor while the screen is locked or the display asleep.
 public struct ThumbnailRefresh: Sendable {
-    /// How old a rail window's thumbnail may get before the background takes it again: about one
-    /// picture a window a minute, which is what the user asked for (#209) — every capture costs
+    /// How old an app's newest thumbnail may get before the background takes another of its
+    /// windows: about one picture an app a minute, which is what the user asked for (#209) — every capture costs
     /// WindowServer a composite and `tccd` a check (#207).
     public static var cadence: Duration { .seconds(60) }
     /// Captures started in any minute. About 20 windows kept at `cadence`; more are refreshed less
@@ -38,19 +42,24 @@ public struct ThumbnailRefresh: Sendable {
     public init() {}
 
     /// `windows` are the rail's, in rail order (the tie-break); `taken` is each one's thumbnail time.
-    public mutating func next(windows: [WindowID], taken: (WindowID) -> ContinuousClock.Instant?,
+    public mutating func next(windows: [WindowRef], taken: (WindowID) -> ContinuousClock.Instant?,
                               gateOpen: Bool, screenAwake: Bool,
                               now: ContinuousClock.Instant) -> Decision {
-        let live = Set(windows)
+        let live = Set(windows.map(\.id))
         attempted = attempted.filter { live.contains($0.key) }
         started.removeAll { now - $0 >= .seconds(60) }
         guard gateOpen, screenAwake, !inFlight, !windows.isEmpty else { return .idle }
 
-        // Oldest first, the first in rail order on a tie; nil (never taken, never tried) is oldest.
-        let ages = windows.map { id in (id: id, at: [taken(id), attempted[id]].compactMap { $0 }.max()) }
+        // Oldest app first, then its oldest window, the first in rail order on a tie; nil (never
+        // taken, never tried) is oldest of all.
+        let own = windows.map { w in (w: w, at: [taken(w.id), attempted[w.id]].compactMap { $0 }.max()) }
+        var newest: [Int32: ContinuousClock.Instant] = [:]
+        for (w, at) in own { if let at { newest[w.pid] = max(newest[w.pid] ?? at, at) } }
+        let ages = own.map { o in (id: o.w.id, at: o.at == nil ? nil : newest[o.w.pid], own: o.at) }
         guard let pick = ages.min(by: { a, b in
             guard let x = a.at else { return b.at != nil }
-            return b.at.map { x < $0 } ?? false
+            guard let y = b.at else { return false }
+            return x != y ? x < y : a.own! < b.own!
         }) else { return .idle }
         if let at = pick.at, now - at < Self.cadence { return .wait(Self.cadence - (now - at)) }
         if started.count >= Self.perMinute, let first = started.first {
