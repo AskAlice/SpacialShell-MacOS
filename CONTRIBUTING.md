@@ -11,7 +11,7 @@ macOS 14+ and a Swift 6 toolchain (Xcode 16 or later).
 swift test          # the gate for every change; Kit and Protocol tests are pure and fast
 Scripts/dev.sh      # build debug and run in the foreground (needs the Accessibility grant)
 Scripts/bundle.sh   # build/SpacialShell.app
-make hooks          # pre-commit: build, fast tests, bundle, install to /Applications
+make hooks          # pre-commit: build, fast tests, bundle, install to /Applications (after a rebase: once, at the end)
 ```
 
 The hook installs to `/Applications` on every commit; `SPACIAL_SKIP_INSTALL=1` skips the install

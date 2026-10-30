@@ -6,6 +6,9 @@
 #   prints a notice and passes — commits authored there are gated by CI and a Mac instead.
 # - SPACIAL_SKIP_INSTALL=1 skips the bundle+install step (keeps build+test).
 # - `git commit --no-verify` skips everything, as always.
+# - While a rebase or cherry-pick replays commits (a reword runs this hook), the tree is an
+#   intermediate commit's, not the one you end on: it is built and tested but not installed.
+#   `post-rewrite` builds, tests and installs the final tree once the rebase is done.
 #
 # The install replaces /Applications/SpacialShell.app in place; the stable ad-hoc bundle id
 # keeps the Accessibility grant across reinstalls (see Scripts/README for the TCC caveats).
@@ -37,6 +40,13 @@ swift test --skip SpacialShellPlatformTests --skip PlatformIntegrationTests
 
 if [ "${SPACIAL_SKIP_INSTALL:-0}" = "1" ]; then
     echo "pre-commit: SPACIAL_SKIP_INSTALL=1 — skipping bundle + install."
+    exit 0
+fi
+
+git_dir=$(git rev-parse --git-dir)
+if [ "${SPACIAL_REBASE_DONE:-0}" != "1" ] && { [ -d "$git_dir/rebase-merge" ] || [ -d "$git_dir/rebase-apply" ] \
+        || [ -f "$git_dir/CHERRY_PICK_HEAD" ] || [ -f "$git_dir/sequencer/todo" ]; }; then
+    echo "pre-commit: mid-rebase — not installing an intermediate tree; post-rewrite installs the final one."
     exit 0
 fi
 

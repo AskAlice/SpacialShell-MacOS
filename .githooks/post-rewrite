@@ -1,0 +1,6 @@
+#!/bin/sh
+# Post-rewrite: once a rebase has finished, build, test and install the tree it ended on.
+# pre-commit skips the install while a rebase replays commits (each is an intermediate tree);
+# this is the one install for the whole rebase. An amend already ran pre-commit, so only rebases.
+[ "$1" = "rebase" ] || exit 0
+SPACIAL_REBASE_DONE=1 exec "$(dirname "$0")/pre-commit"

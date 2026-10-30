@@ -14,7 +14,8 @@ tokens, components, icons, styling, and the six musts for integrating a design.
 - `Scripts/bundle.sh` produces the signed app bundle.
 - `make hooks` enables the repo pre-commit hook: on macOS every commit builds, runs the fast pure
   tests, bundles, and installs to `/Applications` (`SPACIAL_SKIP_INSTALL=1` or `--no-verify` to
-  bypass; the hook auto-skips on non-macOS, where CI and a Mac gate the commit instead).
+  bypass; the hook auto-skips on non-macOS, where CI and a Mac gate the commit instead). During a
+  rebase it installs nothing until the end, then `post-rewrite` builds and installs the final tree once.
 - The app targets macOS 14+; Kit code must not silently grow AppKit dependencies.
 
 ## Pull requests
