@@ -29,13 +29,21 @@ public struct SettingsOverrides: Codable, Equatable, Sendable {
     public var pointerWarp: Bool?
     /// #120.
     public var workspaceWrap: Bool?
-    /// #141. `gesture-fingers` stays the file's: it is a one-time choice, made alongside System Settings.
+    /// #141.
     public var gestures: Bool?
+    /// #210.
+    public var gestureFingers: Int?
     public var gestureInvert: Bool?
     /// #160.
     public var gestureLayout: Bool?
-    /// #135. `focus-follows-mouse-delay-ms` stays the file's, like `gesture-fingers`.
+    /// #135.
     public var focusFollowsMouse: Bool?
+    /// #210.
+    public var focusFollowsMouseDelayMs: Int?
+    public var startAtLogin: Bool?
+    public var launcherUrl: String?
+    public var showPanels: Bool?
+    public var crowdThreshold: Int?
     /// #139.
     public var persistState: Bool?
     /// command -> chord. Merged over the file's own overrides per command rather than replacing

@@ -20,6 +20,32 @@ import Foundation
                 "no key for \(properties.subtracting(named).sorted()); not a property: \(named.subtracting(properties).sorted())")
     }
 
+    /// #210: keys the settings window deliberately leaves to `config.toml`, each with why. Every
+    /// other key must be settable in the window, so a new key needs a control or a line here.
+    static let fileOnly: [String: String] = [
+        "ax-timeout-ms": "diagnostic; read once at launch",
+        "refresh-interval-ms": "diagnostic; read once at launch",
+        "telemetry": "diagnostic export settings",
+        "other-window-managers": "advanced: which other managers to warn about",
+        "panel-opacity": "the panel colour well's opacity slider sets it",
+        "keybindings": "the Keybindings pane edits keybinding-overrides",
+        "category-colors": "table: a colour per category, hand-edited",
+        "app-categories": "table: app to category map, hand-edited",
+        "workspace": "table: [[workspace]] seeds, hand-edited",
+        "ephemeral": "table: app rule list, hand-edited",
+        "float": "table: app rule list, hand-edited",
+        "ignore": "table: app rule list, hand-edited",
+        "tile": "table: app rule list, hand-edited",
+    ]
+
+    @Test func everyKeyIsInTheWindowOrSaysWhyNot() {
+        let names = Set(Config.keys.map(\.name))
+        let unsettable = Config.keys.filter { $0.override == nil }.map(\.name)
+        #expect(Set(unsettable) == Set(Self.fileOnly.keys),
+                "no control and no reason: \(Set(unsettable).subtracting(Self.fileOnly.keys).sorted()); settable or gone: \(Set(Self.fileOnly.keys).subtracting(unsettable).sorted())")
+        #expect(Set(Self.fileOnly.keys).isSubset(of: names))
+    }
+
     @Test func everyKeyNameIsUnique() {
         let names = Config.keys.map(\.name)
         #expect(Set(names).count == names.count)

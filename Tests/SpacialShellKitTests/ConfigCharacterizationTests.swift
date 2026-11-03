@@ -247,6 +247,8 @@ import Foundation
         o.gestures = true; o.gestureInvert = false; o.gestureLayout = true; o.focusFollowsMouse = false
         o.persistState = true; o.keybindingOverrides = ["toggle-float": "fn-shift-f", "cycle-layout": "fn-shift-k"]
         o.categoryOrder = []; o.maxWorkspaces = -3
+        o.gestureFingers = 9; o.focusFollowsMouseDelayMs = 1; o.startAtLogin = true
+        o.launcherUrl = "alfred://"; o.showPanels = false; o.crowdThreshold = 0
         o.layouts = [LayoutDef(id: "code-3", name: "Drawn", body: .zones([LayoutZone(x: 0, y: 0, w: 1, h: 1)])),
                      LayoutDef(id: "gui-only", name: "GUI", body: .zones([LayoutZone(x: 0, y: 0, w: 1, h: 0.5)]))]
         o.layoutBar = [.grid]; o.defaultLayout = .split; o.silencedWarnings = ["other-wm:yabai"]
@@ -263,6 +265,8 @@ import Foundation
         e.gestures = true; e.gestureInvert = false; e.gestureLayout = true; e.focusFollowsMouse = false
         e.persistState = true; e.keybindingOverrides = ["toggle-float": "fn-shift-f", "cycle-layout": "fn-shift-k"]
         e.categoryOrder = []; e.maxWorkspaces = 1
+        e.gestureFingers = Config.gestureFingerRange.upperBound; e.focusFollowsMouseDelayMs = FocusFollowsMouse.delayRangeMs.lowerBound
+        e.startAtLogin = true; e.launcherURL = "alfred://"; e.showPanels = false; e.crowdThreshold = 1
         e.layouts = Self.fullOverrides.layouts!      // the drawn code-3 replaces the file's, in its place
         e.layoutBar = [.grid]; e.defaultLayout = .split
         #expect(Settings.effective(config: Self.fullConfig, overrides: Self.fullOverrides) == e)
@@ -275,11 +279,12 @@ import Foundation
         let data = try e.encode(Self.fullOverrides)
         let keys = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any]).keys.sorted()
         #expect(keys == [
-            "animateRetile", "animations", "categoryOrder", "defaultLayout", "dockAttention", "emptyCheatsheet",
-            "focusFollowsMouse", "gap", "gestureInvert", "gestureLayout", "gestures", "keybindingOverrides",
-            "keybindingPreset", "layoutBar", "layouts", "maxWorkspaces", "panelColor", "panelHeight", "panelWidth",
-            "persistState", "pointerWarp", "railAutohide", "railIconStyle", "railSide", "screenGap",
-            "silencedWarnings", "tabSizing", "tabStyle", "workspaceWrap",
+            "animateRetile", "animations", "categoryOrder", "crowdThreshold", "defaultLayout", "dockAttention",
+            "emptyCheatsheet", "focusFollowsMouse", "focusFollowsMouseDelayMs", "gap", "gestureFingers", "gestureInvert",
+            "gestureLayout", "gestures", "keybindingOverrides", "keybindingPreset", "launcherUrl", "layoutBar", "layouts",
+            "maxWorkspaces", "panelColor", "panelHeight", "panelWidth", "persistState", "pointerWarp", "railAutohide",
+            "railIconStyle", "railSide", "screenGap", "showPanels", "silencedWarnings", "startAtLogin", "tabSizing",
+            "tabStyle", "workspaceWrap",
         ])
         #expect(try JSONDecoder().decode(SettingsOverrides.self, from: data) == Self.fullOverrides)
     }

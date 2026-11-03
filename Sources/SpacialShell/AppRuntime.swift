@@ -38,6 +38,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
     private var overrides = SettingsOverrides()
     /// The two layered together: what the shell actually runs on.
     private var config = Config()
+    /// #210: the login item has been brought in line with `start-at-login` this launch.
+    private var loginItemSynced = false
     private var backend: AXWindowBackend?
     private var store: WorldStore?
     /// #172: the hotkey tap, trackpad gestures, focus follows the mouse, the Dock's attention marks
@@ -592,6 +594,12 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
         // #172: before the guard, on every push — each watcher acts only on its own settings, and
         // #138's "Don't warn again" changes the silenced set, not the config.
         watchers.apply(config)
+        // #210: the login item follows the setting. Only a change, or a launch with it on, touches
+        // it, so a login item the user added by hand is not removed by the default `false`.
+        if config.startAtLogin != previous.startAtLogin || (config.startAtLogin && !loginItemSynced) {
+            loginItemSynced = true
+            LoginItem.set(config.startAtLogin, log: log)
+        }
         // #196: a rebind or preset change re-exports; same bytes are not rewritten. Before the
         // guard too, so "Warn again" brings a dismissed offer back now.
         refreshKarabiner()

@@ -99,6 +99,17 @@ struct SettingsView: View {
                 }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
             }
 
+            row("Open at login") {
+                Toggle("", isOn: binding(\.startAtLogin, default: file.startAtLogin)).labelsHidden()
+                    .help("Start SpacialShell when you log in")
+            }
+
+            row("Launcher") {
+                TextField("raycast://", text: binding(\.launcherUrl, default: file.launcherURL))
+                    .textFieldStyle(.roundedBorder).frame(width: 170)
+                    .help("The URL the rail's launcher button opens, such as raycast:// or alfred://")
+            }
+
             row("Rail side") {
                 Picker("", selection: binding(\.railSide, default: file.railSide)) {
                     Text("Left").tag(RailSide.left); Text("Right").tag(RailSide.right)
@@ -109,10 +120,16 @@ struct SettingsView: View {
                 Toggle("", isOn: binding(\.pointerWarp, default: file.pointerWarp)).labelsHidden()
             }
 
-            // #135: opt-in; `focus-follows-mouse-delay-ms` is file-only.
+            // #135: opt-in.
             row("Focus follows mouse") {
                 Toggle("", isOn: binding(\.focusFollowsMouse, default: file.focusFollowsMouse)).labelsHidden()
-                    .help("Rest the pointer on another window for \(file.focusFollowsMouseDelayMs) ms to focus it, as a click on its tab would")
+                    .help("Rest the pointer on another window for \(effective.focusFollowsMouseDelayMs) ms to focus it, as a click on its tab would")
+            }
+            row("Focus delay", note: effective.focusFollowsMouse ? nil : "Needs Focus follows mouse") {
+                let range = FocusFollowsMouse.delayRangeMs
+                stepper(doubles(binding(\.focusFollowsMouseDelayMs, default: file.focusFollowsMouseDelayMs)),
+                        range: Double(range.lowerBound)...Double(range.upperBound), suffix: " ms")
+                    .disabled(!effective.focusFollowsMouse)
             }
 
             row("Wrap workspaces") {
@@ -120,10 +137,18 @@ struct SettingsView: View {
                     .help("Fn+W on the first workspace goes to the last one, and Fn+S on the last back to the first")
             }
 
-            // #141: swipes are Fn+W/A/S/D; `gesture-fingers` is file-only.
+            // #141: swipes are Fn+W/A/S/D.
             row("Trackpad swipes") {
                 Toggle("", isOn: binding(\.gestures, default: file.gestures)).labelsHidden()
-                    .help("Swipe with \(file.gestureFingers) fingers to move between windows (left, right) and workspaces (up, down), like Fn+W/A/S/D")
+                    .help("Swipe with \(effective.gestureFingers) fingers to move between windows (left, right) and workspaces (up, down), like Fn+W/A/S/D")
+            }
+
+            row("Swipe fingers", note: swipesOn ? nil : "Needs Trackpad swipes") {
+                Picker("", selection: binding(\.gestureFingers, default: file.gestureFingers)) {
+                    ForEach(Array(Config.gestureFingerRange), id: \.self) { Text("\($0)").tag($0) }
+                }.pickerStyle(.segmented).labelsHidden().frame(width: 170)
+                    .disabled(!swipesOn)
+                    .help("Turn off macOS's own swipes with the same number of fingers in System Settings > Trackpad")
             }
 
             // #160: four fingers; off while swipes are, and when navigation itself takes four.
@@ -181,7 +206,7 @@ struct SettingsView: View {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("config.toml").font(.system(size: 12, weight: .semibold))
-                Text("The file is the source of truth for everything this window does not override, and it is the only place to set keybindings, workspace seeds and app rules.")
+                Text("The file is the source of truth for everything this window does not override, and it is the only place to set workspace seeds, app rules, app categories and category colours.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text(configPath)
                     .font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.secondary)
@@ -218,13 +243,17 @@ struct SettingsView: View {
     /// #211: why Layout swipes is disabled, or nil when it is not.
     private var layoutSwipesNote: String? {
         if !swipesOn { return "Needs Trackpad swipes" }
-        if file.gestureFingers == SwipeBindings.layoutFingerCount { return "Trackpad swipes already use four fingers" }
+        if effective.gestureFingers == SwipeBindings.layoutFingerCount { return "Trackpad swipes already use four fingers" }
         return nil
     }
 
     private var appearance: some View {
         VStack(alignment: .leading, spacing: 18) {
             header("Appearance", "Colour and opacity of the workspace rail and the window tab bar, what the rail's tiles show, switch and re-tile motion, and whether the rail hides.")
+            row("Rail and tab bar") {
+                Toggle("", isOn: binding(\.showPanels, default: file.showPanels)).labelsHidden()
+                    .help("Off: no rail or tab bar is drawn and windows use the whole screen. The open-settings key (Fn+, by default) brings this window back.")
+            }
             row("Panel colour") {
                 HStack(spacing: 8) {
                     ColorPicker("", selection: colorBinding).labelsHidden()
@@ -325,6 +354,13 @@ struct SettingsView: View {
                     Text("\(cap.wrappedValue) workspaces per display")
                         .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
                 }
+            }
+            row("Crowded apps") {
+                let crowd = binding(\.crowdThreshold, default: file.crowdThreshold)
+                Stepper(value: crowd, in: 1...50) {
+                    Text("Own workspace past \(crowd.wrappedValue) windows")
+                        .font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+                }.help("An app that arrives at launch with more windows than this gets a workspace of its own")
             }
         }
     }
@@ -523,6 +559,11 @@ struct SettingsView: View {
                                        clearsAt fileValue: V?) -> Binding<V> {
         Binding(get: { overrides[keyPath: key] ?? fallback },
                 set: { overrides[keyPath: key] = $0 == fileValue ? nil : $0 })
+    }
+
+    /// An integer setting on a slider: rounded on the way in.
+    private func doubles(_ b: Binding<Int>) -> Binding<Double> {
+        Binding(get: { Double(b.wrappedValue) }, set: { b.wrappedValue = Int($0.rounded()) })
     }
 
     private var colorBinding: Binding<Color> { hexBinding(\.panelColor, default: file.panelColor, system: .gray) }

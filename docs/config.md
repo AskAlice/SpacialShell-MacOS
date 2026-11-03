@@ -13,6 +13,16 @@ below.
 > settings window's **Open config.toml…** button is the route you should use rather than typing
 > that path.
 
+## The file and the settings window (#210)
+
+The settings window sets every everyday key; what it sets is saved in `settings.json` and wins
+over this file, which the window never writes. Setting a control back to the file's value hands
+the key back to the file. A few keys stay file-only on purpose: the diagnostics
+(`ax-timeout-ms`, `refresh-interval-ms`, `[telemetry]`, `other-window-managers`), and the
+hand-edited tables (`[[workspace]]` seeds, the `[[float]]`/`[[ignore]]`/`[[tile]]`/`[[ephemeral]]`
+app rules, `[app-categories]`, `[category-colors]`). `panel-opacity` is set by the panel colour
+well's opacity slider, and `[keybindings]` by the Keybindings pane's overrides.
+
 ## Full example
 
 ```toml
@@ -85,7 +95,7 @@ title-regex = "^Picture in Picture$"
 | `layout-bar` | list of layout ids | `["maximize", "split", "column", "half", "grid", "ratio"]` | What `Fn+Space` cycles, in this order, and what the layout switcher's bar shows: at most 8, each a built-in or a `[[layout]]` id. Also set from the layout popover. See [`[[layout]]`](#layout--drawn-layouts). |
 | `ax-timeout-ms` | integer | `1000` | Per-app Accessibility messaging timeout (`AXUIElementSetMessagingTimeout`). A slow or hung app can only delay operations on itself by this long, never other apps. **Needs a relaunch**: it is read when the backend is built. |
 | `refresh-interval-ms` | integer | `2000` | Interval for the periodic backstop reconcile — the safety net that catches window changes AX notifications missed. **Needs a relaunch**: it is read when the backend is built. |
-| `start-at-login` | boolean | `false` | **Parsed but not implemented in M1** — the key is accepted and validated, and nothing acts on it. Registering a login item needs a real app bundle to point at, so it arrives with the notarized bundle in M4. |
+| `start-at-login` | boolean | `false` | Registers SpacialShell as a login item (`SMAppService`) when on, and removes that item when switched off. A login item you added by hand is left alone while this stays `false`. Also *Open at login* in the settings window. |
 | `panel-width` | number (pt) | `48` | Width of the workspace rail. Windows are inset by this on the rail side. |
 | `panel-height` | number (pt) | `34` | Height of the top bar. Windows are inset by this from the top. |
 | `tab-sizing` | `"fit"` \| `"equal"` | `"fit"` | How the tab bar spends its width. `fit`: each tab is as wide as its content and they pack left, so a single tab sits at the left edge. `equal`: every tab takes 1/n of the bar and centres its content. |
