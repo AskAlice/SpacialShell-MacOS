@@ -76,7 +76,7 @@ public enum SpatialView {
             }
             let shown = Set(chips.map(\.ref))
             return SpatialRow(id: ws.id, index: i, name: ws.name, symbol: ws.symbol, category: ws.category, chips: chips,
-                              offscreen: ws.windows.filter { !shown.contains($0) },
+                              offscreen: ws.windows.filter { !shown.contains($0) && !$0.isPlaceholder },
                               isActive: i == screen.activeIndex,
                               isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned)
         }

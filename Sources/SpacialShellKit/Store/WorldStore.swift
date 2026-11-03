@@ -96,6 +96,11 @@ public actor WorldStore {
     /// after the shell is up, and they are exactly the apps that arrive with dozens of windows.
     /// After it, nothing is swept up: an app opened mid-session lands by the ordinary rules.
     static let launchWindow = Duration.seconds(10)
+    /// #216: how long after `start()` a restored placeholder keeps its unseen slot for a window of
+    /// its app to come back to. After a reboot, login items and macOS's "reopen windows" can take a
+    /// minute or more on a loaded machine; after this, an app that has not come back has lost its slot.
+    public static let placeholderGrace = Duration.seconds(180)
+    private var placeholdersExpired = false
     private var startedAt: ContinuousClock.Instant?
     /// Bundle ids that have shown a window this session. The crowd rule looks only at an app's
     /// first appearance, so later windows of an app are never swept into a workspace of their own.
@@ -571,6 +576,15 @@ public actor WorldStore {
         if !reservationsExpired {
             reservationsExpired = true
             world.clearReservations()
+        }
+        // #216: the grace is over: the placeholders nothing filled are forgotten (a row they alone
+        // held goes with them). A pinned one (#129) keeps its slot: pinning asked for that.
+        if !placeholdersExpired, let t0 = startedAt, now() - t0 >= Self.placeholderGrace {
+            placeholdersExpired = true
+            let stale = world.placeholders.keys.filter { !world.pinnedTabs.contains($0) }
+            if !stale.isEmpty { Self.log.notice("forgetting \(stale.count, privacy: .public) placeholder(s) nothing came back to") }
+            for p in stale { world.remove(p) }
+            world.normalize()
         }
         applyNativeFocus(s.focused)
         return (adopted, vanished)

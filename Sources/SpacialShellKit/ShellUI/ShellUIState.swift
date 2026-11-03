@@ -205,10 +205,11 @@ public enum ShellUI {
                              attention: Set<Int32> = []) -> ScreenShellState? {
         guard let screen = world.screens[display] else { return nil }
         let rail = screen.workspaces.enumerated().map { i, ws in
-            WorkspaceRailItem(
+            let live = ws.windows.filter { !$0.isPlaceholder }   // #216: only live windows are drawn
+            return WorkspaceRailItem(
                 id: ws.id, index: i, name: ws.name, symbol: ws.symbol,
-                windowCount: ws.windows.count,
-                windows: ws.windows,
+                windowCount: live.count,
+                windows: live,
                 isActive: i == screen.activeIndex,
                 isPinned: ws.pinned,
                 isTrailingEmpty: i == screen.workspaces.count - 1 && ws.isEmpty && !ws.pinned,

@@ -51,10 +51,10 @@ extension World {
         while let p = owner(of: r), seen.insert(p).inserted { r = p }
         return r
     }
-    /// The row as the tab bar draws it and the keys walk it: every window but attached ones.
-    /// Placeholders (#128) are tabs and are included; the keys step over them, `focusTab` clicks them.
+    /// The row as the tab bar draws it and the keys walk it: every window but attached ones, and
+    /// no placeholder (#216: only live windows are drawn; a placeholder keeps its slot unseen).
     public func tabs(in ws: Workspace) -> [WindowRef] {
-        ws.windows.filter { w in !(parents[w].map { Self.isAttached(w, parent: $0, in: ws) } ?? false) }
+        ws.windows.filter { w in !w.isPlaceholder && !(parents[w].map { Self.isAttached(w, parent: $0, in: ws) } ?? false) }
     }
     static func isAttached(_ w: WindowRef, parent p: WindowRef, in ws: Workspace) -> Bool {
         p != w && ws.floating.contains(w) && ws.windows.contains(p)

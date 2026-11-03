@@ -151,11 +151,29 @@ import SpacialShellProtocol
         #expect(next.focus.window == b)
     }
 
-    @Test func tabNOnAPlaceholderOpensIt() {
+    /// #216: tab N counts the tabs drawn, and a placeholder is not drawn.
+    @Test func tabNCountsOnlyLiveTabs() {
+        let a = WindowRef(id: 1, pid: 1), b = WindowRef(id: 2, pid: 1)
+        var (w, _) = world(live: [a], saved: [("com.term", "t")])
+        w.adopt(b, kind: .tile, on: "D1")                              // row: a, placeholder, b
+        let (next, effects) = CommandRunner.apply(.focusTab(2), to: w, in: .test())
+        #expect(next.focus.window == b)
+        #expect(!effects.contains(.launch("com.term")))
+    }
+
+    /// #216: "they should only be on the sidebar or in tabs if the window/process is alive". A
+    /// placeholder still holds its slot in the model, but no rail tile, count or tab shows it.
+    @Test func placeholdersAreNeverDrawn() {
         let a = WindowRef(id: 1, pid: 1)
-        let (w, _) = world(live: [a], saved: [("com.term", "t")])
-        let (_, effects) = CommandRunner.apply(.focusTab(2), to: w, in: .test())
-        #expect(effects.contains(.launch("com.term")))
+        var (w, _) = world(live: [a], saved: [("com.term", "t")])
+        let only = w.screens["D1"]!.workspaces.last!.id
+        w.addPlaceholder(Placeholder(bundleID: "com.notes", title: "n"), to: only)
+        w.normalize()
+        #expect(w.tabs(in: w.screens["D1"]!.workspaces[0]) == [a])
+        let ui = ShellUI.testState(for: "D1", in: w)!
+        #expect(ui.tabs.map(\.ref) == [a])
+        #expect(ui.rail[0].windows == [a] && ui.rail[0].windowCount == 1)
+        #expect(ui.rail[1].windows.isEmpty && ui.rail[1].windowCount == 0)
     }
 
     /// A tab drag onto a rail row moves a placeholder like any tab; focus has nothing to follow.
@@ -273,6 +291,38 @@ import SpacialShellProtocol
         #expect(w.invariantViolations().isEmpty)
     }
 
+    /// #216: placeholders a relaunch restores hold their slots for `placeholderGrace`, so windows
+    /// macOS reopens after a reboot still find them; after it, the ones nothing filled are
+    /// forgotten and a row they alone held goes. A pinned slot (#129) is kept.
+    @Test func unfilledPlaceholdersExpireAfterTheGrace() async {
+        final class Clock: @unchecked Sendable { var t = ContinuousClock.now }
+        let clock = Clock()
+        var (restored, refs) = world(saved: [("com.term", "~/a — zsh"), ("com.notes", "Groceries"), ("com.pin", "p")])
+        restored.pinnedTabs.insert(refs[2])
+        let lone = restored.addPlaceholder(Placeholder(bundleID: "com.gone", title: "g"),
+                                           to: restored.screens["D1"]!.workspaces.last!.id)!
+        restored.normalize()
+        let keep = WindowRef(id: 40, pid: 4)
+        let be = FakeBackend(snapshot: snap([win(keep, bundle: "com.keep")]))
+        let store = WorldStore(backend: be, config: config(), world: restored, zeroSliverBundleIDs: [],
+                               now: { clock.t }, onChange: { _, _ in })
+        await store.start()
+
+        clock.t += WorldStore.placeholderGrace - .seconds(1)
+        let term = WindowRef(id: 50, pid: 5)
+        await store.apply(.snapshot(snap([win(keep, bundle: "com.keep"), win(term, bundle: "com.term", title: "~/a — zsh")])))
+        var w = await store.world
+        #expect(w.screens["D1"]!.workspaces[0].windows.contains(term), "a window inside the grace takes its slot")
+        #expect(w.placeholders[refs[1]] != nil && w.placeholders[lone] != nil)
+
+        clock.t += .seconds(2)
+        await store.apply(.snapshot(snap([win(keep, bundle: "com.keep"), win(term, bundle: "com.term", title: "~/a — zsh")])))
+        w = await store.world
+        #expect(Set(w.placeholders.keys) == [refs[2]], "only the pinned slot is left")
+        #expect(!w.screens.values.flatMap(\.workspaces).contains { $0.windows.contains(lone) })
+        #expect(w.invariantViolations().isEmpty)
+    }
+
     /// The snapshot feed and `spacialctl state` name a placeholder's app and title, and flag it.
     @Test func theFeedsFlagPlaceholders() {
         let a = WindowRef(id: 1, pid: 1)
@@ -287,8 +337,8 @@ import SpacialShellProtocol
         let wire = WireState.test(world: w, bundleIDs: [a: "com.x"])
         #expect(wire.screens[0].workspaces[0].windows.map { $0.isPlaceholder } == [nil, true])
 
+        // #216: the feeds report the model; the tab bar draws only the live window.
         let tabs = ShellUI.testState(for: "D1", in: w, titles: snapshot.titles)!.tabs
-        #expect(tabs.map(\.isPlaceholder) == [false, true])
-        #expect(tabs[1].title == "~/a — zsh")
+        #expect(tabs.map(\.ref) == [a])
     }
 }
