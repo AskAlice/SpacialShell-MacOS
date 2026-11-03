@@ -370,6 +370,9 @@ final class RailHoverController {
         if peeking != nil { peeking = nil; send(.peek(nil)) }
     }
 
+    /// Waits out the pending peek dwell, for tests.
+    func peekSettled() async { await peekTask?.value }
+
     /// The preview ringed and the window peeked, for tests.
     var peekState: (highlighted: SpacialShellProtocol.WindowRef?, peeking: SpacialShellProtocol.WindowRef?) { (highlighted, peeking) }
 

@@ -85,7 +85,8 @@ import SwiftUI
 
     final class Sent: @unchecked Sendable { var commands: [Command] = [] }
     static let dwell = Duration.milliseconds(40)
-    func settle() async { try? await Task.sleep(for: Self.dwell * 3) }
+    /// Waits for the pending peek itself, not a wall-clock guess at it (#214: a loaded machine fired it late).
+    func settle(_ hover: RailHoverController) async { await hover.peekSettled() }
     func shownCard(_ sent: Sent) -> (RailHoverController, WorkspaceRailItem) {
         let hover = RailHoverController(send: { sent.commands.append($0) }, peekDwell: Self.dwell, present: { _ in })
         let item = railState().rail[0]
@@ -103,11 +104,11 @@ import SwiftUI
         hover.previewHovered(x, inside: true)
         #expect(hover.peekState.highlighted == x)
         #expect(sent.commands.isEmpty, "nothing moves before the dwell")
-        await settle()
+        await settle(hover)
         #expect(sent.commands == [.peek(x)])
         hover.previewHovered(x, inside: false)
         #expect(hover.peekState.highlighted == nil)
-        await settle()
+        await settle(hover)
         #expect(sent.commands == [.peek(x), .peek(nil)])
     }
 
@@ -120,12 +121,12 @@ import SwiftUI
         hover.previewHovered(y, inside: true); hover.previewHovered(y, inside: false)
         #expect(sent.commands.isEmpty, "a sweep across the card peeks nothing")
         hover.previewHovered(z, inside: true)
-        await settle()
+        await settle(hover)
         #expect(sent.commands == [.peek(z)])
         hover.previewHovered(z, inside: false)
         hover.previewHovered(y, inside: true)
         hover.previewHovered(z, inside: false)   // a late exit from the one already left
-        await settle()
+        await settle(hover)
         #expect(sent.commands == [.peek(z), .peek(y)], "a swap, with no .peek(nil) in between")
         #expect(hover.peekState.highlighted == y)
     }
@@ -136,16 +137,16 @@ import SwiftUI
         let (hover, _) = shownCard(sent)
         let x = WindowRef(id: 1, pid: 1)
         hover.previewHovered(x, inside: true)
-        await settle()
+        await settle(hover)
         hover.hideNow()
         #expect(sent.commands == [.peek(x), .peek(nil)])
 
         let clicked = Sent()
         let (again, _) = shownCard(clicked)
         again.previewHovered(x, inside: true)
-        await settle()
+        await settle(again)
         again.select(x)
-        await settle()
+        await settle(again)
         #expect(clicked.commands == [.peek(x), .focusWindowRef(x)])
         #expect(again.peekState.highlighted == nil && again.peekState.peeking == nil)
     }
@@ -158,12 +159,12 @@ import SwiftUI
         let (hover, _) = shownCard(sent)
         let x = WindowRef(id: 1, pid: 1), y = WindowRef(id: 2, pid: 2)
         hover.previewHovered(x, inside: true)
-        await settle()
+        await settle(hover)
         hover.modelPeeked(x)                      // wanted
         hover.previewHovered(x, inside: false); hover.previewHovered(y, inside: true)
         hover.modelPeeked(x)                      // y's peek is on its way
         #expect(sent.commands == [.peek(x)])
-        await settle()
+        await settle(hover)
         hover.select(y)
         hover.modelPeeked(y)                      // the late `.peek(y)`, after the click
         #expect(sent.commands == [.peek(x), .peek(y), .focusWindowRef(y), .peek(nil)])
