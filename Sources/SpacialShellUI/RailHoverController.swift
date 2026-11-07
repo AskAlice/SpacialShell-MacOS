@@ -29,7 +29,7 @@ import SpacialShellProtocol
 @MainActor
 final class RailHoverController {
     private let window = PanelWindow()
-    private let host: NSHostingView<RailHoverCard>
+    private let host: CardHost
     /// The workspace the card is currently about — or `trayID` for the tray list; nil when hidden.
     private var shown: UUID?
     /// The tray (#73) is not a workspace, but it shares the card, its placement and its hide grace,
@@ -88,7 +88,7 @@ final class RailHoverController {
         self.pointer = pointer
         self.now = now
         self.present = present
-        host = NSHostingView(rootView: RailHoverCard(title: "", subtitle: nil,
+        host = CardHost(rootView: RailHoverCard(title: "", subtitle: nil,
                                                      content: .message(""), onGrantAccess: {}))
         window.contentView = host
         window.hasShadow = true
@@ -231,6 +231,7 @@ final class RailHoverController {
     /// #179: the click ends a peek by itself (every command but `.peek` does), and the window it
     /// focuses stays on screen; no `.peek(nil)` follows it to race the focus.
     func select(_ ref: SpacialShellProtocol.WindowRef) {
+        Self.log.notice("hover card select \(ref.id, privacy: .public)")
         peekTask?.cancel(); peekTask = nil
         peeking = nil
         send(shown == Self.trayID ? .recoverWindow(ref) : .focusWindowRef(ref))
@@ -448,4 +449,11 @@ final class RailHoverController {
             window.animator().setFrame(frame, display: true)
         }
     }
+}
+
+/// #222: the shell is never the active app, so every click on the card is a "first mouse", and
+/// AppKit only delivers one to a view that accepts it. Without this a preview's click just
+/// brought the card forward, and neither the preview's tap nor its × ever fired.
+private final class CardHost: NSHostingView<RailHoverCard> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
