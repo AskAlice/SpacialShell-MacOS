@@ -79,4 +79,18 @@ import SpacialShellKit
         #expect(WindowClassifier.kind(for: .dialog) == .float)
         #expect(WindowClassifier.kind(for: .popup) == .ignore)
     }
+
+    /// #218: Audio MIDI Setup's fixed-size IAC Driver Properties is a system floating window.
+    @Test(arguments: [false, true])
+    func systemFloatingDialogsStayManaged(focused: Bool) {
+        let window = Json.newOrDieRecursive([
+            "AXRole": "AXWindow", "AXSubrole": "AXSystemFloatingWindow",
+            "AXTitle": "IAC Driver Properties", "AXFocused": focused, "AXMain": focused,
+            "AXCloseButton": ["AXRole": "AXButton", "AXEnabled": true],
+            "Aero.axWindowId": 1,
+        ]).asDictOrDie
+        let app = Json.newOrDieRecursive(["Aero.axWindowId": 0]).asDictOrDie
+        #expect(WindowClassifier.kind(axWindow: window, axApp: app, bundleID: "com.apple.audio.AudioMIDISetup",
+                                      activationPolicy: .regular, windowLevel: nil) == .float)
+    }
 }

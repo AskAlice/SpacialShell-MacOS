@@ -204,6 +204,7 @@ extension AxUiElementMock {
         return subrole == kAXStandardWindowSubrole ||
             subrole == kAXDialogSubrole || // macOS native file picker ("Open..." menu) (kAXDialogSubrole value)
             subrole == kAXFloatingWindowSubrole || // telegram image viewer
+            subrole == kAXSystemFloatingWindowSubrole || // #218: Audio MIDI Setup device properties
             id == .finder && subrole == "Quick Look" // Finder preview (hit space) is a floating window
     }
 
