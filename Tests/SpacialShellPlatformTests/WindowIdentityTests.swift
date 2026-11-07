@@ -9,7 +9,9 @@ import Testing
 ///
 /// These are the properties the old private call gave us for free, now asserted rather than
 /// assumed — the whole spatial model is addressed by this id, so "it seems to work" is not a bar.
-@Suite struct WindowIdentityTests {
+/// Serialized: every test mints from this process's own app element, and `forget` in one would
+/// race another's two lookups of the same element.
+@Suite(.serialized) struct WindowIdentityTests {
     // MARK: - Minting
 
     /// The load-bearing property. `AxUiElementWindowType` compares a window's identity against the
