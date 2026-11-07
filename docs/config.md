@@ -219,6 +219,13 @@ refused with exit 1, unlike the config file, which keeps it.
 
 A window seen for the first time goes to the first of these that applies (#13, #74, #128):
 
+With category routing enabled, an app's existing row on this display takes precedence over
+the category and remembered placement below. All windows of that app share that row, including
+windows from different processes with the same bundle ID. Moving one window to another row carries
+its app's other windows on that display with it. Windows on other displays stay there. Existing
+splits are consolidated into the focused window's row, or the first existing row when unfocused.
+`category-order = []` disables this grouping along with category routing.
+
 0. **A placeholder's slot**, if its app has a placeholder tab waiting (#128): every window saved
    in `state.json` comes back as a placeholder in its row, and a window of that app takes one —
    the one with the same title, else the one you clicked to open it, else the first in rail
@@ -302,7 +309,11 @@ checked in this order: `ephemeral`, then `float`, then `ignore`, then `tile`.
   Settings was in the default until 2026-09-24; it is now tiled like any other window — #70.)
 - **`float`** — windows that belong to a workspace and are shown/parked with it, but are excluded
   from tiling and keep their own frame (also toggleable per-window at runtime with `Fn+G`). No
-  default entries.
+  default entries. A new same-app child/popout smaller than 25% of its display's full area floats
+  automatically with an existing app window on that display, even when a browser omits its AX
+  parent. The creation size decides once; resizing later does not reclassify it. Exactly 25%
+  follows ordinary classification. Explicit app rules take precedence. The child stays above its
+  owner when the owner is raised, without stealing focus.
 - **`ignore`** — windows SpacialShell never touches at all: no placement, no parking, no tiling.
   No default entries.
 - **`tile`** — tile these even when macOS reports them as dialogs. **Default** (used whenever

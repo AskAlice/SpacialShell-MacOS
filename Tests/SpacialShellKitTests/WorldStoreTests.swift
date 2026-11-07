@@ -33,6 +33,25 @@ import OpenTelemetryApi
         #expect(calls.contains(.setPosition(b, CGPoint(x: 999, y: 699))))
         #expect(calls.contains(.raise(a)))
     }
+
+    @Test func aNewFloatingDialogKeepsItsSizeAndTakesFocusAboveItsApp() async {
+        let (store, be) = await make(snap([win(a)], focused: a))
+        let frame = CGRect(x: 200, y: 150, width: 400, height: 300)
+        let dialog = WindowSnapshot(ref: b, frame: frame, title: "IAC Driver Properties",
+                                    bundleID: "com.x", kind: .float, parent: nil,
+                                    isMinimized: false, isFullscreen: false, isStandard: false)
+        await be.open(b, at: frame)
+        await be.reset()
+        await store.apply(.snapshot(snap([win(a, await be.frames[a]!), dialog], focused: b)))
+        await store.apply(.appActivated(pid: b.pid))
+        await store.apply(.focusChanged(b))
+        #expect(await store.world.focus.window == b)
+        #expect(await store.world.workspace(containing: b)?.floating.contains(b) == true)
+        #expect(await be.frames[b]?.size == frame.size)
+        #expect(await be.calls.contains(.raise(b)))
+        #expect(await !be.calls.contains { if case .setPosition(b, _) = $0 { true } else { false } })
+        #expect(await !be.calls.contains(.raise(a)))
+    }
     @Test func exportForTerminationCarriesTheCurrentWorld() async {
         let (store, _) = await make(snap([win(a), win(b)], focused: a))
         let world = await store.world
@@ -111,7 +130,7 @@ import OpenTelemetryApi
     }
     @Test func newWindowInSnapshotIsAdoptedAtEnd() async {
         let (store, be) = await make(snap([win(a)], focused: a))
-        await store.apply(.snapshot(snap([win(a), win(b)], focused: b)))
+        await store.apply(.snapshot(snap([win(a), win(b, CGRect(x: 0, y: 0, width: 600, height: 400))], focused: b)))
         let w = await store.world
         #expect(w.screens["D1"]!.active.windows == [a, b] && w.focus.window == b)
         #expect(await be.calls.contains(.setPosition(a, CGPoint(x: 999, y: 699))))   // maximize now anchored on b
@@ -775,7 +794,7 @@ import OpenTelemetryApi
         let (store, _, anim) = await makeAnimated(snap([win(a), win(b)], focused: a), config: on)
         await store.run(.setLayout(.column))
         let before = await anim.prepared.count
-        await store.apply(.snapshot(snap([win(a), win(b), win(c)], focused: a)))
+        await store.apply(.snapshot(snap([win(a), win(b), win(c, CGRect(x: 0, y: 0, width: 600, height: 400))], focused: a)))
         let prepared = await anim.prepared
         #expect(prepared.count == before + 1)
         let t = prepared.last?.first
@@ -884,7 +903,7 @@ import OpenTelemetryApi
     /// Parked in an inactive row, then it vanishes: the window that comes back under the same ref
     /// is not parked, and is not "restored" to the frame the old one had before it was parked.
     @Test func aVanishedWindowLeavesNoParkedFrame() async {
-        let f = WindowRef(id: 3, pid: 1)
+        let f = WindowRef(id: 3, pid: 3)
         let before = CGRect(x: 100, y: 100, width: 300, height: 200)
         let (store, be) = await make(snap([win(a), win(f, before, kind: .float, bundle: nil)], focused: a))
         await store.run(.moveWindowToWorkspace(.down))          // a → ws1; `f` floats in ws0, parked

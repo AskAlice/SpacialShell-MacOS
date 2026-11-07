@@ -295,7 +295,15 @@ public actor WorldStore {
         if let movedPid, next != world, let bundle = records.bundleIDs.first(where: { $0.key.pid == movedPid })?.value {
             movedApps.insert(bundle)
         }
+        let relocated = next.screenOrder.flatMap { next.screens[$0]!.workspaces.flatMap(\.windows) }.filter { r in
+            guard let old = world.workspace(containing: r), let new = next.workspace(containing: r) else { return false }
+            return old.id != new.id
+        }
         world = next
+        groupAppWindows(preferred: relocated)
+        if !config.categoryOrder.isEmpty {
+            movedApps.formUnion(relocated.compactMap { records[$0].bundleID })
+        }
         if let f = world.focus.window, f != before.window { focusEchoes.commanded(f) }
         Self.log.notice("command \(String(describing: command), privacy: .public) screen=\(String(before.screen.prefix(8)), privacy: .public)->\(String(self.world.focus.screen.prefix(8)), privacy: .public) focus=\(before.window?.id ?? 0, privacy: .public)->\(self.world.focus.window?.id ?? 0, privacy: .public)")
         for e in effects {
@@ -478,7 +486,8 @@ public actor WorldStore {
         let crowds = crowdedApps(s)
         let systemCategories = Dictionary(s.apps.map { ($0.pid, $0.systemCategory) }, uniquingKeysWith: { a, _ in a })
         appNames = Dictionary(s.apps.compactMap { a in a.name.map { (a.pid, $0) } }, uniquingKeysWith: { a, _ in a })
-        let fills = placeholderFills(s)
+        let children = smallChildOwners(in: s)
+        let fills = placeholderFills(s).filter { children[$0.key] == nil }
         var present: Set<WindowRef> = []
         for w in s.windows {
             present.insert(w.ref)
@@ -507,7 +516,8 @@ public actor WorldStore {
                 adopted += 1
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) into placeholder \(p.id, privacy: .public)")
             } else if !known {
-                let kind = config.kindOverride(bundleID: w.bundleID, title: w.title, standard: w.isStandard) ?? w.kind
+                let parent = children[w.ref] ?? w.parent
+                let kind = children[w.ref] == nil ? config.kindOverride(bundleID: w.bundleID, title: w.title, standard: w.isStandard) ?? w.kind : .float
                 // #13's ladder, with #74's category routing: its category's row on the display it
                 // is on (app type beats memory), else the app's remembered workspace if it still
                 // exists, else a workspace of its own for a crowd arriving at launch, else a row of
@@ -515,8 +525,12 @@ public actor WorldStore {
                 // app's placement, so the other windows of an app outside the order follow it. Only a window `adopt` will file on its own is routed: an
                 // ephemeral, ignored or child window would leave its new row empty.
                 // #98: an app the user moved as a whole goes where they put it, not by category.
-                let routable = w.bundleID.map { !movedApps.contains($0) } == true && w.parent == nil && (kind == .tile || kind == .float)
-                let landing = world.landing(remembered: w.bundleID.flatMap { placements[$0] },
+                let routable = w.bundleID.map { !movedApps.contains($0) } == true && parent == nil && (kind == .tile || kind == .float)
+                let local = config.categoryOrder.isEmpty ? nil : w.bundleID.flatMap { appWorkspace($0, on: screenFor(w.frame)) }
+                let remembered = w.bundleID.flatMap { placements[$0] }.flatMap { id in
+                    config.categoryOrder.isEmpty || world.location(ofWorkspace: id)?.screen == screenFor(w.frame) ? id : nil
+                }
+                let landing = local ?? world.landing(remembered: remembered,
                                             crowdOn: w.bundleID.flatMap { crowds[$0] },
                                             routeOn: routable ? screenFor(w.frame) : nil,
                                             category: AppCategories.category(bundleID: w.bundleID,
@@ -524,8 +538,8 @@ public actor WorldStore {
                                                                              overrides: config.appCategories),
                                             order: config.categoryOrder, maxWorkspaces: config.maxWorkspaces)
                 if let b = w.bundleID, let landing { placements[b] = landing }
-                let popup = popupRequest(for: w, kind: kind)   // before `adopt`, which may move focus to it
-                world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: w.parent, workspace: landing)
+                let popup = children[w.ref].map { PopupRequest(.place, owner: $0) } ?? popupRequest(for: w, kind: kind)
+                world.adopt(w.ref, kind: kind, on: screenFor(w.frame), parent: parent, workspace: landing)
                 adopted += 1
                 Self.log.notice("adopt \(w.ref.id, privacy: .public) pid=\(w.ref.pid) \(w.bundleID ?? "-", privacy: .public) kind=\(kind.rawValue, privacy: .public) fullscreen=\(w.isFullscreen) placed=\(self.world.location(of: w.ref) != nil)")
                 if let popup { records[w.ref].pendingPopup = popup; records[w.ref].isPopup = true }
@@ -913,6 +927,56 @@ public actor WorldStore {
 
     // MARK: dialogs and popups (#165)
 
+    private func appWorkspace(_ bundle: String, on screen: DisplayID) -> UUID? {
+        world.screens[screen]?.workspaces.first { row in
+            row.windows.contains { records[$0].bundleID == bundle }
+        }?.id
+    }
+
+    /// #220: one app row per display. Explicit moves choose the destination; otherwise the
+    /// focused window's row wins, then the first existing row. A different display is independent.
+    private func groupAppWindows(preferred: [WindowRef] = []) {
+        guard !config.categoryOrder.isEmpty else { return }
+        for screen in world.screenOrder {
+            let windows = world.screens[screen]!.workspaces.flatMap(\.windows)
+            let bundles = Set(windows.compactMap { records[$0].bundleID })
+            for bundle in bundles.sorted() {
+                let group = windows.filter { records[$0].bundleID == bundle }
+                guard let leader = preferred.first(where: group.contains)
+                    ?? world.focus.window.flatMap({ group.contains($0) ? $0 : nil }) ?? group.first,
+                      let target = world.workspace(containing: leader)?.id else { continue }
+                for r in group where world.workspace(containing: r)?.id != target {
+                    world = CommandRunner.run(.moveWindowRefToWorkspace(r, target, follow: false),
+                                              on: world, in: commandEnvironment).world
+                }
+            }
+        }
+    }
+
+    /// #219: creation size is considered once, against this display, with an existing app window.
+    /// Browser extension popouts often omit AXParent and claim to be standard windows.
+    private func smallChildOwners(in snapshot: Snapshot) -> [WindowRef: WindowRef] {
+        var owners: [WindowRef: WindowRef] = [:]
+        for w in snapshot.windows where world.location(of: w.ref) == nil && !world.ignored.contains(w.ref)
+            && !world.ephemeral.contains(w.ref) && !w.isFullscreen && !w.isMinimized && w.onActiveSpace
+            && (w.kind == .tile || w.kind == .float)
+            && config.kindOverride(bundleID: w.bundleID, title: w.title, standard: w.isStandard) == nil {
+            let screen = screenFor(w.frame)
+            guard let display = displays.first(where: { $0.id == screen }), w.frame.width > 0, w.frame.height > 0,
+                  w.frame.width * w.frame.height < display.frame.width * display.frame.height / 4 else { continue }
+            let candidates = world.screens[screen]!.workspaces.flatMap(\.windows).filter { r in
+                !r.isPlaceholder && r != w.ref && world.owner(of: r) == nil
+                    && !world.hidden.contains(r) && !world.offSpace.contains(r)
+                    && (r.pid == w.ref.pid || w.bundleID.map { records[r].bundleID == $0 } == true)
+            }
+            if let owner = w.parent.flatMap({ candidates.contains($0) ? $0 : nil })
+                ?? world.focus.window.flatMap({ candidates.contains($0) ? $0 : nil }) ?? candidates.first {
+                owners[w.ref] = owner
+            }
+        }
+        return owners
+    }
+
     /// A window seen for the first time that is a dialog or popup gets placed on the next pass:
     /// an ephemeral visitor, a floating child window (an attached dialog or sheet, #134), or a
     /// floating window that is not an app's main window (AX subrole other than `AXStandardWindow`:
@@ -945,6 +1009,7 @@ public actor WorldStore {
 
     private func reconcile(parent: (any Span)? = nil, since: ContinuousClock.Instant? = nil) async {
         guard !stopped else { return }
+        groupAppWindows()
         let since = since ?? now()
         // Placement memory follows the model: whatever the last command or snapshot did, the
         // windows on screen now define where their apps belong.
@@ -1093,6 +1158,16 @@ public actor WorldStore {
             // it left live windows on screen with no tab (#36). Frame writes are the real signal.
             if case .failure(let e) = result {
                 Self.log.notice("raise failed \(f.id, privacy: .public) \(String(describing: e), privacy: .public); not counted")
+            }
+        }
+        // #219: an inferred browser child is not an OS-attached sheet. Raising its owner must
+        // leave the child above it, without turning that raise into another focus request.
+        if raisedFocus, let f = world.focus.window, world.owner(of: f) == nil,
+           let row = world.workspace(containing: f) {
+            for r in row.windows where world.owner(of: r) != nil && world.root(of: r) == f && world.canPeek(r) {
+                focusEchoes.peekRaised(r)
+                _ = await backend.raiseWithoutActivating(r)
+                if gen != generation { return }
             }
         }
         // #179: the peeked window goes in front of everything, after the focus raise, without
