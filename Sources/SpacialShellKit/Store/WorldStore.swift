@@ -49,19 +49,9 @@ public actor WorldStore {
     /// #170: our raises, our commands' focus moves and the human's input, and what each focus or
     /// activation report means against them (#67, #69, #84, #28). Shares the store's clock.
     private var focusEchoes: FocusEchoes
-    /// #179: the peeked window the store last raised, so each peek is raised once, and the end of
-    /// one (`world.peek` gone) hands the front back to the model's focus.
-    private var peekRaised: WindowRef?
-    /// #179: what a window a peek moved (the peeked window and its sheets) had before the peek,
-    /// until a finished pass has put it back. `frame`: its tile, its floating frame, or where it
-    /// was before it was parked — the reconciler returns a floating window there, and a window
-    /// parked after its peek keeps it as its prePark. `refusal`: the size it refused for its tile
-    /// (#164), which the peek frame's own refusal replaces in `echoes` until the peek ends.
-    private struct PeekHome { var frame: CGRect?; var refusal: Refusal?; var back = false }
-    private var peekHomes: [WindowRef: PeekHome] = [:]
-    /// #179: the peek the last pass laid out. A pass that starts or ends one does not animate its
-    /// re-tiles: the window leaves or rejoins its row by the peek, not by the layout.
-    private var shownPeek: WindowRef?
+    /// #222: what a rail preview shows while it is peeked, sent when it changes.
+    private let onPeek: @Sendable (PeekPreview?) -> Void
+    private var shownPeek: PeekPreview?
     /// #195: the windows holding a focused password field, by their root (a sheet shows with its
     /// owner), as `SecureInputWatcher` last reported them; the reconciler keeps them out of the
     /// corners (`Reconciler.desired`'s `prompts`). Kept as reported, whether placed yet or not:
@@ -146,10 +136,12 @@ public actor WorldStore {
                 onDropTarget: @escaping @Sendable (CGRect?) -> Void = { _ in },
                 onBorder: @escaping @Sendable (CGRect?) -> Void = { _ in },
                 onPointerTargets: @escaping @Sendable (PointerTargets) -> Void = { _ in },
+                onPeek: @escaping @Sendable (PeekPreview?) -> Void = { _ in },
                 onChange: @escaping @Sendable (World, ShellSnapshot) -> Void) {
         self.onDropTarget = onDropTarget
         self.onBorder = onBorder
         self.onPointerTargets = onPointerTargets
+        self.onPeek = onPeek
         self.now = now
         self.focusEchoes = FocusEchoes(now: now)
         self.tracerProvider = tracerProvider
@@ -401,10 +393,9 @@ public actor WorldStore {
             applyNativeFocus(r)
         case .appActivated(let pid):
             if locked { return }
-            // #179: the peek raise activates nothing, but an app that activates itself when one
-            // of its windows is raised must not pull the model onto the window being peeked.
-            // #195: nor onto a password prompt raised out of its row.
-            if world.peek?.pid == pid || prompts.contains(where: { $0.pid == pid }), !focusEchoes.humanRecently { return }
+            // #195: an app that activates itself when a password prompt of its is raised out of
+            // its row must not pull the model onto it.
+            if prompts.contains(where: { $0.pid == pid }), !focusEchoes.humanRecently { return }
             // 2026-10-02: a report true when macOS sent it may be history by now — events queue
             // behind a slow switch, and our own raise's echo then outlives `echoWindow` and reads
             // as the user's. Acting on one switched workspaces, and that switch's raise queued
@@ -699,10 +690,6 @@ public actor WorldStore {
         if verdict == .repeated {
             Self.log.debug("native focus \(r.id, privacy: .public) unchanged")
         } else { Self.log.notice("native focus \(r.id, privacy: .public) \(self.records[r].bundleID ?? "-", privacy: .public) verdict=\(String(describing: verdict), privacy: .public) placed=\(self.world.location(of: r) != nil) hidden=\(self.world.hidden.contains(r)) ignored=\(self.world.ignored.contains(r)) focusScreen=\(String(self.world.focus.screen.prefix(8)), privacy: .public)") }
-        // #179: while it lasts, a report of the peeked window is the peek raise's doing, whatever
-        // the queue made of it — the peek is not a focus change. Unless the human just pressed a
-        // key or a button (⌘Tab, a Dock click): then it is theirs, and the switch ends the peek.
-        if r == world.peek, !focusEchoes.humanRecently { return }
         let isEcho: Bool
         switch verdict {
         case .stale: return
@@ -1016,11 +1003,6 @@ public actor WorldStore {
         placements.merge(PersistedState.placements(world: world, bundleIDs: records.bundleIDs)) { _, live in live }
         generation += 1
         let gen = generation
-        // #179: the peek is over (ended, or swapped for a click on it). Settled before the first
-        // await, so a pass superseded mid-write cannot leave a later peek of the same window
-        // unraised: the model's focus goes back in front, and gets its app's focus back if the
-        // peek raise took it.
-        if peekRaised != nil, world.peek == nil { peekRaised = nil; focusEchoes.peekEnded() }
         // #148: one span per pass, one child for all its writes and one for the raise — counts, not
         // a span per window, so a burst of Fn+D stays a handful of spans a press. A pass a newer
         // one overtook is `superseded`: it returned early, and its writes are the newer pass's now.
@@ -1050,15 +1032,17 @@ public actor WorldStore {
         let shellInsets = ShellInsets(config: config, hidden: world.zen)
         let insets = Dictionary(uniqueKeysWithValues: world.screenOrder.map { ($0, shellInsets) })
         logUnresolvedLayouts()
-        notePeekHomes()
         let shownPrompts = prompts.filter { world.location(of: $0) != nil }
         for p in shownPrompts where records[p].parked && promptHomes[p] == nil { promptHomes[p] = records[p].prePark }
         var desired = Reconciler.desired(world: world, displays: displays, config: layoutConfig,
                                          observed: records.observed, prePark: records.prePark, parkedNow: records.parked, zeroSliver: zero,
                                          insets: insets, suspended: drag.map { [$0.ref] } ?? [], refused: echoes.refused,
                                          unmovable: echoes.unmovable,
-                                         peekHome: peekHomes.compactMapValues(\.frame),
                                          prompts: shownPrompts)
+        // #222: a peek moves no window. The preview shows the window where the click on it would
+        // put it: the same layout, run on the world that click makes.
+        let preview = world.peek.flatMap { peekPreview($0, insets: insets, zero: zero, prompts: shownPrompts) }
+        if preview != shownPeek { shownPeek = preview; onPeek(preview) }
         // #165: the popups due a placement, and the requests they were placed for.
         let pendingPopups = records.pendingPopups
         let placed = Reconciler.placePopups(pendingPopups, into: &desired, world: world, displays: displays,
@@ -1087,10 +1071,7 @@ public actor WorldStore {
         defer { if animating, let animator { Task { await animator.play(trace: trace) } } }
         // #113: a border drag lays out on every move; the hand is the motion, so nothing slides.
         // #140: re-tiles only with `animate-retile`; see `MotionRules.animated`.
-        // #179: a pass that starts or ends a peek re-tiles nothing the user should see slide.
-        let peekMoved = world.peek != shownPeek
-        shownPeek = world.peek
-        let motion = MotionRules.animated(peekMoved ? transitions.filter { !$0.isRetile } : transitions,
+        let motion = MotionRules.animated(transitions,
                                           animations: config.animations,
                                           animateRetile: config.animateRetile, grabbing: edgeDrag.hand != nil)
         if let animator, !motion.isEmpty {
@@ -1124,9 +1105,7 @@ public actor WorldStore {
                 records[r].observed = f; records[r].parked = false; records[r].prePark = nil
                 note(result, for: r)
             case .setPosition(let r, let o):
-                // #179: a window parked on its way back from a peek remembers where it was before
-                // the peek, not the peek's frame.
-                let pre = records[r].parked ? nil : peekHomes[r]?.frame ?? promptHomes[r] ?? records[r].observed
+                let pre = records[r].parked ? nil : promptHomes[r] ?? records[r].observed
                 parks += 1
                 parking.insert(r)
                 let result = await backend.setPosition(r, o)
@@ -1170,18 +1149,6 @@ public actor WorldStore {
                 if gen != generation { return }
             }
         }
-        // #179: the peeked window goes in front of everything, after the focus raise, without
-        // being focused. Once per peek — moving to another preview raises that one — and again
-        // after any focus raise, which went over it.
-        if let p = world.peek, p != peekRaised || raisedFocus {
-            peekRaised = p
-            focusEchoes.peekRaised(p)
-            let result = await backend.raiseWithoutActivating(p)
-            if case .failure(let e) = result {
-                Self.log.notice("peek raise failed \(p.id, privacy: .public) \(String(describing: e), privacy: .public)")
-            }
-            if gen != generation { return }
-        }
         // #195: a password prompt goes in front, without being focused, so it is seen: once, and
         // again after any focus raise, which went over it. Until it is answered no hotkey works,
         // so keeping it in sight is the way out.
@@ -1195,8 +1162,6 @@ public actor WorldStore {
             }
             if gen != generation { return }
         }
-        // A finished pass has put every window a peek moved back where it belongs.
-        peekHomes = peekHomes.filter { !$0.value.back }
         if animating, let animator { animating = false; await animator.play(trace: trace) }
         finished = true
         publish()
@@ -1206,19 +1171,20 @@ public actor WorldStore {
         }
     }
 
-    /// #179: the peeked window and its sheets remember what they had before the peek moves them;
-    /// windows no longer peeked get their tile's refusal back before this pass places them.
-    private func notePeekHomes() {
-        let group: [WindowRef] = world.peek.map { p in (world.workspace(containing: p)?.windows ?? []).filter { world.root(of: $0) == p } } ?? []
-        for w in group {
-            if peekHomes[w] != nil { peekHomes[w]!.back = false; continue }   // peeked again before it was put back
-            peekHomes[w] = PeekHome(frame: records[w].parked ? records[w].prePark ?? records[w].observed : records[w].observed,
-                                    refusal: echoes.refused[w])
-        }
-        for (w, home) in peekHomes where !home.back && !group.contains(w) {
-            echoes.restore(home.refusal, for: w)
-            peekHomes[w]!.back = true
-        }
+    /// #222: where clicking `p`'s preview would put it: `.focusWindowRef`, then this pass's layout
+    /// of that world. A window the layout leaves where it is (floating) shows where it was before
+    /// it was parked, which is where it comes back to.
+    private func peekPreview(_ p: WindowRef, insets: [DisplayID: ShellInsets], zero: Set<WindowRef>,
+                             prompts: Set<WindowRef>) -> PeekPreview? {
+        let clicked = CommandRunner.run(.focusWindowRef(p), on: world, in: commandEnvironment).world
+        guard let display = clicked.screenContaining(p) else { return nil }
+        let laid = Reconciler.desired(world: clicked, displays: displays, config: layoutConfig,
+                                      observed: records.observed, prePark: records.prePark, parkedNow: records.parked,
+                                      zeroSliver: zero, insets: insets, refused: echoes.refused,
+                                      unmovable: echoes.unmovable, prompts: prompts)
+        let frame: CGRect? = if case .frame(let f)? = laid[p] { f }
+            else { records[p].parked ? records[p].prePark ?? records[p].observed : records[p].observed }
+        return frame.map { PeekPreview(window: p, display: display, frame: $0) }
     }
 
     private var layoutConfig: LayoutConfig { LayoutConfig(gap: config.gap, screenGap: config.outerGap, layouts: layouts) }
@@ -1350,7 +1316,6 @@ public actor WorldStore {
     /// #174: `r` vanished: nothing the store knew about it outlives it, here or in the echoes.
     private func forget(_ r: WindowRef) {
         records.forget(r); echoes.forget(r); focusEchoes.vanished(r)
-        peekHomes[r] = nil   // #179
         prompts.remove(r); promptsRaised.remove(r); promptHomes[r] = nil   // #195
     }
 

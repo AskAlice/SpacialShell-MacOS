@@ -167,7 +167,6 @@ struct RailHoverCard: View {
                 .padding(-Self.highlightOutset)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted == item.ref))
         .contentShape(Rectangle())
-        .onHover { onHoverPreview(item.ref, $0) }
         .onTapGesture { onSelect(item.ref) }
         // #203: the hovered preview's ×, as on a tab (#180): its window closes, the card follows.
         .overlay(alignment: .topTrailing) {
@@ -177,6 +176,9 @@ struct RailHoverCard: View {
                     .transition(.opacity)
             }
         }
+        // #222: outside the ×, so pointing at it is still hovering the preview. Inside, the × took
+        // the hover, the preview lost it, and the × went with the highlight before it was clicked.
+        .onHover { onHoverPreview(item.ref, $0) }
         // #201: right-click is the window's menu, middle-click closes it — as on its tab. The
         // catcher claims only those two; left clicks and hovers reach the preview as before.
         .overlay {

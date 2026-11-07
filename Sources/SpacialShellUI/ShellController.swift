@@ -90,10 +90,12 @@ public final class ShellController: NSObject {
         appMeta.note(placeholders: world.placeholders)   // #128: icons for apps that are not running
         WindowThumbnails.shared.retain(world.allWindowIDs)   // #90: a closed window's thumbnail goes with it
         ThumbnailRefresher.shared.update(world: world, railShown: config.showPanels && !world.zen)   // #142
-        peekBackdrop.update(peek: world.peek, display: world.peek.flatMap(world.screenContaining))
         hover.modelPeeked(world.peek)
         render()
     }
+
+    /// #222: the store's peek preview (`WorldStore.onPeek`).
+    public func showPeek(_ preview: PeekPreview?) { peekBackdrop.update(preview) }
 
     /// #109: badges the rail cog. Never activates anything — the list is one hover away.
     public func update(problems: [Problem]) {

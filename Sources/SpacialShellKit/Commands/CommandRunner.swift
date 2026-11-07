@@ -365,8 +365,8 @@ public enum CommandRunner {
             effects.append(.close(r))
 
         case .peek(let r):
-            // #179: nothing moves in the model but the peek itself; the reconciler places the
-            // window and the store raises it without focusing it.
+            // #179: nothing moves in the model but the peek itself. #222: nor on screen; the
+            // store tells the shell where a click would put the window, and the shell draws it.
             // A preview that cannot be shown (a placeholder, a minimized window, one in its own
             // fullscreen Space) still ends the peek before it: the pointer has left that window.
             let root = r.map { w.root(of: $0) }

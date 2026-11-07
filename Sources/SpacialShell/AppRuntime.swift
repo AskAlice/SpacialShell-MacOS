@@ -158,6 +158,8 @@ final class AppRuntime: NSObject, NSApplicationDelegate {
             onBorder: { frame in Task { @MainActor in borderIndicator.show(frame) } },
             // #135: what the pointer can focus, for focus-follows-mouse.
             onPointerTargets: { [weak self] targets in Task { @MainActor in self?.pointerFocus?.update(targets: targets) } },
+            // #222: the window a rail preview shows, where a click would put it.
+            onPeek: { [weak self] preview in Task { @MainActor in self?.shell?.showPeek(preview) } },
         ) { [weak self] world, snapshot in
             gate.note(world: world)
             Task { @MainActor in

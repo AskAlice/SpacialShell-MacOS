@@ -117,8 +117,9 @@ public struct World: Codable, Equatable, Sendable {
     /// via `ShellInsets(config:hidden:)`, so a toggle is an ordinary command → relayout round
     /// trip. Persisted in `state.json` (`PersistedState.zen`) so it survives relaunch.
     public var zen: Bool
-    /// #179: the window a rail hover-card preview is showing for real — on screen, centred on its
-    /// display, raised without being focused — while the pointer rests on its miniature. Set only
+    /// #179: the window a rail hover-card preview is showing while the pointer rests on its
+    /// miniature. #222: the window itself does not move; the shell draws it where a click on the
+    /// preview would put it (`PeekPreview`), over everything but the shell's panels. Set only
     /// by `.peek`; any other command, a workspace switch, and the window leaving (`normalize()`)
     /// end it. Transient: left out of `CodingKeys`, and `PersistedState` never reads it, so a peek
     /// never reaches `state.json`.
@@ -135,5 +136,16 @@ public struct World: Codable, Equatable, Sendable {
         self.screens = screens; self.screenOrder = screenOrder; self.focus = focus
         self.ephemeral = ephemeral; self.ignored = ignored; self.hidden = hidden
         self.parents = parents; self.defaultLayout = defaultLayout; self.zen = zen
+    }
+}
+
+/// #222: what a peeked rail preview shows: `window`, drawn on `display` at `frame` (top-left
+/// global), the frame clicking the preview would give it.
+public struct PeekPreview: Equatable, Sendable {
+    public let window: WindowRef
+    public let display: DisplayID
+    public let frame: CGRect
+    public init(window: WindowRef, display: DisplayID, frame: CGRect) {
+        self.window = window; self.display = display; self.frame = frame
     }
 }

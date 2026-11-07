@@ -1,96 +1,102 @@
 import AppKit
 import ImageIO
-import os
 import SpacialShellKit
 import SpacialShellPlatform
 import SpacialShellProtocol
 
-/// #179: what hides everything but the peeked window while a rail preview is peeked.
+/// #179: what shows the peeked window, alone, while a rail preview is peeked.
 ///
-/// An opaque panel over the peeked window's display — its desktop picture, or the window
-/// background colour until (or where) the picture cannot be read — ordered directly below the
-/// peeked window (`order(.below, relativeTo:)` its window-server number). Every other window is
-/// covered where it is, never moved, and the shell's own panels, a level above, stay in front.
+/// An opaque panel over the peeked window's display: its desktop picture (or the window
+/// background colour until, or where, the picture cannot be read), and on it a picture of the
+/// peeked window at `PeekPreview.frame`, where clicking the preview would put it. It sits above
+/// every ordinary window and below the shell's own panels, so the rail and the card stay in front.
+///
+/// #222: the real window used to be centred, resized and raised under it without activating its
+/// app. macOS only orders a window above another app's windows when its own app activates, and
+/// activating would take the keyboard from the focused window, so it stayed under the frontmost
+/// app and the peek showed nothing; and when it did show, it was not where a click would put
+/// it. Now nothing moves: the cached thumbnail shows at once, then a fresh full-size capture.
+///
 /// It takes the clicks that land on it: a click on what looks like the desktop must not reach a
-/// window nobody can see.
-///
-/// Driven by the model, not the pointer: `update(peek:display:)` runs on every publish, so
-/// whatever ends the peek — leaving the preview, a hotkey, a switch, the window closing — takes
-/// the backdrop with it. That publish comes after the pass that placed and raised the window, so
-/// its frame is settled by the time its window-server number is looked up; and each publish
-/// orders the backdrop under it again, in case a raise since has gone over it.
+/// window nobody can see. Driven by the store (`onPeek`), not the pointer, so whatever ends the
+/// peek (leaving the preview, a hotkey, a switch, the window closing) takes the backdrop with it.
 @MainActor
 final class PeekBackdrop {
-    private static let log = Logger(subsystem: "sh.emu.SpacialShell", category: "peek")
     private let panel = BackdropPanel()
     private let picture = NSView()
-    /// The peek the backdrop is for, and once it is found, the window-server number it sits under.
-    private var target: (ref: SpacialShellProtocol.WindowRef, display: DisplayID, number: CGWindowID?)?
-    private var lookup: Task<Void, Never>?
+    /// The peeked window's picture, on the desktop picture.
+    private let shot = CALayer()
+    private var shown: PeekPreview?
+    private var capture: Task<Void, Never>?
     /// Desktop pictures, decoded at their display's size, by file.
     private var pictures: [URL: CGImage] = [:]
-    /// The number is matched on the window's frame, and a window just placed can take a moment to
-    /// reach the window list there: this many tries, this far apart, before giving up.
-    private static let lookupTries = 5
-    private static let lookupInterval = Duration.milliseconds(60)
 
     init() {
         picture.wantsLayer = true
         picture.layer?.contentsGravity = .resizeAspectFill
         picture.layer?.masksToBounds = true
+        shot.contentsGravity = .resizeAspect
+        shot.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        picture.layer?.addSublayer(shot)
         panel.contentView = picture
     }
 
-    /// `peek` is `World.peek`; `display` the display its row is on.
-    func update(peek: SpacialShellProtocol.WindowRef?, display: DisplayID?) {
-        guard let peek, let display else { hide(); return }
-        if let t = target, t.ref == peek, t.display == display {
-            if let n = t.number { panel.order(.below, relativeTo: Int(n)) }   // found: keep it just under
-            return                                                            // still looking
-        }
-        // A swap to another preview keeps the backdrop up meanwhile (the new window is raised over
-        // it already), so nothing behind flashes between the two; another display starts over.
-        if target?.display != display { hide() }
-        lookup?.cancel()
-        guard let screen = NSScreen.screens.first(where: { DisplayTopology.uuid(for: $0) == display }) else { hide(); return }
-        target = (peek, display, nil)
-        let size = CGSize(width: screen.frame.width * screen.backingScaleFactor, height: screen.frame.height * screen.backingScaleFactor)
+    func update(_ preview: PeekPreview?) {
+        guard preview != shown else { return }
+        guard let preview,
+              let screen = NSScreen.screens.first(where: { DisplayTopology.uuid(for: $0) == preview.display }),
+              let primary = NSScreen.screens.first else { hide(); return }
+        let swap = shown?.display == preview.display   // another preview: keep the backdrop up meanwhile
+        shown = preview
+        capture?.cancel()
+        // Top-left global → this panel's bottom-left local.
+        let f = preview.frame
+        let slot = CGRect(x: f.minX - screen.frame.minX, y: primary.frame.maxY - f.maxY - screen.frame.minY,
+                          width: f.width, height: f.height)
         let url = NSWorkspace.shared.desktopImageURL(for: screen)
-        lookup = Task { [weak self] in
-            // Off the main actor: the lookup reads the window's AX attributes and copies the window
-            // list, and a hung app must not freeze the shell's panels with it.
-            var number: CGWindowID?
-            for attempt in 1...Self.lookupTries {
-                number = await Task.detached { WindowIdentities.captureID(for: peek.id) }.value
-                if number != nil || Task.isCancelled { break }
-                if attempt < Self.lookupTries { try? await Task.sleep(for: Self.lookupInterval) }
+        if !swap {
+            picture.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            picture.layer?.contents = url.flatMap { pictures[$0] }
+        }
+        // Until the fresh picture lands: the card's thumbnail, scaled up. Soft, but the right window.
+        show(WindowThumbnails.shared.image(for: preview.window.id)?.cgImage(forProposedRect: nil, context: nil, hints: nil), in: slot)
+        panel.setFrame(screen.frame, display: false)
+        panel.orderFrontRegardless()
+        let size = CGSize(width: screen.frame.width * screen.backingScaleFactor, height: screen.frame.height * screen.backingScaleFactor)
+        let longSide = max(slot.width, slot.height) * screen.backingScaleFactor
+        capture = Task { [weak self] in
+            // The desktop picture decodes beside the capture, not before it: a large wallpaper
+            // must not hold the window's own picture back.
+            async let desktop: CGImage? = if let url, self?.pictures[url] == nil {
+                await Task.detached { Self.decode(url, fitting: size) }.value
+            } else { nil }
+            let fresh = await WindowPreviewCapture.images(for: [preview.window], longSide: longSide)[preview.window.id]
+            guard !Task.isCancelled, let self, self.shown == preview else { return }
+            if let fresh { self.show(fresh, in: slot) }
+            if let url, let image = await desktop, !Task.isCancelled, self.shown == preview {
+                self.pictures[url] = image
+                self.picture.layer?.contents = image
             }
-            guard let self, !Task.isCancelled, self.target?.ref == peek else { return }
-            guard let number else {
-                // Without its number the backdrop cannot go under it, and covering the window itself
-                // would be worse than covering nothing: the peek shows the window, just not alone.
-                Self.log.notice("peek backdrop: no window-server number for \(peek.id, privacy: .public)")
-                return
-            }
-            self.target?.number = number
-            self.picture.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
-            self.picture.layer?.contents = url.flatMap { self.pictures[$0] }
-            self.panel.setFrame(screen.frame, display: false)
-            self.panel.order(.below, relativeTo: Int(number))
-            guard let url, self.pictures[url] == nil else { return }
-            let image = await Task.detached { Self.decode(url, fitting: size) }.value
-            guard !Task.isCancelled, self.target?.ref == peek, let image else { return }
-            self.pictures[url] = image
-            self.picture.layer?.contents = image
         }
     }
 
+    /// The window's picture, aspect-fitted into `slot` (panel coordinates).
+    private func show(_ image: CGImage?, in slot: CGRect) {
+        shot.contents = image
+        guard let image, image.width > 0, image.height > 0 else { shot.frame = .zero; return }
+        let scale = min(slot.width / CGFloat(image.width), slot.height / CGFloat(image.height))
+        let size = CGSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
+        shot.frame = CGRect(x: slot.midX - size.width / 2, y: slot.midY - size.height / 2,
+                            width: size.width, height: size.height).integral
+    }
+
     func hide() {
-        lookup?.cancel(); lookup = nil
-        guard target != nil else { return }
-        target = nil
+        capture?.cancel(); capture = nil
+        guard shown != nil else { return }
+        shown = nil
         panel.orderOut(nil)
         picture.layer?.contents = nil
+        shot.contents = nil
     }
 
     /// The desktop picture decoded once, no larger than its display: a 6K wallpaper file is not
@@ -106,12 +112,12 @@ final class PeekBackdrop {
     }
 }
 
-/// Normal level, so it can sit directly under another app's window; opaque, never key, and out of
-/// Mission Control's and ⌘Tab's way like the rest of the shell's furniture.
+/// Above every ordinary window and below the shell's panels (`.floating`); opaque, never key, and
+/// out of Mission Control's and ⌘Tab's way like the rest of the shell's furniture.
 private final class BackdropPanel: NSPanel {
     init() {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
-        level = .normal
+        level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
         isOpaque = true
         backgroundColor = .windowBackgroundColor
         hasShadow = false
