@@ -135,4 +135,19 @@ import Foundation
         let item = ShellUI.testState(for: "D1", in: w)!.rail[0]
         #expect(item.category == .terminal && item.layout == .split)
     }
+
+    // MARK: a tab dropped above a tile (#228)
+
+    @Test func aTabDroppedAboveTheTopTileGetsANewTopRow() {
+        var w = base()
+        (w, _) = run(w, .moveWindowRefToNewWorkspace(c, before: rows(w)[0].id, wholeApp: false))
+        #expect(rows(w).map(\.windows) == [[c], [a], [b], []])
+        #expect(w.focus.window == b, "focus stays where it was")
+    }
+    @Test func theTopRowsOwnWindowDroppedAboveItStaysPut() {
+        var w = base()
+        let before = rows(w).map(\.windows)
+        (w, _) = run(w, .moveWindowRefToNewWorkspace(a, before: rows(w)[0].id, wholeApp: false))
+        #expect(rows(w).map(\.windows) == before, "its row is reaped and grown back in the same place")
+    }
 }

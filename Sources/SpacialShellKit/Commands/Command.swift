@@ -88,6 +88,9 @@ public enum Command: Sendable, Hashable {
     /// `toIndex` of the reordered stack (clamped). The same workspace stays active and focused.
     /// There is no display in the payload on purpose: a workspace only moves within its own.
     case moveWorkspace(UUID, toIndex: Int)
+    /// #228: a tab dropped above a rail tile: the window (or, with `wholeApp`, its whole app; #98)
+    /// gets a new workspace of its own just before `before`, on `before`'s display. Focus stays.
+    case moveWindowRefToNewWorkspace(WindowRef, before: UUID, wholeApp: Bool)
     /// Spec §13.3 / M3a A4 (#52): put every window that has ended up off every display back where
     /// a human can reach it. The model says nothing about geometry, so this changes nothing here —
     /// `WorldStore` does the work — but it is a `Command` so it arrives by the same door as a

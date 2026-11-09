@@ -51,6 +51,8 @@ struct ScreenPanelView: View {
     /// ponytail: a drag cancelled outside the rail leaves this set until the next drop or click
     /// on the rail, so a tab dragged over it meanwhile shows the line; the drop is still right.
     @State var reordering: UUID?
+    /// #228: a tab is over the strip above the top tile.
+    @State private var newTopTargeted = false
 
     /// Where each tile is, so a hover can tell the controller what to put the card next to.
     @State private var tileFrames: [UUID: CGRect] = [:]
@@ -127,6 +129,9 @@ struct ScreenPanelView: View {
                     return true
                 } isTargeted: { over in
                     dropTarget = over ? item.id : (dropTarget == item.id ? nil : dropTarget)
+                }
+                .overlay(alignment: .top) {
+                    if item.id == state.rail.first?.id, !item.isTrailingEmpty { newTopDrop(before: item) }
                 }
             }
             Spacer(minLength: 0)
@@ -337,6 +342,28 @@ extension ScreenPanelView {
                 reordering = nil
                 dropTarget = nil
             }
+    }
+
+    /// #228: the gap above the top tile. A tab dropped there gets a new workspace of its own at
+    /// the top, shown by the same insertion caret a tile reorder uses; Shift or Option takes the
+    /// whole app, as on a tile (#98, #206). Every other place between tiles is a tile's own drop.
+    func newTopDrop(before item: WorkspaceRailItem) -> some View {
+        // 8 pt: the 4 pt gap and the search button's bottom padding, never its glyph — this strip
+        // is hit-testable, so it would take the button's clicks wherever it covers it.
+        Color.primary.opacity(0.001)
+            .frame(height: 8)
+            .overlay(alignment: .bottom) {
+                RoundedRectangle(cornerRadius: 1).fill(Color.accentColor).frame(height: 2)
+                    .padding(.bottom, 1)
+                    .opacity(newTopTargeted ? 1 : 0)
+            }
+            .dropDestination(for: DraggedWindow.self) { items, _ in
+                guard let dropped = items.first else { return false }
+                send(.moveWindowRefToNewWorkspace(dropped.ref, before: item.id,
+                                                  wholeApp: WholeAppDrop.held(NSEvent.modifierFlags)))
+                return true
+            } isTargeted: { newTopTargeted = $0 }
+            .offset(y: -8)
     }
 
     /// #112, #201: a tile's menu, its windows first.

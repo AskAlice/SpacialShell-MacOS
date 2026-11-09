@@ -286,6 +286,20 @@ public enum CommandRunner {
             w.screens[from.screen]!.workspaces[from.index].windows = row
             effects.append(.relayout)
 
+        case .moveWindowRefToNewWorkspace(let ref, let before, let wholeApp):
+            // The trailing "+" row grows a new one when something moves in (invariant 4), and the
+            // reorder then puts it in place: the two drops the user could make by hand, as one.
+            guard let at = w.location(ofWorkspace: before) else { return fail(.unknownWorkspace(before.uuidString)) }
+            guard let plus = w.screens[at.screen]!.workspaces.last, plus.windows.isEmpty else { return noop("no empty row to grow") }
+            let into: Command = wholeApp ? .moveAppRefToWorkspace(ref, plus.id) : .moveWindowRefToWorkspace(ref, plus.id, follow: false)
+            let (moved, grew) = step(into, on: w, in: env, why: &why)
+            guard !grew.isEmpty else { return (moved, grew) }
+            // `before` may have shifted, or gone, if the window left a row that is now reaped.
+            let index = moved.location(ofWorkspace: before)?.index ?? at.index
+            let (placed, reordered) = step(.moveWorkspace(plus.id, toIndex: index), on: moved, in: env, why: &why)
+            if case .noop? = why { why = nil }   // already in place (the + was the row before `before`)
+            return (placed, grew + reordered.filter { !grew.contains($0) })
+
         case .moveWorkspace(let id, let to):
             // Decision 2026-09-25 (#75): reorder by id, keep the active workspace by id. normalize()
             // then does what it always does, which covers the edge cases: moving a workspace past
