@@ -264,6 +264,25 @@ import SwiftUI
         #expect(hover.shownWorkspace != nil)
     }
 
+    /// #224: the tile's exit hides the card after the grace, unless the pointer is then on the card
+    /// or in the gap before it, whatever SwiftUI's hover on the card did or did not report.
+    @Test func leavingTheTileForTheCardKeepsIt() async throws {
+        let stage = Stage()
+        let item = railState().rail[0]
+        for p in [CGPoint(x: 52, y: 424), CGPoint(x: 100, y: 424)] {   // the gap, then the card
+            let hover = shownCard(stage, item)
+            stage.pointer = p
+            hover.hide(item.id)
+            try await Task.sleep(for: .milliseconds(300))
+            #expect(hover.shownWorkspace == item.id, "pointer at \(p)")
+        }
+        let hover = shownCard(stage, item)
+        stage.pointer = CGPoint(x: 900, y: 100)
+        hover.hide(item.id)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(hover.shownWorkspace == nil, "off rail and card, the exit still hides it")
+    }
+
     /// An auto-hiding rail that slid away is not "on the rail" any more, however still the pointer.
     @Test func aRailThatIsGoneDoesNotHoldTheCard() {
         let stage = Stage()

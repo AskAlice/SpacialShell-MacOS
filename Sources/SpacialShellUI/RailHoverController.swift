@@ -37,7 +37,6 @@ final class RailHoverController {
     static let trayID = UUID()
     private var captureTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
-    private var pointerInCard = false
     private let send: @Sendable (Command) -> Void
     /// The card as last drawn, so a highlight change redraws it exactly as it is.
     private var drawn: (title: String, subtitle: String?, content: RailHoverCard.Content) = ("", nil, .message(""))
@@ -70,6 +69,8 @@ final class RailHoverController {
     private static let hoverDelay = Duration.milliseconds(250)
     /// The pointer needs a moment to cross the gap from tile to card without the card vanishing.
     private static let hideGrace = Duration.milliseconds(180)
+    /// Between the tile and the card.
+    private static let gap: CGFloat = 8
     /// #179: how long the pointer rests on a preview before its window is peeked, and on nothing
     /// before the peek ends — so crossing the card moves no windows, and crossing the gap between
     /// two previews swaps the peek without putting the first window back in between.
@@ -201,7 +202,7 @@ final class RailHoverController {
         hideTask?.cancel()
         hideTask = Task { [weak self] in
             try? await Task.sleep(for: Self.hideGrace)
-            guard !Task.isCancelled, let self, !self.pointerInCard else { return }
+            guard !Task.isCancelled, let self, !self.pointerOnCard else { return }
             self.hideNow(reason)
         }
     }
@@ -215,7 +216,6 @@ final class RailHoverController {
         stopWatchingPointer()
         shown = nil
         shownIndex = nil
-        pointerInCard = false
         window.orderOut(nil)
         // Let go of the card's images; the thumbnails themselves stay in `WindowThumbnails`.
         render(title: "", subtitle: nil, content: .message(""))
@@ -283,8 +283,6 @@ final class RailHoverController {
     /// On screen, and watching the pointer until it is hidden again.
     private func appear(_ what: String) {
         Self.log.debug("hover card show \(self.shown?.uuidString ?? "-", privacy: .public) \(what, privacy: .public)")
-        // A new tile's hover: the pointer is on the rail, whatever the card last heard about it.
-        pointerInCard = false
         present(window)
         guard pointerMonitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
@@ -308,7 +306,7 @@ final class RailHoverController {
     func checkPointer() {
         guard shown != nil else { return }
         let p = pointer()
-        if window.frame.contains(p) || railFrame()?.contains(p) == true {
+        if pointerOnCard || railFrame()?.contains(p) == true {
             outsideSince = nil
             pointerCheck?.cancel(); pointerCheck = nil
             return
@@ -325,6 +323,11 @@ final class RailHoverController {
         }
         if t - since >= Self.hideGrace { hideNow("pointer off rail and card") }
     }
+
+    /// #224: on the card, or in the gap the pointer crosses from the tile to reach it. Asked of
+    /// the pointer itself: SwiftUI's hover on the card missed the pointer arriving, so a tile's
+    /// exit hid the card from under a pointer already on it and the click on a preview was lost.
+    private var pointerOnCard: Bool { window.frame.insetBy(dx: -Self.gap, dy: 0).contains(pointer()) }
 
     /// #179: the pointer entered or left a preview. Entering rings it at once and peeks its window
     /// after `peekDwell`; leaving takes the ring off and ends the peek after the same dwell, unless
@@ -393,7 +396,6 @@ final class RailHoverController {
             onGrantAccess: { ScreenRecordingAccess.request() },
             onHoverCard: { [weak self] inside in
                 guard let self else { return }
-                self.pointerInCard = inside
                 if inside { self.hideTask?.cancel() } else { self.hideAfterGrace("left the card") }
             },
             onSelect: { [weak self] in self?.select($0) },
@@ -433,7 +435,7 @@ final class RailHoverController {
     /// back inside the screen so a card next to the bottom tile is not half off the display.
     private func place(near tile: CGRect, railSide: RailSide, bounds: CGRect, animated: Bool = false) {
         let size = host.fittingSize
-        let gap: CGFloat = 8
+        let gap = Self.gap
         let x = railSide == .left ? tile.maxX + gap : tile.minX - gap - size.width
         var y = tile.midY - size.height / 2
         y = min(max(y, bounds.minY + gap), bounds.maxY - size.height - gap)
