@@ -105,23 +105,12 @@ import UniformTypeIdentifiers
         #expect(tabType.conforms(to: .item))
     }
 
-    /// #75: a tile and a tab share `public.data`, so the rail tells them apart by decoding. Each
-    /// must come back as what it is, and neither may decode as the other.
-    @Test func railDropsTellATileFromATab() throws {
-        let tab = try JSONEncoder().encode(DraggedWindow(ref: WindowRef(id: 1, pid: 1)))
-        let tile = try JSONEncoder().encode(DraggedWorkspace(workspace: UUID()))
-        guard case .window = try JSONDecoder().decode(RailDrop.self, from: tab) else { Issue.record("tab"); return }
-        guard case .workspace = try JSONDecoder().decode(RailDrop.self, from: tile) else { Issue.record("tile"); return }
-        #expect(throws: (any Error).self) { try JSONDecoder().decode(DraggedWindow.self, from: tile) }
-        #expect(throws: (any Error).self) { try JSONDecoder().decode(DraggedWorkspace.self, from: tab) }
-    }
-
     /// #129: a placeholder tab drags like any tab — its ref (negative pid and all) survives the
     /// trip to the rail and the bar.
     @Test func aPlaceholderTabsPayloadRoundTrips() throws {
         let ref = WindowRef(id: 3, pid: WindowRef.placeholderPid(bundleID: "com.apple.Terminal"))
         let data = try JSONEncoder().encode(DraggedWindow(ref: ref))
-        guard case .window(let w) = try JSONDecoder().decode(RailDrop.self, from: data) else { Issue.record("not a tab"); return }
+        let w = try JSONDecoder().decode(DraggedWindow.self, from: data)
         #expect(w.ref == ref && w.ref.isPlaceholder)
     }
 

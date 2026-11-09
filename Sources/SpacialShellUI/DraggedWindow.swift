@@ -28,38 +28,3 @@ struct DraggedWindow: Codable, Transferable {
         CodableRepresentation(contentType: .data)
     }
 }
-
-/// What a dragged rail tile carries (#75): the workspace, and nothing else. `public.data` for the
-/// same reasons as `DraggedWindow`; the two are told apart by decoding instead — their keys
-/// differ (`workspace` vs `ref`), so neither payload ever decodes as the other. `DragTests` pins it.
-struct DraggedWorkspace: Codable, Transferable {
-    let workspace: UUID
-
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .data)
-    }
-}
-
-/// Everything a rail tile accepts: a tab (move that window here) or another tile (reorder). One
-/// destination deciding by payload, rather than two `.dropDestination`s stacked on one view,
-/// whose interplay SwiftUI does not document.
-enum RailDrop: Codable, Transferable {
-    case window(DraggedWindow)
-    case workspace(DraggedWorkspace)
-
-    init(from decoder: Decoder) throws {
-        if let w = try? DraggedWindow(from: decoder) { self = .window(w); return }
-        self = .workspace(try DraggedWorkspace(from: decoder))
-    }
-
-    func encode(to encoder: Encoder) throws {
-        switch self {
-        case .window(let w): try w.encode(to: encoder)
-        case .workspace(let ws): try ws.encode(to: encoder)
-        }
-    }
-
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .data)
-    }
-}

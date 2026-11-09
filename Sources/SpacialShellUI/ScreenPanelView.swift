@@ -113,29 +113,18 @@ struct ScreenPanelView: View {
                             onMiddle: { send(.removeWorkspace(item.id)) })
                     }
                 }
-                .modifier(Reorderable(item: item) { reordering = item.id })
+                .opacity(reordering == item.id ? 0.5 : 1)
+                .simultaneousGesture(reorderDrag(item), including: item.isTrailingEmpty ? .none : .all)
                 // Dropping a tab here sends its window to this workspace without following it
                 // (#95): the rail highlight and focus stay put. The trailing "+" row is not
                 // special-cased: it is a workspace, and moving into it grows a new one.
-                // Dropping a tile here puts it just before this one (#75). Only within this
-                // display: a tile from another display's rail is not in `state.rail`, so
-                // `railReorder` refuses it — moving a workspace across displays is out of scope.
-                .dropDestination(for: RailDrop.self) { items, _ in
-                    defer { reordering = nil }
-                    switch items.first {
-                    case .window(let dropped)?:
-                        // #98, #206: Shift or Option held on the drop moves the window's whole app.
-                        send(WholeAppDrop.held(NSEvent.modifierFlags)
-                             ? .moveAppRefToWorkspace(dropped.ref, item.id)
-                             : .moveWindowRefToWorkspace(dropped.ref, item.id, follow: false))
-                        return true
-                    case .workspace(let dragged)?:
-                        guard let command = state.railReorder(dragged.workspace, before: item.id) else { return false }
-                        send(command)
-                        return true
-                    case nil:
-                        return false
-                    }
+                .dropDestination(for: DraggedWindow.self) { items, _ in
+                    guard let dropped = items.first else { return false }
+                    // #98, #206: Shift or Option held on the drop moves the window's whole app.
+                    send(WholeAppDrop.held(NSEvent.modifierFlags)
+                         ? .moveAppRefToWorkspace(dropped.ref, item.id)
+                         : .moveWindowRefToWorkspace(dropped.ref, item.id, follow: false))
+                    return true
                 } isTargeted: { over in
                     dropTarget = over ? item.id : (dropTarget == item.id ? nil : dropTarget)
                 }
@@ -328,23 +317,28 @@ struct AttentionDot: View {
     }
 }
 
-/// A tile drags to reorder its display's stack (#75); "+" does not — it is the way down, not a
-/// workspace with a place of its own. `began` runs when the drag starts: the payload is built then.
-private struct Reorderable: ViewModifier {
-    let item: WorkspaceRailItem
-    let began: () -> Void
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if item.isTrailingEmpty {
-            content
-        } else {
-            content.draggable({ began(); return DraggedWorkspace(workspace: item.id) }())
-        }
-    }
-}
-
 extension ScreenPanelView {
+    /// #75: a tile drags to reorder its display's stack; "+" does not (it is the way down, not a
+    /// workspace with a place of its own). It lands before the first tile whose middle is below
+    /// the pointer, which the insertion caret above that tile shows while dragging.
+    ///
+    /// #226: a plain drag gesture, not `.draggable`. The reorder never leaves this panel, so it
+    /// needs no drag session or pasteboard, and in the running shell a `.draggable` press on the
+    /// tile's button never became a drag session: the button kept the press, and the tile only
+    /// dimmed under it. Only within this display: `railReorder` knows only `state.rail`.
+    func reorderDrag(_ item: WorkspaceRailItem) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { drag in
+                reordering = item.id
+                dropTarget = state.rail.first { (tileFrames[$0.id]?.midY ?? .infinity) > drag.location.y }?.id
+            }
+            .onEnded { _ in
+                if let target = dropTarget, let command = state.railReorder(item.id, before: target) { send(command) }
+                reordering = nil
+                dropTarget = nil
+            }
+    }
+
     /// #112, #201: a tile's menu, its windows first.
     func tileMenu(_ item: WorkspaceRailItem) -> NSMenu {
         let info = windowInfo ?? { [metaFor] ref in
